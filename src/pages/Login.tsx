@@ -3,6 +3,7 @@ import { useStore } from "../store";
 import { Avatar, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { hashPassword, validatePassword, uid } from "../utils";
+import emailjs from "@emailjs/browser";
 
 const DEMO_PASSWORDS: Record<string, string> = {
   u1: "Admin123!",
@@ -74,6 +75,26 @@ export function Login() {
       at: new Date().toISOString(),
     };
     dispatch({ type: "patch", patch: { emails: [emailRecord, ...state.emails] } });
+
+    // Send real email via EmailJS
+    emailjs.send(
+      "default_service",
+      "template_s020w0n",
+      {
+        to_email: user.email,
+        to_name: user.name,
+        recovery_code: code,
+        expiry_minutes: expiryMin,
+      },
+      "9kvYrC80SMCYOFFpO"
+    ).then(
+      () => {
+        console.log("EmailJS: Correo real enviado correctamente.");
+      },
+      (error) => {
+        console.error("EmailJS: Fallo al enviar correo:", error);
+      }
+    );
 
     // Show toast with simulation helper
     toast(`Código de recuperación enviado a ${user.email}`);
