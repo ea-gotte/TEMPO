@@ -471,36 +471,6 @@ export function Login() {
           </form>
         )}
 
-        {mode === "login" && (
-          <div className="card card-pad" style={{ marginTop: 12 }}>
-            <div className="card-title">Usuarios de demostración — clic para completar</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {state.users.filter((u) => u.active).map((u) => (
-                <button
-                  key={u.id}
-                  type="button"
-                  onClick={() => { setEmail(u.email); setPassword(DEMO_PASSWORDS[u.id] || ""); setError(""); }}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 10, padding: "7px 9px",
-                    borderRadius: 8, textAlign: "left", width: "100%",
-                  }}
-                  className="login-demo-row"
-                >
-                  <Avatar name={u.name} size={26} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{u.name}</div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{u.email}</div>
-                  </div>
-                  <span className={`badge ${u.role === "admin" ? "acc" : u.role === "supervisor" ? "warn" : ""}`} style={{ textTransform: "capitalize" }}>
-                    {u.role}
-                  </span>
-                  <code style={{ fontSize: 11, color: "var(--text-3)" }}>{DEMO_PASSWORDS[u.id] || "—"}</code>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        <style>{`.login-demo-row:hover { background: var(--surface-2); }`}</style>
       </div>
     </div>
   );
