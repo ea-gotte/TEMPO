@@ -55,7 +55,7 @@ export function Dashboard() {
     { label: "Este mes", ico: "calendar-days", value: fmtDur(monthMin) },
     {
       label: "Vacaciones disponibles", ico: "sun", value: `${vac.available} días`,
-      hint: `${vac.used} usados de ${vac.entitled}${vac.accruing ? " (acumulando)" : ""} · vencen ${fmtDate(vac.expiration)}`,
+      hint: `${vac.used} usados de ${vac.entitled} · vencen ${fmtDate(vac.expiration)}`,
     },
     { label: "Proyectos activos", ico: "folder", value: String(activeProjects) },
   ];

@@ -1,21 +1,13 @@
 import React, { useState } from "react";
 import { useStore } from "../store";
-import { useToast } from "../components/ui";
+import { Switch, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { fmtDateTime, uid } from "../utils";
+import type { Role } from "../types";
 
 const TAG_COLORS = ["#5b6cff", "#12b5a5", "#f5a524", "#f0446c", "#8b5cf6", "#0ea5e9", "#84cc16", "#f97316"];
 
-const LEAVE_TYPES = [
-  "Vacaciones", "Día personal", "Licencia médica", "Salida médica", "Licencia por estudio",
-  "Maternidad/Paternidad", "Trabajo remoto", "Permiso especial", "Medio día", "Horario reducido", "Compensación de horas",
-];
-
-const ROLE_PERMS: { role: string; perms: string[] }[] = [
-  { role: "Administrador", perms: ["Configuración de empresa", "Gestión de usuarios y roles", "Tarifas y presupuestos", "Aprobación de ausencias", "Reportes globales", "Integraciones", "Auditoría"] },
-  { role: "Supervisor", perms: ["Aprobación de ausencias de su equipo", "Reportes de su equipo", "Edición de proyectos asignados"] },
-  { role: "Empleado", perms: ["Registro de tiempo propio", "Solicitud de ausencias", "Reportes propios"] },
-];
+const ROLE_LABELS: Record<Role, string> = { admin: "Administrador", supervisor: "Supervisor", empleado: "Empleado" };
 
 export function Admin() {
   const { state, dispatch } = useStore();
@@ -24,6 +16,7 @@ export function Admin() {
   const [tab, setTab] = useState<"empresa" | "roles" | "licencias" | "etiquetas" | "correos" | "auditoria">("empresa");
   const [newTag, setNewTag] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
+  const [newPerm, setNewPerm] = useState<Record<Role, string>>({ admin: "", supervisor: "", empleado: "" });
   const isAdmin = state.users.find((u) => u.id === state.currentUserId)?.role === "admin";
 
   function addTag() {
@@ -56,6 +49,43 @@ export function Admin() {
     });
     dispatch({ type: "audit", action: "Etiqueta eliminada", detail: tag?.name ?? id });
     toast(`Etiqueta "${tag?.name}" eliminada.`);
+  }
+
+  function togglePerm(role: Role, index: number) {
+    const list = state.rolePermissions[role].map((p, i) => (i === index ? { ...p, enabled: !p.enabled } : p));
+    const perm = state.rolePermissions[role][index];
+    dispatch({ type: "patch", patch: { rolePermissions: { ...state.rolePermissions, [role]: list } } });
+    dispatch({ type: "audit", action: `Permiso ${perm.enabled ? "deshabilitado" : "habilitado"}`, detail: `${ROLE_LABELS[role]}: ${perm.label}` });
+  }
+
+  function addPerm(role: Role) {
+    const label = newPerm[role].trim();
+    if (!label || state.rolePermissions[role].some((p) => p.label.toLowerCase() === label.toLowerCase())) return;
+    dispatch({
+      type: "patch",
+      patch: { rolePermissions: { ...state.rolePermissions, [role]: [...state.rolePermissions[role], { label, enabled: true }] } },
+    });
+    dispatch({ type: "audit", action: "Permiso creado", detail: `${ROLE_LABELS[role]}: ${label}` });
+    toast(`Permiso agregado a ${ROLE_LABELS[role]}.`);
+    setNewPerm({ ...newPerm, [role]: "" });
+  }
+
+  function removePerm(role: Role, index: number) {
+    const perm = state.rolePermissions[role][index];
+    dispatch({
+      type: "patch",
+      patch: { rolePermissions: { ...state.rolePermissions, [role]: state.rolePermissions[role].filter((_, i) => i !== index) } },
+    });
+    dispatch({ type: "audit", action: "Permiso eliminado", detail: `${ROLE_LABELS[role]}: ${perm.label}` });
+  }
+
+  function toggleLeaveType(index: number) {
+    const lt = state.leaveTypeConfig[index];
+    dispatch({
+      type: "patch",
+      patch: { leaveTypeConfig: state.leaveTypeConfig.map((x, i) => (i === index ? { ...x, enabled: !x.enabled } : x)) },
+    });
+    dispatch({ type: "audit", action: `Tipo de licencia ${lt.enabled ? "deshabilitado" : "habilitado"}`, detail: lt.type });
   }
 
   function saveCompany() {
@@ -135,14 +165,39 @@ export function Admin() {
 
       {tab === "roles" && (
         <div className="grid-2">
-          {ROLE_PERMS.map((r) => (
-            <div className="card card-pad" key={r.role}>
-              <div style={{ fontWeight: 700, marginBottom: 8 }}>{r.role}</div>
-              {r.perms.map((p) => (
-                <div className="list-item" key={p}>
-                  <span style={{ color: "var(--success)" }}><Icon name="check" size={15} /></span> {p}
+          {(Object.keys(state.rolePermissions) as Role[]).map((role) => (
+            <div className="card card-pad" key={role}>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>{ROLE_LABELS[role]}</div>
+              {!isAdmin && (
+                <p style={{ fontSize: 12, color: "var(--warning)", marginBottom: 8 }}>
+                  Solo los administradores pueden modificar los permisos.
+                </p>
+              )}
+              {state.rolePermissions[role].map((p, i) => (
+                <div className="list-item" key={p.label} style={{ gap: 10 }}>
+                  <Switch on={p.enabled} onToggle={() => isAdmin && togglePerm(role, i)} label={p.label} />
+                  <span style={{ flex: 1, color: p.enabled ? "var(--text)" : "var(--text-3)" }}>{p.label}</span>
+                  {isAdmin && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => removePerm(role, i)} aria-label={`Eliminar ${p.label}`} title="Eliminar permiso">
+                      <Icon name="trash" size={13} />
+                    </button>
+                  )}
                 </div>
               ))}
+              {isAdmin && (
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <input
+                    className="input"
+                    placeholder="Nuevo permiso…"
+                    value={newPerm[role]}
+                    onChange={(e) => setNewPerm({ ...newPerm, [role]: e.target.value })}
+                    onKeyDown={(e) => e.key === "Enter" && addPerm(role)}
+                  />
+                  <button className="btn btn-secondary btn-sm" onClick={() => addPerm(role)} disabled={!newPerm[role].trim()}>
+                    <Icon name="plus" size={13} />
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -151,13 +206,21 @@ export function Admin() {
       {tab === "licencias" && (
         <div className="card card-pad" style={{ maxWidth: 560 }}>
           <div className="card-title">Tipos de licencia habilitados</div>
-          {LEAVE_TYPES.map((t) => (
-            <div className="list-item" key={t}>
-              <span style={{ color: "var(--success)" }}><Icon name="check" size={15} /></span>
-              <span style={{ flex: 1 }}>{t}</span>
-              <span className="badge ok">Activo</span>
+          {!isAdmin && (
+            <p style={{ fontSize: 12.5, color: "var(--warning)", marginBottom: 10 }}>
+              Solo los administradores pueden modificar los tipos de licencia.
+            </p>
+          )}
+          {state.leaveTypeConfig.map((lt, i) => (
+            <div className="list-item" key={lt.type} style={{ gap: 10 }}>
+              <Switch on={lt.enabled} onToggle={() => isAdmin && toggleLeaveType(i)} label={lt.type} />
+              <span style={{ flex: 1, color: lt.enabled ? "var(--text)" : "var(--text-3)" }}>{lt.type}</span>
+              <span className={`badge ${lt.enabled ? "ok" : ""}`}>{lt.enabled ? "Activo" : "Inactivo"}</span>
             </div>
           ))}
+          <p style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 10 }}>
+            Los tipos inactivos dejan de aparecer al crear una nueva solicitud de ausencia.
+          </p>
         </div>
       )}
 

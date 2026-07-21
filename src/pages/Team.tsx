@@ -100,7 +100,6 @@ export function Team() {
                     <div style={{ display: "flex", alignItems: "center", gap: 5 }}><Icon name="calendar" size={12} /> {fmtDate(u.hireDate)}</div>
                     <div style={{ marginTop: 3, display: "flex", alignItems: "center", gap: 5 }}>
                       <Icon name="sun" size={12} /> {vac.available} de {vac.entitled} días
-                      {vac.accruing && <span className="badge warn" style={{ marginLeft: 4 }}>acumulando</span>}
                     </div>
                     <div style={{ color: vac.daysToExpire <= 90 ? "var(--warning)" : "var(--text-3)", fontSize: 11 }}>
                       vencen {u.hireDate && fmtDate(vac.expiration)}
@@ -283,7 +282,7 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
           <label>Fecha de ingreso</label>
           <DateField value={hireDate} onChange={setHireDate} max={today()} />
           <span style={{ fontSize: 11, color: "var(--text-3)" }}>
-            Escribí dd/mm/aaaa o elegí en el calendario. Vacaciones automáticas: 1 día/mes hasta 10 el primer año; luego 10 días por año.
+            Escribí dd/mm/aaaa o elegí en el calendario. Vacaciones automáticas: 10 días hábiles por año desde el ingreso.
           </span>
         </div>
         <div className="field">

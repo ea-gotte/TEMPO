@@ -230,12 +230,15 @@ function loadInitial(): AppState {
       const parsed = JSON.parse(raw) as AppState;
       if (parsed.users && parsed.entries) {
         // Migración de estados guardados con versiones anteriores del esquema
+        const defaults = seedState();
         return {
           ...parsed,
           validations: parsed.validations ?? [],
           overtime: parsed.overtime ?? [],
           emails: parsed.emails ?? [],
           authenticated: parsed.authenticated ?? false,
+          rolePermissions: parsed.rolePermissions ?? defaults.rolePermissions,
+          leaveTypeConfig: parsed.leaveTypeConfig ?? defaults.leaveTypeConfig,
           users: parsed.users.map((u) => ({
             ...u,
             jornada: u.jornada ?? ((u.weeklyHours ?? 40) >= 35 ? ("completa" as const) : ("media" as const)),
@@ -351,8 +354,7 @@ function countWorkDays(from: string, to: string, workDays: number[]): number {
 
 export interface VacationInfo {
   monthsWorked: number;
-  accruing: boolean; // primer año: acumula 1 día/mes hasta 10
-  entitled: number; // días laborables del período vigente
+  entitled: number; // días hábiles del período vigente
   used: number; // días hábiles de vacaciones aprobadas en el período
   available: number;
   expiration: string; // vencimiento del período (próximo aniversario)
@@ -361,8 +363,7 @@ export interface VacationInfo {
 
 /**
  * Contabilidad de vacaciones por antigüedad:
- * - Persona nueva (<12 meses): 1 día laborable por mes trabajado, hasta 10.
- * - Desde el año: 10 días laborables por cada año.
+ * - 10 días hábiles por año, desde la fecha de ingreso (sin acumulación mensual).
  * - Vencimiento: el aniversario de ingreso siguiente; se notifica desde 3 meses antes.
  */
 export function vacationInfo(state: AppState, userId: string, todayISO: string): VacationInfo {
@@ -374,8 +375,7 @@ export function vacationInfo(state: AppState, userId: string, todayISO: string):
   if (now.getDate() < hire.getDate()) monthsWorked--;
   monthsWorked = Math.max(0, monthsWorked);
 
-  const accruing = monthsWorked < 12;
-  const entitled = accruing ? Math.min(monthsWorked, 10) : 10;
+  const entitled = 10;
 
   // Período vigente: desde el último aniversario (o el ingreso) hasta el próximo aniversario
   const yearsDone = Math.floor(monthsWorked / 12);
@@ -400,7 +400,7 @@ export function vacationInfo(state: AppState, userId: string, todayISO: string):
   const expiration = fmt(periodEnd);
   const daysToExpire = Math.round((periodEnd.getTime() - now.getTime()) / 86400000);
 
-  return { monthsWorked, accruing, entitled, used, available: Math.max(0, entitled - used), expiration, daysToExpire };
+  return { monthsWorked, entitled, used, available: Math.max(0, entitled - used), expiration, daysToExpire };
 }
 
 /** Solapamiento entre registros del mismo usuario y día */

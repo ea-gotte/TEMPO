@@ -139,7 +139,6 @@ export function Absences() {
           <div className="value">{vac.available} días</div>
           <div className="hint">
             {vac.used} usados de {vac.entitled}
-            {vac.accruing && " · acumulando 1 día/mes"}
           </div>
           <div className="hint" style={vac.daysToExpire <= 90 ? { color: "var(--warning)", fontWeight: 600 } : undefined}>
             Vencen el {fmtDate(vac.expiration)}
@@ -512,6 +511,10 @@ function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType
   // Cambio 6: solo el tipo y la fecha son obligatorios; el resto es opcional
   const valid = Boolean(type) && Boolean(dateFrom) && dateTo >= dateFrom;
 
+  // Solo se listan los tipos habilitados en Administración (el tipo inicial forzado siempre se incluye)
+  const enabledTypes = state.leaveTypeConfig.filter((t) => t.enabled).map((t) => t.type);
+  const availableTypes = TYPES.filter((t) => enabledTypes.includes(t) || t === initialType);
+
   const MAX_BYTES = 10 * 1024 * 1024; // 10 MB por archivo
 
   function onFiles(list: FileList | null) {
@@ -571,7 +574,7 @@ function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType
       <div className="field">
         <label>Tipo de ausencia <span style={{ color: "var(--danger)" }}>*</span></label>
         <select className="select" value={type} onChange={(e) => setType(e.target.value as AbsenceType)}>
-          {TYPES.map((t) => (
+          {availableTypes.map((t) => (
             <option key={t} value={t}>{t}</option>
           ))}
         </select>

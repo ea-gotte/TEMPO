@@ -14,6 +14,11 @@ export function Projects() {
   const [editProject, setEditProject] = useState<Project | "new" | null>(null);
   const [newClient, setNewClient] = useState(false);
 
+  const [fQuery, setFQuery] = useState("");
+  const [fClient, setFClient] = useState("");
+  const [fStatus, setFStatus] = useState<ProjectStatus | "">("");
+  const [fMember, setFMember] = useState("");
+
   const spentBy = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of state.entries) {
@@ -22,6 +27,26 @@ export function Projects() {
     }
     return m;
   }, [state.entries]);
+
+  const filtersActive = Boolean(fQuery || fClient || fStatus || fMember);
+  const filteredProjects = useMemo(
+    () =>
+      state.projects.filter((p) => {
+        if (fQuery && !p.name.toLowerCase().includes(fQuery.trim().toLowerCase())) return false;
+        if (fClient && p.clientId !== fClient) return false;
+        if (fStatus && p.status !== fStatus) return false;
+        if (fMember && !p.memberIds.includes(fMember)) return false;
+        return true;
+      }),
+    [state.projects, fQuery, fClient, fStatus, fMember],
+  );
+
+  function clearFilters() {
+    setFQuery("");
+    setFClient("");
+    setFStatus("");
+    setFMember("");
+  }
 
   return (
     <>
@@ -40,7 +65,61 @@ export function Projects() {
       </div>
 
       {tab === "proyectos" && (
-        <div className="card" style={{ overflowX: "auto" }}>
+        <>
+          <div className="card card-pad no-print" style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <div className="field" style={{ flex: "1 1 200px" }}>
+                <label>Buscar</label>
+                <div style={{ position: "relative" }}>
+                  <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: "var(--text-3)", display: "grid" }}>
+                    <Icon name="search" size={14} />
+                  </span>
+                  <input
+                    className="input"
+                    style={{ paddingLeft: 30 }}
+                    placeholder="Nombre del proyecto…"
+                    value={fQuery}
+                    onChange={(e) => setFQuery(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="field">
+                <label>Cliente</label>
+                <select className="select" value={fClient} onChange={(e) => setFClient(e.target.value)}>
+                  <option value="">Todos</option>
+                  {state.clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Estado</label>
+                <select className="select" value={fStatus} onChange={(e) => setFStatus(e.target.value as ProjectStatus | "")}>
+                  <option value="">Todos</option>
+                  <option value="activo">Activo</option>
+                  <option value="pausado">Pausado</option>
+                  <option value="completado">Completado</option>
+                  <option value="archivado">Archivado</option>
+                </select>
+              </div>
+              <div className="field">
+                <label>Persona</label>
+                <select className="select" value={fMember} onChange={(e) => setFMember(e.target.value)}>
+                  <option value="">Todas</option>
+                  {state.users.filter((u) => u.active).map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+              {filtersActive && (
+                <button className="btn btn-ghost btn-sm" onClick={clearFilters}>Limpiar filtros</button>
+              )}
+            </div>
+          </div>
+          <p className="page-sub" style={{ margin: "0 0 10px" }}>
+            {filteredProjects.length} de {state.projects.length} proyectos
+          </p>
+          <div className="card" style={{ overflowX: "auto" }}>
           <table className="table">
             <thead>
               <tr>
@@ -53,7 +132,10 @@ export function Projects() {
               </tr>
             </thead>
             <tbody>
-              {state.projects.map((p) => {
+              {filteredProjects.length === 0 && (
+                <tr><td colSpan={6}><Empty icon="search" text="Sin resultados" sub="Probá ajustar o limpiar los filtros." /></td></tr>
+              )}
+              {filteredProjects.map((p) => {
                 const client = state.clients.find((c) => c.id === p.clientId);
                 const spent = spentBy.get(p.id) ?? 0;
                 const pct = p.budgetHours ? Math.min(100, (spent / 60 / p.budgetHours) * 100) : null;
@@ -114,7 +196,8 @@ export function Projects() {
               })}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
 
       {tab === "clientes" && (

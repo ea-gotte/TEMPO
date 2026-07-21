@@ -280,5 +280,39 @@ export function seedState(): AppState {
       { id: "i12", name: "API REST", desc: "Tokens de acceso y documentación de la API.", icon: "plug", connected: true },
       { id: "i13", name: "Webhooks", desc: "Eventos en tiempo real hacia tus sistemas.", icon: "webhook", connected: false },
     ],
+    rolePermissions: {
+      admin: [
+        { label: "Configuración de empresa", enabled: true },
+        { label: "Gestión de usuarios y roles", enabled: true },
+        { label: "Tarifas y presupuestos", enabled: true },
+        { label: "Aprobación de ausencias", enabled: true },
+        { label: "Reportes globales", enabled: true },
+        { label: "Integraciones", enabled: true },
+        { label: "Auditoría", enabled: true },
+      ],
+      supervisor: [
+        { label: "Aprobación de ausencias de su equipo", enabled: true },
+        { label: "Reportes de su equipo", enabled: true },
+        { label: "Edición de proyectos asignados", enabled: true },
+      ],
+      empleado: [
+        { label: "Registro de tiempo propio", enabled: true },
+        { label: "Solicitud de ausencias", enabled: true },
+        { label: "Reportes propios", enabled: true },
+      ],
+    },
+    leaveTypeConfig: [
+      { type: "Vacaciones", enabled: true },
+      { type: "Día personal", enabled: true },
+      { type: "Licencia médica", enabled: true },
+      { type: "Salida médica", enabled: true },
+      { type: "Licencia por estudio", enabled: true },
+      { type: "Maternidad/Paternidad", enabled: true },
+      { type: "Trabajo remoto", enabled: true },
+      { type: "Permiso especial", enabled: true },
+      { type: "Medio día", enabled: true },
+      { type: "Horario reducido", enabled: true },
+      { type: "Compensación de horas", enabled: true },
+    ],
   };
 }

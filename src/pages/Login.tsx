@@ -85,11 +85,23 @@ export function Login() {
             <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }} onClick={() => setError("OAuth con Google no está disponible en la demo.")}>
-              G · Google
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ flex: 1, justifyContent: "center", opacity: 0.6, cursor: "not-allowed" }}
+              disabled
+              title="Disponible próximamente"
+            >
+              Google <span className="badge warn" style={{ marginLeft: 4 }}>Pendiente</span>
             </button>
-            <button type="button" className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }} onClick={() => setError("OAuth con Microsoft no está disponible en la demo.")}>
-              ⊞ · Microsoft
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ flex: 1, justifyContent: "center", opacity: 0.6, cursor: "not-allowed" }}
+              disabled
+              title="Disponible próximamente"
+            >
+              Microsoft <span className="badge warn" style={{ marginLeft: 4 }}>Pendiente</span>
             </button>
           </div>
         </form>

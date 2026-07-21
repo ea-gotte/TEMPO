@@ -235,6 +235,18 @@ export interface CompanySettings {
   currency: string;
 }
 
+/** Permiso individual dentro de un rol, configurable desde Administración */
+export interface RolePermission {
+  label: string;
+  enabled: boolean;
+}
+
+/** Tipo de ausencia habilitado o no para solicitarse, configurable desde Administración */
+export interface LeaveTypeConfig {
+  type: AbsenceType;
+  enabled: boolean;
+}
+
 export interface AppState {
   theme: "light" | "dark";
   /** true cuando hay una sesión iniciada; si es false se muestra el login */
@@ -257,4 +269,6 @@ export interface AppState {
   audit: AuditLog[];
   integrations: Integration[];
   company: CompanySettings;
+  rolePermissions: Record<Role, RolePermission[]>;
+  leaveTypeConfig: LeaveTypeConfig[];
 }
