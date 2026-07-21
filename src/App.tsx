@@ -37,7 +37,7 @@ function Root() {
   const me = state.users.find((u) => u.id === state.currentUserId);
   if (me?.mustChangePassword) return <ForceChangePassword />;
   // Vista básica para empleados: si la página actual no está permitida, volver al tracker
-  const allowed = me?.role === "empleado" ? EMPLOYEE_PAGES : (Object.keys(PAGES) as PageKey[]);
+  const allowed = me?.role === "usuario" ? EMPLOYEE_PAGES : (Object.keys(PAGES) as PageKey[]);
   const effective = allowed.includes(page) ? page : "tracker";
   const Page = PAGES[effective];
   return (

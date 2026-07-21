@@ -38,7 +38,7 @@ export interface Tag {
   color: string;
 }
 
-export type Role = "admin" | "supervisor" | "empleado";
+export type Role = "admin" | "supervisor" | "usuario";
 
 export type Jornada = "completa" | "media";
 

@@ -11,12 +11,12 @@ export function Reports() {
   const toast = useToast();
   const t = today();
   const me = state.users.find((u) => u.id === state.currentUserId)!;
-  const isEmployee = me.role === "empleado";
+  const isEmployee = me.role === "usuario";
   const [period, setPeriod] = useState<Period>("semana");
   const [from, setFrom] = useState(weekStart(t));
   const [to, setTo] = useState(addDays(weekStart(t), 6));
   const [userFilterRaw, setUserFilter] = useState("");
-  // Los empleados solo ven sus propios datos
+  // Los usuarios solo ven sus propios datos
   const userFilter = isEmployee ? me.id : userFilterRaw;
   const [projectFilter, setProjectFilter] = useState("");
   const [clientFilter, setClientFilter] = useState("");
@@ -191,7 +191,7 @@ export function Reports() {
       </div>
 
       <div className="card" style={{ marginTop: 14, overflowX: "auto" }}>
-        <div className="card-title" style={{ padding: "14px 16px 0" }}>Horas por empleado — balance, extras y utilización</div>
+        <div className="card-title" style={{ padding: "14px 16px 0" }}>Horas por usuario — balance, extras y utilización</div>
         <table className="table">
           <thead>
             <tr>

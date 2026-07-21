@@ -91,7 +91,7 @@ export function Absences() {
   const { state, dispatch } = useStore();
   const toast = useToast();
   const me = state.users.find((u) => u.id === state.currentUserId)!;
-  const canApprove = me.role !== "empleado";
+  const canApprove = me.role !== "usuario";
   const [tab, setTab] = useState<"mias" | "aprobar" | "extra" | "registro">("mias");
   const [showNew, setShowNew] = useState(false);
   const [detail, setDetail] = useState<AbsenceRequest | null>(null);
@@ -426,7 +426,7 @@ function RequestDetail({
 function RequestLog() {
   const { state } = useStore();
   const me = state.users.find((u) => u.id === state.currentUserId)!;
-  const canSeeAll = me.role !== "empleado";
+  const canSeeAll = me.role !== "usuario";
   const name = (id?: string | null) => state.users.find((x) => x.id === id)?.name ?? "—";
 
   type Ev = { at: string; icon: IconName; color: string; what: string; who: string; status: string };

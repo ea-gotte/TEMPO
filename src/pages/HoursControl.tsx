@@ -48,7 +48,7 @@ export function HoursControl() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCurrentWeek, ws]);
 
-  if (me.role === "empleado") {
+  if (me.role === "usuario") {
     return (
       <div className="card">
         <Empty icon="lock" text="Sección restringida" sub="El control de horas está disponible para administradores y supervisores." />

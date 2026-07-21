@@ -65,7 +65,7 @@ function parseAccountsCSV(text: string, state: AppState): { rows: AccountRow[]; 
     else if (!email || !/^\S+@\S+\.\S+$/.test(email)) error = "Email inválido o vacío.";
 
     const roleRaw = iRole >= 0 ? normText(cols[iRole] ?? "") : "";
-    let role: Role = "empleado";
+    let role: Role = "usuario";
     if (roleRaw.includes("admin")) role = "admin";
     else if (roleRaw.includes("supervis") || roleRaw.includes("manager")) role = "supervisor";
 

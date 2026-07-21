@@ -156,7 +156,7 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
   const [password, setPassword] = useState("");
   const [mustChangePassword, setMustChangePassword] = useState(user ? (user.mustChangePassword ?? false) : true);
   const [error, setError] = useState("");
-  const [role, setRole] = useState<Role>(user?.role ?? "empleado");
+  const [role, setRole] = useState<Role>(user?.role ?? "usuario");
   const [teamId, setTeamId] = useState(user?.teamId ?? state.teams[0]?.id ?? "");
   const [departmentId, setDepartmentId] = useState(user?.departmentId ?? state.departments[0]?.id ?? "");
   const [supervisorId, setSupervisorId] = useState(user?.supervisorId ?? "");
@@ -287,7 +287,7 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
         <div className="field">
           <label>Rol</label>
           <select className="select" value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            <option value="empleado">Empleado</option>
+            <option value="usuario">Usuario</option>
             <option value="supervisor">Supervisor</option>
             <option value="admin">Administrador</option>
           </select>
@@ -296,7 +296,7 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
           <label>Supervisor</label>
           <select className="select" value={supervisorId} onChange={(e) => setSupervisorId(e.target.value)}>
             <option value="">— Sin supervisor —</option>
-            {state.users.filter((u) => u.role !== "empleado" && u.id !== user?.id).map((u) => (
+            {state.users.filter((u) => u.role !== "usuario" && u.id !== user?.id).map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </select>

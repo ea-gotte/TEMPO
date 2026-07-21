@@ -130,7 +130,7 @@ export function Shell({
           </span>
         </div>
         {NAV.map((sec) => {
-          const items = sec.items.filter((it) => me.role !== "empleado" || EMPLOYEE_PAGES.includes(it.key));
+          const items = sec.items.filter((it) => me.role !== "usuario" || EMPLOYEE_PAGES.includes(it.key));
           if (items.length === 0) return null;
           return (
           <React.Fragment key={sec.section}>
@@ -419,7 +419,7 @@ function ProfileModal({ onClose }: { onClose: () => void }) {
           </div>
           <div className="field">
             <label>Rol</label>
-            <input className="input" value={me.role === "admin" ? "Administrador" : me.role === "supervisor" ? "Supervisor" : "Empleado"} disabled style={{ opacity: 0.8 }} />
+            <input className="input" value={me.role === "admin" ? "Administrador" : me.role === "supervisor" ? "Supervisor" : "Usuario"} disabled style={{ opacity: 0.8 }} />
           </div>
           <div className="field">
             <label>Jornada</label>

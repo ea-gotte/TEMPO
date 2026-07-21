@@ -365,7 +365,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               name: p.name || p.email?.split("@")[0] || "Usuario",
               email: p.email,
               password: "", // Supabase Auth maneja la clave
-              role: p.role || "empleado",
+              role: p.role || "usuario",
               jornada: p.jornada || "completa",
               teamId: p.team_id || "t1",
               departmentId: p.department_id || "d1",
@@ -490,7 +490,7 @@ export function validatedOvertimeMin(state: AppState, userId: string): number {
 /** Proyectos visibles para un usuario: admin/supervisor ven todo; empleados solo donde son miembros */
 export function visibleProjects(state: AppState, userId: string) {
   const u = state.users.find((x) => x.id === userId);
-  if (!u || u.role !== "empleado") return state.projects;
+  if (!u || u.role !== "usuario") return state.projects;
   return state.projects.filter((p) => p.memberIds.includes(userId));
 }
 

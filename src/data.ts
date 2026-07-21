@@ -209,28 +209,16 @@ export function seedState(): AppState {
     ],
     users: [
       {
-        id: "u1", name: "Emmanuel Gotte", email: "ea.gotte@gmail.com", password: "Admin123!", role: "admin", jornada: "completa",
+        id: "u1", name: "Emmanuel Gotte", email: "emmanuel.gotte@quantia.es", password: "Admin123!", role: "admin", jornada: "completa",
         teamId: "e1", departmentId: "d1", supervisorId: null, weeklyHours: 40,
         workDays: [1, 2, 3, 4, 5], dayStart: "09:00", dayEnd: "18:00", birthday: "1988-03-14",
         hireDate: "2021-03-01", active: true, online: true,
       },
       {
-        id: "u2", name: "Carla Domínguez", email: "carla@quantia.com", password: "Carla123!", role: "supervisor", jornada: "completa",
+        id: "u2", name: "EA Gotte", email: "ea.gotte@gmail.com", password: "User123!", role: "usuario", jornada: "completa",
         teamId: "e1", departmentId: "d1", supervisorId: "u1", weeklyHours: 40,
-        workDays: [1, 2, 3, 4, 5], dayStart: "08:30", dayEnd: "17:30", birthday: "1990-07-28",
-        hireDate: "2022-08-15", active: true, online: true,
-      },
-      {
-        id: "u3", name: "Martín Suárez", email: "martin@quantia.com", password: "Martin123!", role: "empleado", jornada: "completa",
-        teamId: "e2", departmentId: "d1", supervisorId: "u2", weeklyHours: 40,
-        workDays: [1, 2, 3, 4, 5], dayStart: "09:00", dayEnd: "18:00", birthday: "1995-11-02",
-        hireDate: "2024-11-10", active: true, online: false,
-      },
-      {
-        id: "u4", name: "Lucía Ferrer", email: "lucia@quantia.com", password: "Lucia123!", role: "empleado", jornada: "media",
-        teamId: "e3", departmentId: "d2", supervisorId: "u1", weeklyHours: 20,
-        workDays: [1, 2, 3, 4, 5], dayStart: "09:00", dayEnd: "13:00", birthday: "1998-07-24",
-        hireDate: "2026-01-15", active: true, online: true,
+        workDays: [1, 2, 3, 4, 5], dayStart: "09:00", dayEnd: "18:00", birthday: "1990-01-01",
+        hireDate: "2024-01-01", active: true, online: true,
       },
     ],
     teams: [
@@ -252,15 +240,11 @@ export function seedState(): AppState {
     notifications: [
       {
         id: uid(), kind: "solicitud", title: "Solicitud pendiente",
-        body: "Lucía Ferrer solicitó Trabajo remoto.", date: t, read: false,
+        body: "EA Gotte solicitó Trabajo remoto.", date: t, read: false,
       },
       {
         id: uid(), kind: "feriado", title: "Feriado próximo",
         body: "Aniversario provincial en 9 días.", date: t, read: false,
-      },
-      {
-        id: uid(), kind: "falta-carga", title: "Falta de carga horaria",
-        body: "Martín Suárez cargó 15 h de 40 h esta semana.", date: addDays(t, -1), read: true,
       },
     ],
     audit: [
@@ -296,7 +280,7 @@ export function seedState(): AppState {
         { label: "Reportes de su equipo", enabled: true },
         { label: "Edición de proyectos asignados", enabled: true },
       ],
-      empleado: [
+      usuario: [
         { label: "Registro de tiempo propio", enabled: true },
         { label: "Solicitud de ausencias", enabled: true },
         { label: "Reportes propios", enabled: true },

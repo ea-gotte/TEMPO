@@ -109,7 +109,7 @@ export function Dashboard() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div className="card card-pad">
-            <div className="card-title">Empleados conectados</div>
+            <div className="card-title">Usuarios conectados</div>
             {online.map((u) => (
               <div className="list-item" key={u.id}>
                 <Avatar name={u.name} online />
