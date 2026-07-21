@@ -21,6 +21,7 @@ export function Login() {
   // Login states
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   
   // Recovery states
   const [recoveryEmail, setRecoveryEmail] = useState("");
@@ -29,10 +30,12 @@ export function Login() {
   const [confirmPassword, setConfirmPassword] = useState("");
   
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
 
   async function submit(e?: React.FormEvent) {
     e?.preventDefault();
     setError("");
+    setSuccessMsg("");
 
     try {
       const { data, error: authErr } = await supabase.auth.signInWithPassword({
@@ -46,11 +49,18 @@ export function Login() {
         if (user) {
           const inputHash = await hashPassword(password);
           if (user.password === inputHash) {
+            const msg = "¡Inicio de sesión correcto! Bienvenido/a.";
+            setSuccessMsg(msg);
+            toast(msg);
             dispatch({ type: "login", userId: user.id });
             return;
           }
         }
-        setError("Error al iniciar sesión: " + authErr.message);
+        const errMsg = authErr.message === "Invalid login credentials"
+          ? "Email o contraseña incorrectos. Verificá tus credenciales."
+          : `Error al iniciar sesión: ${authErr.message}`;
+        setError(errMsg);
+        toast(errMsg);
         return;
       }
 
@@ -81,20 +91,30 @@ export function Login() {
           };
           dispatch({ type: "patch", patch: { users: [...state.users, newUser] } });
         }
+        const msg = "¡Inicio de sesión correcto! Bienvenido/a.";
+        setSuccessMsg(msg);
+        toast(msg);
         dispatch({ type: "login", userId: currentUserId });
       }
     } catch (err) {
       console.warn("Supabase auth failed, falling back to local credentials", err);
       const user = state.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.active);
       if (!user) {
-        setError("Email o clave incorrectos. Verificá tus credenciales.");
+        const msg = "Email o clave incorrectos. Verificá tus credenciales.";
+        setError(msg);
+        toast(msg);
         return;
       }
       const inputHash = await hashPassword(password);
       if (user.password !== inputHash) {
-        setError("Email o clave incorrectos. Verificá tus credenciales.");
+        const msg = "Email o clave incorrectos. Verificá tus credenciales.";
+        setError(msg);
+        toast(msg);
         return;
       }
+      const msg = "¡Inicio de sesión correcto! Bienvenido/a.";
+      setSuccessMsg(msg);
+      toast(msg);
       dispatch({ type: "login", userId: user.id });
     }
   }
@@ -258,7 +278,7 @@ export function Login() {
                 type="email"
                 autoComplete="username"
                 value={email}
-                onChange={(e) => { setEmail(e.target.value); setError(""); }}
+                onChange={(e) => { setEmail(e.target.value); setError(""); setSuccessMsg(""); }}
                 placeholder="tu@empresa.com"
                 autoFocus
               />
@@ -272,6 +292,7 @@ export function Login() {
                     setRecoveryEmail(email);
                     setMode("forgot");
                     setError("");
+                    setSuccessMsg("");
                   }}
                   style={{
                     background: "none", border: "none", color: "var(--accent)",
@@ -281,19 +302,46 @@ export function Login() {
                   ¿Olvidaste tu contraseña?
                 </button>
               </div>
-              <input
-                id="login-pass"
-                className="input"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                placeholder="••••••••"
-              />
+              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                <input
+                  id="login-pass"
+                  className="input"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => { setPassword(e.target.value); setError(""); setSuccessMsg(""); }}
+                  placeholder="••••••••"
+                  style={{ paddingRight: 40, width: "100%" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-3)",
+                    cursor: "pointer",
+                    padding: 4,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Icon name={showPassword ? "eye-off" : "eye"} size={16} />
+                </button>
+              </div>
             </div>
             {error && (
-              <div style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600 }} role="alert">
-                <Icon name="alert" size={13} /> {error}
+              <div style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }} role="alert">
+                <Icon name="alert" size={14} /> {error}
+              </div>
+            )}
+            {successMsg && (
+              <div style={{ color: "var(--success)", fontSize: 12.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }} role="status">
+                <Icon name="check-circle" size={14} /> {successMsg}
               </div>
             )}
             <button className="btn btn-primary" type="submit" style={{ justifyContent: "center", padding: "10px 14px" }}>
