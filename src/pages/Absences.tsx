@@ -38,35 +38,48 @@ function StatusBadge({ s }: { s: AbsenceRequest["status"] }) {
   return <span className={`badge ${cls}`}>{s}</span>;
 }
 
+/** Convierte un data URL en Blob para poder verlo/descargarlo de forma confiable */
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [head, b64] = dataUrl.split(",");
+  const mime = head.match(/data:([^;]+)/)?.[1] ?? "application/octet-stream";
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
 function AttachmentChip({ f }: { f: Attachment }) {
-  const open = () => {
+  const withBlobUrl = (fn: (url: string) => void) => {
     if (!f.url) return;
-    const w = window.open();
-    if (w) w.document.write(`<iframe src="${f.url}" style="width:100%;height:100%;border:0" title="${f.name}"></iframe>`);
+    const url = URL.createObjectURL(dataUrlToBlob(f.url));
+    fn(url);
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
+
+  const view = () => withBlobUrl((url) => window.open(url, "_blank", "noopener"));
+  const download = () =>
+    withBlobUrl((url) => {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = f.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+
   return (
-    <span
-      className="badge"
-      style={{ cursor: f.url ? "pointer" : "default" }}
-      onClick={open}
-      title={f.url ? "Abrir adjunto" : "Archivo de demostración (sin contenido)"}
-    >
+    <span className="badge" style={{ gap: 6 }} title={f.url ? f.name : "Archivo de demostración (sin contenido cargado)"}>
       <Icon name="paperclip" size={12} /> {f.name}
+      {f.size != null && <span style={{ color: "var(--text-3)" }}>({(f.size / 1024 / 1024).toFixed(1)} MB)</span>}
       {f.url && (
-        <button
-          className="btn btn-ghost btn-sm"
-          style={{ padding: "0 4px" }}
-          onClick={(e) => {
-            e.stopPropagation();
-            const a = document.createElement("a");
-            a.href = f.url!;
-            a.download = f.name;
-            a.click();
-          }}
-          aria-label="Descargar"
-        >
-          <Icon name="download" size={12} />
-        </button>
+        <>
+          <button className="btn btn-ghost btn-sm" style={{ padding: "0 4px" }} onClick={view} aria-label="Ver" title="Ver">
+            <Icon name="eye" size={12} />
+          </button>
+          <button className="btn btn-ghost btn-sm" style={{ padding: "0 4px" }} onClick={download} aria-label="Descargar" title="Descargar">
+            <Icon name="download" size={12} />
+          </button>
+        </>
       )}
     </span>
   );
@@ -499,10 +512,18 @@ function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType
   // Cambio 6: solo el tipo y la fecha son obligatorios; el resto es opcional
   const valid = Boolean(type) && Boolean(dateFrom) && dateTo >= dateFrom;
 
+  const MAX_BYTES = 10 * 1024 * 1024; // 10 MB por archivo
+
   function onFiles(list: FileList | null) {
     if (!list) return;
+    const picked = [...list];
+    const tooBig = picked.filter((f) => f.size > MAX_BYTES);
+    if (tooBig.length > 0) {
+      toast(`Cada archivo debe pesar 10 MB o menos. Excede: ${tooBig.map((f) => f.name).join(", ")}.`);
+    }
+    const ok = picked.filter((f) => f.size <= MAX_BYTES);
     Promise.all(
-      [...list].map(
+      ok.map(
         (f) =>
           new Promise<Attachment>((res) => {
             const reader = new FileReader();
@@ -590,7 +611,7 @@ function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType
         <textarea className="textarea" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Contanos brevemente el motivo…" />
       </div>
       <div className="field">
-        <label>Adjuntos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional — certificados, comprobantes)</span></label>
+        <label>Adjuntos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional — certificados, comprobantes · máx. 10 MB por archivo)</span></label>
         <input type="file" className="input" multiple onChange={(e) => onFiles(e.target.files)} />
         {files.length > 0 && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>

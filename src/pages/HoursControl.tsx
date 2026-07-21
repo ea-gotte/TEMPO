@@ -64,6 +64,11 @@ export function HoursControl() {
     toast("Semana validada.");
   }
 
+  function unvalidate(userId: string) {
+    dispatch({ type: "unvalidateWeek", userId, weekStart: ws });
+    toast("Validación deshecha.");
+  }
+
   function sendOvertime(userId: string, minutes: number) {
     dispatch({
       type: "addOvertime",
@@ -223,6 +228,14 @@ export function HoursControl() {
                           {state.users.find((x) => x.id === validation.validatedBy)?.name.split(" ")[0]} ·{" "}
                           {fmtDate(validation.at.slice(0, 10))}
                         </div>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ marginTop: 4 }}
+                          onClick={() => unvalidate(u.id)}
+                          title="Deshacer la validación de esta semana"
+                        >
+                          <Icon name="repeat" size={12} /> Deshacer
+                        </button>
                       </div>
                     ) : (
                       <button className="btn btn-secondary btn-sm" disabled={loaded === 0} onClick={() => validate(u.id)} title={loaded === 0 ? "No hay horas cargadas para validar" : "Validar la carga de la semana"}>

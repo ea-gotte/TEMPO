@@ -19,6 +19,7 @@ type Action =
   | { type: "addAbsence"; absence: AbsenceRequest }
   | { type: "resolveAbsence"; id: string; status: "Aprobado" | "Rechazado"; comment: string; by: string }
   | { type: "validateWeek"; v: WeekValidation }
+  | { type: "unvalidateWeek"; userId: string; weekStart: string }
   | { type: "addOvertime"; o: OvertimeRequest }
   | { type: "resolveOvertime"; id: string; status: "Aprobado" | "Rechazado"; comment: string; by: string }
   | { type: "notify"; n: Omit<Notification, "id" | "read" | "date"> }
@@ -164,6 +165,12 @@ function baseReducer(s: AppState, a: Action): AppState {
         "Semana validada",
         `Usuario ${s.users.find((u) => u.id === a.v.userId)?.name ?? a.v.userId} · semana ${a.v.weekStart}`,
       );
+    case "unvalidateWeek":
+      return withAudit(
+        { ...s, validations: s.validations.filter((x) => !(x.userId === a.userId && x.weekStart === a.weekStart)) },
+        "Validación deshecha",
+        `Usuario ${s.users.find((u) => u.id === a.userId)?.name ?? a.userId} · semana ${a.weekStart}`,
+      );
     case "addOvertime":
       return withAudit(
         {
@@ -257,13 +264,37 @@ function loadInitial(): AppState {
   return seedState();
 }
 
+/**
+ * Guarda el estado en localStorage. Los adjuntos (data URLs) pueden ser grandes
+ * y superar la cuota; si eso pasa, se guarda una versión sin el contenido de los
+ * adjuntos para no perder el resto (siguen descargables en la sesión actual).
+ */
+function persist(state: AppState) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+  } catch {
+    try {
+      const light: AppState = {
+        ...state,
+        absences: state.absences.map((a) => ({
+          ...a,
+          attachments: a.attachments.map((f) => ({ name: f.name, size: f.size })),
+        })),
+      };
+      localStorage.setItem(LS_KEY, JSON.stringify(light));
+    } catch {
+      /* sin espacio: se mantiene solo en memoria */
+    }
+  }
+}
+
 const StoreCtx = createContext<{ state: AppState; dispatch: React.Dispatch<Action> } | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadInitial);
 
   useEffect(() => {
-    const id = setTimeout(() => localStorage.setItem(LS_KEY, JSON.stringify(state)), 300);
+    const id = setTimeout(() => persist(state), 300);
     return () => clearTimeout(id);
   }, [state]);
 
