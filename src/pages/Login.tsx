@@ -53,6 +53,36 @@ export function Login() {
         setError("Error al iniciar sesión: " + authErr.message);
         return;
       }
+
+      if (data?.user) {
+        const currentUserId = data.user.id;
+        const exists = state.users.some((u) => u.id === currentUserId || u.email.toLowerCase() === data.user.email?.toLowerCase());
+        if (!exists) {
+          const meta = data.user.user_metadata || {};
+          const newUser = {
+            id: currentUserId,
+            name: meta.name || data.user.email?.split("@")[0] || "Usuario",
+            email: data.user.email || "",
+            password: "",
+            role: (meta.role as any) || "admin",
+            jornada: (meta.jornada as any) || "completa",
+            teamId: "t1",
+            departmentId: "d1",
+            supervisorId: null,
+            weeklyHours: 40,
+            workDays: [1, 2, 3, 4, 5],
+            dayStart: "09:00",
+            dayEnd: "18:00",
+            birthday: "1990-01-01",
+            hireDate: "2024-01-01",
+            active: true,
+            online: true,
+            mustChangePassword: false
+          };
+          dispatch({ type: "patch", patch: { users: [...state.users, newUser] } });
+        }
+        dispatch({ type: "login", userId: currentUserId });
+      }
     } catch (err) {
       console.warn("Supabase auth failed, falling back to local credentials", err);
       const user = state.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.active);

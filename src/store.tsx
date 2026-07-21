@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react";
-import type { AppState, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord } from "./types";
+import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword } from "./utils";
 import { supabase } from "./supabase";
@@ -357,48 +357,79 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         try {
           if (session) {
-            const { data: profiles, error } = await supabase.from("profiles").select("*");
-            if (error) throw error;
+            const { data: profiles } = await supabase.from("profiles").select("*");
 
             const currentUserId = session.user.id;
-            const patch: Partial<AppState> = {
-              authenticated: true,
-              currentUserId: currentUserId,
-            };
-            if (profiles) {
-              const mappedUsers = profiles.map((p: any) => ({
-                id: p.id,
-                name: p.name,
-                email: p.email,
-                password: "", // Supabase Auth maneja la clave
-                role: p.role,
-                jornada: p.jornada,
-                teamId: p.team_id,
-                departmentId: p.department_id,
-                supervisorId: p.supervisor_id,
-                weeklyHours: p.weekly_hours,
+            const mappedUsers: User[] = (profiles || []).map((p: any) => ({
+              id: p.id,
+              name: p.name || p.email?.split("@")[0] || "Usuario",
+              email: p.email,
+              password: "", // Supabase Auth maneja la clave
+              role: p.role || "empleado",
+              jornada: p.jornada || "completa",
+              teamId: p.team_id || "t1",
+              departmentId: p.department_id || "d1",
+              supervisorId: p.supervisor_id || null,
+              weeklyHours: p.weekly_hours || 40,
+              workDays: [1, 2, 3, 4, 5],
+              dayStart: p.day_start || "09:00",
+              dayEnd: p.day_end || "18:00",
+              birthday: p.birthday || "1990-01-01",
+              hireDate: p.hire_date || "2024-01-01",
+              active: p.active ?? true,
+              online: p.online ?? true,
+              mustChangePassword: p.must_change_password ?? false
+            }));
+
+            if (!mappedUsers.some((u) => u.id === currentUserId)) {
+              const meta = session.user.user_metadata || {};
+              mappedUsers.push({
+                id: currentUserId,
+                name: meta.name || session.user.email?.split("@")[0] || "Usuario",
+                email: session.user.email || "",
+                password: "",
+                role: (meta.role as any) || "admin",
+                jornada: (meta.jornada as any) || "completa",
+                teamId: "t1",
+                departmentId: "d1",
+                supervisorId: null,
+                weeklyHours: 40,
                 workDays: [1, 2, 3, 4, 5],
-                dayStart: p.day_start,
-                dayEnd: p.day_end,
-                birthday: p.birthday || "1990-01-01",
-                hireDate: p.hire_date || "2024-01-01",
-                active: p.active,
-                online: p.online,
-                mustChangePassword: p.must_change_password
-              }));
-              patch.users = mappedUsers;
+                dayStart: "09:00",
+                dayEnd: "18:00",
+                birthday: "1990-01-01",
+                hireDate: "2024-01-01",
+                active: true,
+                online: true,
+                mustChangePassword: false
+              });
             }
-            dispatch({ type: "patch", patch });
+
+            const finalUsers: User[] = [...mappedUsers];
+            for (const existing of state.users) {
+              if (!finalUsers.some((u) => u.id === existing.id || u.email.toLowerCase() === existing.email.toLowerCase())) {
+                finalUsers.push(existing);
+              }
+            }
+
+            dispatch({
+              type: "patch",
+              patch: {
+                authenticated: true,
+                currentUserId: currentUserId,
+                users: finalUsers
+              }
+            });
           } else {
             dispatch({ type: "patch", patch: { authenticated: false, currentUserId: "" } });
           }
         } catch (dbErr) {
-          console.warn("Supabase Database error (check your table/RLS setup):", dbErr);
+          console.warn("Supabase Database sync warning:", dbErr);
         }
       });
       authListener = subscription;
     } catch (authErr) {
-      console.warn("Supabase Auth initialization failed (check your VITE_SUPABASE_* keys in .env):", authErr);
+      console.warn("Supabase Auth initialization failed:", authErr);
     }
 
     return () => {
