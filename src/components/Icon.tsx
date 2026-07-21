@@ -16,7 +16,7 @@ export type IconName =
   | "download" | "printer" | "tag" | "ban" | "hourglass" | "repeat"
   | "book" | "clipboard" | "baby" | "history" | "zap" | "dot" | "circle-half"
   | "hard-hat" | "github" | "puzzle" | "webhook" | "activity" | "hand"
-  | "chevron-right" | "eye" | "map-pin" | "cross" | "sliders";
+  | "chevron-right" | "eye" | "map-pin" | "cross" | "sliders" | "upload";
 
 const P: Record<IconName, React.ReactNode> = {
   clock: (<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>),
@@ -91,6 +91,7 @@ const P: Record<IconName, React.ReactNode> = {
   "map-pin": (<><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></>),
   cross: (<path d="M11 2a2 2 0 0 0-2 2v5H4a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h5v5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-5h5a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-5V4a2 2 0 0 0-2-2Z" />),
   sliders: (<><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /><line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" /></>),
+  upload: (<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></>),
 };
 
 export function Icon({

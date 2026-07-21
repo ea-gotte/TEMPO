@@ -128,6 +128,69 @@ export function toCSV(rows: (string | number)[][]): string {
     .join("\n");
 }
 
+/** Parser CSV simple: soporta campos entre comillas y detecta el delimitador (',' o ';') */
+export function parseCSV(text: string): string[][] {
+  const clean = text.replace(/^﻿/, "");
+  const firstLine = clean.split(/\r?\n/)[0] ?? "";
+  const semi = (firstLine.match(/;/g) ?? []).length;
+  const comma = (firstLine.match(/,/g) ?? []).length;
+  const delim = semi > comma ? ";" : ",";
+
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < clean.length; i++) {
+    const ch = clean[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (clean[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else inQuotes = false;
+      } else field += ch;
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === delim) {
+      row.push(field);
+      field = "";
+    } else if (ch === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else if (ch !== "\r") {
+      field += ch;
+    }
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows.filter((r) => r.some((c) => c.trim() !== ""));
+}
+
+/** "dd/mm/aaaa" -> "YYYY-MM-DD"; null si no es una fecha válida */
+export function parseDMY(s: string): string | null {
+  const m = s.trim().match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
+  if (!m) return null;
+  let [, d, mo, y] = m;
+  if (y.length === 2) y = "20" + y;
+  const iso = `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  const dt = new Date(iso + "T00:00:00");
+  if (isNaN(dt.getTime())) return null;
+  return iso;
+}
+
+/** Normaliza texto para comparar sin distinguir mayúsculas ni acentos */
+export function normText(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
 export function initials(name: string): string {
   return name
     .split(" ")

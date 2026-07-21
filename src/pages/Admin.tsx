@@ -4,6 +4,7 @@ import { Switch, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { fmtDateTime, uid } from "../utils";
 import type { Role } from "../types";
+import { AccountsImportPanel, ConfigImportExportPanel, ProjectsImportPanel } from "../components/ImportPanels";
 
 const TAG_COLORS = ["#5b6cff", "#12b5a5", "#f5a524", "#f0446c", "#8b5cf6", "#0ea5e9", "#84cc16", "#f97316"];
 
@@ -13,7 +14,7 @@ export function Admin() {
   const { state, dispatch } = useStore();
   const toast = useToast();
   const [c, setC] = useState(state.company);
-  const [tab, setTab] = useState<"empresa" | "roles" | "licencias" | "etiquetas" | "correos" | "auditoria">("empresa");
+  const [tab, setTab] = useState<"empresa" | "roles" | "licencias" | "etiquetas" | "importar" | "correos" | "auditoria">("empresa");
   const [newTag, setNewTag] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
   const [newPerm, setNewPerm] = useState<Record<Role, string>>({ admin: "", supervisor: "", empleado: "" });
@@ -104,6 +105,7 @@ export function Admin() {
           <button className={tab === "roles" ? "active" : ""} onClick={() => setTab("roles")}>Roles y permisos</button>
           <button className={tab === "licencias" ? "active" : ""} onClick={() => setTab("licencias")}>Tipos de licencia</button>
           <button className={tab === "etiquetas" ? "active" : ""} onClick={() => setTab("etiquetas")}>Etiquetas</button>
+          <button className={tab === "importar" ? "active" : ""} onClick={() => setTab("importar")}>Importar datos</button>
           <button className={tab === "correos" ? "active" : ""} onClick={() => setTab("correos")}>Correos</button>
           <button className={tab === "auditoria" ? "active" : ""} onClick={() => setTab("auditoria")}>Auditoría</button>
         </div>
@@ -294,6 +296,22 @@ export function Admin() {
               </div>
               <button className="btn btn-primary btn-sm" onClick={addTag} disabled={!newTag.trim()}><Icon name="plus" size={14} /> Agregar</button>
             </div>
+          )}
+        </div>
+      )}
+
+      {tab === "importar" && (
+        <div>
+          {!isAdmin ? (
+            <div className="card card-pad">
+              <p style={{ fontSize: 12.5, color: "var(--warning)" }}>Solo los administradores pueden importar datos.</p>
+            </div>
+          ) : (
+            <>
+              <AccountsImportPanel />
+              <ProjectsImportPanel />
+              <ConfigImportExportPanel />
+            </>
           )}
         </div>
       )}
