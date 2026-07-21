@@ -96,7 +96,7 @@ a { color: var(--accent); text-decoration: none; }
 }
 .nav-item:hover { background: var(--surface-2); color: var(--text); }
 .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.nav-item .ico { width: 18px; text-align: center; font-size: 15px; }
+.nav-item .ico { width: 18px; display: grid; place-items: center; flex-shrink: 0; }
 .nav-item .count {
   margin-left: auto; background: var(--danger); color: #fff; border-radius: 99px;
   font-size: 10.5px; font-weight: 700; padding: 1px 6px;
@@ -355,7 +355,7 @@ a { color: var(--accent); text-decoration: none; }
 }
 .notif { display: flex; gap: 10px; padding: 10px; border-radius: var(--r-md); }
 .notif:hover { background: var(--surface-2); }
-.notif .ic { font-size: 18px; }
+.notif .ic { display: grid; place-items: center; color: var(--text-2); padding-top: 1px; }
 .notif.unread { background: var(--accent-soft); }
 
 /* ---------- Menú contextual ---------- */
@@ -383,7 +383,7 @@ a { color: var(--accent); text-decoration: none; }
 /* ---------- Chips / integraciones ---------- */
 .int-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
 .int-card { display: flex; gap: 12px; align-items: flex-start; padding: 14px; }
-.int-card .ic { font-size: 24px; width: 40px; height: 40px; display: grid; place-items: center; background: var(--surface-2); border-radius: var(--r-md); flex-shrink: 0; }
+.int-card .ic { width: 40px; height: 40px; display: grid; place-items: center; background: var(--surface-2); border-radius: var(--r-md); flex-shrink: 0; color: var(--text-2); }
 
 .switch { position: relative; width: 36px; height: 20px; border-radius: 99px; background: var(--surface-3); transition: background 0.15s; flex-shrink: 0; }
 .switch.on { background: var(--accent); }
@@ -398,7 +398,11 @@ a { color: var(--accent); text-decoration: none; }
 .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
 .empty { text-align: center; padding: 40px 20px; color: var(--text-3); }
-.empty .big { font-size: 30px; margin-bottom: 8px; }
+.empty .big { display: flex; justify-content: center; margin-bottom: 8px; }
+
+.request-row { transition: background 0.1s; }
+.request-row:hover { background: var(--surface-2); }
+.request-row:last-child { border-bottom: none !important; }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } .form-grid { grid-template-columns: 1fr; } }

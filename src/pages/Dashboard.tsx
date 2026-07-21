@@ -1,7 +1,8 @@
 import React, { useMemo } from "react";
 import { useStore, validatedOvertimeMin, vacationInfo } from "../store";
-import { addDays, dayLabel, fmtDur, parseISO, today, weekStart } from "../utils";
+import { addDays, dayLabel, fmtDate, fmtDur, parseISO, today, weekStart } from "../utils";
 import { Avatar, Donut, HBarChart } from "../components/ui";
+import { Icon, type IconName } from "../components/Icon";
 
 export function Dashboard() {
   const { state } = useStore();
@@ -48,31 +49,31 @@ export function Dashboard() {
   const online = state.users.filter((u) => u.online && u.active);
   const activeProjects = state.projects.filter((p) => p.status === "activo").length;
 
-  const kpis: { label: string; ico: string; value: string; hint?: string }[] = [
-    { label: "Hoy", ico: "⏱️", value: fmtDur(todayMin), hint: `Jornada: ${Math.round(targetWeek / 5 / 60)} h` },
-    { label: "Esta semana", ico: "📅", value: fmtDur(weekMin), hint: `Objetivo ${user.weeklyHours} h` },
-    { label: "Este mes", ico: "🗓️", value: fmtDur(monthMin) },
-    { label: "Pendientes (semana)", ico: "⏳", value: fmtDur(pendingWeek) },
-    { label: "Horas extra", ico: "🔥", value: fmtDur(overtime), hint: "Aprobadas y validadas" },
+  const kpis: { label: string; ico: IconName; value: string; hint?: string }[] = [
+    { label: "Hoy", ico: "timer", value: fmtDur(todayMin), hint: `Jornada: ${Math.round(targetWeek / 5 / 60)} h` },
+    { label: "Esta semana", ico: "calendar", value: fmtDur(weekMin), hint: `Objetivo ${user.weeklyHours} h` },
+    { label: "Este mes", ico: "calendar-days", value: fmtDur(monthMin) },
+    { label: "Pendientes (semana)", ico: "hourglass", value: fmtDur(pendingWeek) },
+    { label: "Horas extra", ico: "flame", value: fmtDur(overtime), hint: "Aprobadas y validadas" },
     {
-      label: "Vacaciones disponibles", ico: "🌴", value: `${vac.available} días`,
-      hint: `${vac.used} usados de ${vac.entitled}${vac.accruing ? " (acumulando)" : ""} · vencen ${dayLabel(vac.expiration)}`,
+      label: "Vacaciones disponibles", ico: "sun", value: `${vac.available} días`,
+      hint: `${vac.used} usados de ${vac.entitled}${vac.accruing ? " (acumulando)" : ""} · vencen ${fmtDate(vac.expiration)}`,
     },
-    { label: "Proyectos activos", ico: "📁", value: String(activeProjects) },
+    { label: "Proyectos activos", ico: "folder", value: String(activeProjects) },
   ];
 
   return (
     <>
       <div className="page-head">
-        <h1>Hola, {user.name.split(" ")[0]} 👋</h1>
+        <h1>Hola, {user.name.split(" ")[0]}</h1>
         <span className="spacer" />
-        <span className="badge ok">● {online.length} conectados</span>
+        <span className="badge ok"><Icon name="dot" size={9} /> {online.length} conectados</span>
       </div>
 
       <div className="kpi-grid">
         {kpis.map((k) => (
           <div className="card kpi" key={k.label}>
-            <span className="label">{k.ico} {k.label}</span>
+            <span className="label"><Icon name={k.ico} size={14} /> {k.label}</span>
             <div className="value">{k.value}</div>
             {k.hint && <div className="hint">{k.hint}</div>}
           </div>
@@ -135,7 +136,7 @@ export function Dashboard() {
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontWeight: 600 }}>{a.type}</div>
                     <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-                      {u?.name} · {dayLabel(a.dateFrom)}{a.dateFrom !== a.dateTo && ` → ${dayLabel(a.dateTo)}`}
+                      {u?.name} · {fmtDate(a.dateFrom)}{a.dateFrom !== a.dateTo && ` → ${fmtDate(a.dateTo)}`}
                     </div>
                   </div>
                 </div>
@@ -151,12 +152,12 @@ export function Dashboard() {
               .slice(0, 5)
               .map((e) => (
                 <div className="list-item" key={e.id}>
-                  <span style={{ fontSize: 16 }}>
-                    {e.type.startsWith("Feriado") ? "🎉" : e.type === "Capacitación" ? "🎓" : e.type === "Reunión" ? "🤝" : e.type === "Home office" ? "🏠" : "📌"}
+                  <span style={{ color: "var(--accent)" }}>
+                    <Icon name={e.type.startsWith("Feriado") ? "party" : e.type === "Capacitación" ? "graduation" : e.type === "Home office" ? "home" : "map-pin"} size={16} />
                   </span>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontWeight: 600 }}>{e.title}</div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{dayLabel(e.date)} · {e.type}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{fmtDate(e.date)} · {e.type}</div>
                   </div>
                 </div>
               ))}

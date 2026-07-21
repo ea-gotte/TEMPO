@@ -4,6 +4,7 @@ import type { TimeEntry, RunningTimer } from "../types";
 import { addDays, fmtDur, fmtHM, minToHM, today, uid, dayLabel } from "../utils";
 import { EntryModal } from "../components/EntryModal";
 import { ContextMenu, Empty, useToast } from "../components/ui";
+import { Icon } from "../components/Icon";
 
 function useNow(active: boolean) {
   const [, setTick] = useState(0);
@@ -89,7 +90,7 @@ export function Tracker() {
       <div className="page-head">
         <h1>Registro de tiempo</h1>
         <span className="spacer" />
-        <button className="btn btn-secondary" onClick={() => setModal({})}>＋ Carga manual</button>
+        <button className="btn btn-secondary" onClick={() => setModal({})}><Icon name="plus" size={15} /> Carga manual</button>
       </div>
 
       {/* Barra de cronómetro: máximo 2 clics para iniciar */}
@@ -107,7 +108,7 @@ export function Tracker() {
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
-        <button className="playbtn" onClick={() => startTimer()} aria-label="Iniciar cronómetro" title="Iniciar (Enter)">▶</button>
+        <button className="playbtn" onClick={() => startTimer()} aria-label="Iniciar cronómetro" title="Iniciar (Enter)"><Icon name="play" size={15} /></button>
       </div>
 
       {/* Temporizadores múltiples en curso */}
@@ -137,7 +138,7 @@ export function Tracker() {
                   }}
                   aria-label="Detener"
                 >
-                  ⏹
+                  <Icon name="stop" size={15} />
                 </button>
               </div>
             );
@@ -148,7 +149,7 @@ export function Tracker() {
       {/* Favoritos: registro en un clic */}
       {favUnique.length > 0 && (
         <div style={{ marginTop: 14 }}>
-          <div className="card-title">⭐ Favoritos — iniciá con un clic</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><Icon name="star" size={14} /> Favoritos — iniciá con un clic</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {favUnique.map((f) => {
               const p = proj(f.projectId);
@@ -158,7 +159,7 @@ export function Tracker() {
                   className="chip"
                   onClick={() => startTimer({ description: f.description, projectId: f.projectId, taskId: f.taskId, billable: f.billable, tagIds: f.tagIds })}
                 >
-                  ▶ {f.description || "Sin descripción"}
+                  <Icon name="play" size={12} /> {f.description || "Sin descripción"}
                   {p && <span style={{ color: p.color }}>●</span>}
                 </button>
               );
@@ -170,7 +171,7 @@ export function Tracker() {
       {/* Historial agrupado por día */}
       <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 14 }}>
         {days.length === 0 && (
-          <div className="card"><Empty icon="⏱️" text="Todavía no hay registros" sub="Iniciá el cronómetro o cargá horas manualmente." /></div>
+          <div className="card"><Empty icon="timer" text="Todavía no hay registros" sub="Iniciá el cronómetro o cargá horas manualmente." /></div>
         )}
         {days.map(([date, list]) => {
           const total = list.reduce((a, e) => a + (e.end - e.start), 0);
@@ -187,7 +188,7 @@ export function Tracker() {
                     title="Copiar registros al día siguiente hábil"
                     onClick={() => copyDay(date, addDays(date, 1))}
                   >
-                    ⧉ Copiar día
+                    <Icon name="copy" size={13} /> Copiar día
                   </button>
                   <strong style={{ fontFamily: "var(--mono)" }}>{fmtDur(total)}</strong>
                 </span>
@@ -206,10 +207,10 @@ export function Tracker() {
                     }}
                   >
                     <span className="desc">
-                      {e.favorite && "⭐ "}
+                      {e.favorite && <Icon name="star" size={12} style={{ marginRight: 4, color: "var(--warning)" }} />}
                       {e.description || <em style={{ color: "var(--text-3)" }}>Sin descripción</em>}
-                      {e.recurring && <span className="badge" style={{ marginLeft: 6 }}>↻ {e.recurring}</span>}
-                      {conf.length > 0 && <span className="overlap-flag" title="Se solapa con otro registro"> ⚠ solapado</span>}
+                      {e.recurring && <span className="badge" style={{ marginLeft: 6 }}><Icon name="repeat" size={11} /> {e.recurring}</span>}
+                      {conf.length > 0 && <span className="overlap-flag" title="Se solapa con otro registro"><Icon name="alert" size={11} /> solapado</span>}
                     </span>
                     {e.tagIds.map((gid) => {
                       const g = state.tags.find((x) => x.id === gid);
@@ -230,7 +231,7 @@ export function Tracker() {
                       {minToHM(e.start)} – {minToHM(e.end)}
                     </span>
                     <span className="dur">{fmtHM(e.end - e.start)}</span>
-                    <button className="btn btn-ghost btn-sm no-print" onClick={() => setModal(e)} aria-label="Editar">✎</button>
+                    <button className="btn btn-ghost btn-sm no-print" onClick={() => setModal(e)} aria-label="Editar"><Icon name="pencil" size={14} /></button>
                   </div>
                 );
               })}
@@ -247,19 +248,19 @@ export function Tracker() {
           y={ctx.y}
           onClose={() => setCtx(null)}
           items={[
-            { label: "Editar", ico: "✎", onClick: () => setModal(ctx.entry) },
-            { label: "Duplicar", ico: "⧉", onClick: () => duplicateEntry(ctx.entry) },
+            { label: "Editar", ico: "pencil", onClick: () => setModal(ctx.entry) },
+            { label: "Duplicar", ico: "copy", onClick: () => duplicateEntry(ctx.entry) },
             {
-              label: ctx.entry.favorite ? "Quitar de favoritos" : "Marcar favorito", ico: "⭐",
+              label: ctx.entry.favorite ? "Quitar de favoritos" : "Marcar favorito", ico: "star",
               onClick: () => dispatch({ type: "updateEntry", entry: { ...ctx.entry, favorite: !ctx.entry.favorite } }),
             },
             {
-              label: "▶ Iniciar cronómetro igual", ico: "⏱",
+              label: "Iniciar cronómetro igual", ico: "timer",
               onClick: () =>
                 startTimer({ description: ctx.entry.description, projectId: ctx.entry.projectId, taskId: ctx.entry.taskId, tagIds: ctx.entry.tagIds }),
             },
             {
-              label: "Eliminar", ico: "🗑", danger: true,
+              label: "Eliminar", ico: "trash", danger: true,
               onClick: () => {
                 dispatch({ type: "deleteEntry", id: ctx.entry.id });
                 toast("Registro eliminado.");

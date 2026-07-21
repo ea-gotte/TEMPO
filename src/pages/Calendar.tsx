@@ -4,6 +4,7 @@ import type { TimeEntry } from "../types";
 import { addDays, clamp, dayLabel, fmtDur, isoDate, minToHM, monthLabel, parseISO, today, uid, weekStart } from "../utils";
 import { EntryModal } from "../components/EntryModal";
 import { ContextMenu, useToast } from "../components/ui";
+import { Icon } from "../components/Icon";
 
 const H0 = 0; // primera hora visible (día completo)
 const H1 = 24; // última hora
@@ -177,9 +178,9 @@ export function CalendarPage() {
             </button>
           ))}
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={() => shift(-1)} aria-label="Anterior">←</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => shift(-1)} aria-label="Anterior"><Icon name="arrow-left" size={14} /></button>
         <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
-        <button className="btn btn-secondary btn-sm" onClick={() => shift(1)} aria-label="Siguiente">→</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => shift(1)} aria-label="Siguiente"><Icon name="arrow-right" size={14} /></button>
         {(view === "dia" || view === "semana") && (
           <>
             <select
@@ -192,7 +193,7 @@ export function CalendarPage() {
             >
               {TZ_OPTIONS.map((t) => (
                 <option key={t.id} value={t.id}>
-                  🕐 Base: {t.label}{t.id === state.company.timezone ? " (empresa)" : ""}
+                  Base: {t.label}{t.id === state.company.timezone ? " (empresa)" : ""}
                 </option>
               ))}
             </select>
@@ -204,9 +205,9 @@ export function CalendarPage() {
               aria-label="Huso horario adicional"
               title="Segundo huso horario opcional (se guarda en tu perfil)"
             >
-              <option value="">🌐 Sin huso adicional</option>
+              <option value="">Sin huso adicional</option>
               {TZ_OPTIONS.filter((t) => t.id !== baseTz).map((t) => (
-                <option key={t.id} value={t.id}>🌐 {t.label}</option>
+                <option key={t.id} value={t.id}>+ {t.label}</option>
               ))}
             </select>
           </>
@@ -335,8 +336,8 @@ export function CalendarPage() {
               >
                 <span className={`num ${day === today() ? "today" : ""}`}>{parseISO(day).getDate()}</span>
                 {total > 0 && (
-                  <span className="month-evt" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
-                    ⏱ {fmtDur(total)}
+                  <span className="month-evt" style={{ background: "var(--accent-soft)", color: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <Icon name="timer" size={10} /> {fmtDur(total)}
                   </span>
                 )}
                 {dayEntries.slice(0, 2).map((e) => {
@@ -402,10 +403,10 @@ export function CalendarPage() {
           y={ctx.y}
           onClose={() => setCtx(null)}
           items={[
-            { label: "Editar", ico: "✎", onClick: () => setModal(ctx.entry) },
-            { label: "Duplicar", ico: "⧉", onClick: () => duplicateEntry(ctx.entry) },
+            { label: "Editar", ico: "pencil", onClick: () => setModal(ctx.entry) },
+            { label: "Duplicar", ico: "copy", onClick: () => duplicateEntry(ctx.entry) },
             {
-              label: "Eliminar", ico: "🗑", danger: true,
+              label: "Eliminar", ico: "trash", danger: true,
               onClick: () => {
                 dispatch({ type: "deleteEntry", id: ctx.entry.id });
                 toast("Registro eliminado.");

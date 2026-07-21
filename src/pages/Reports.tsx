@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { useStore, visibleProjects } from "../store";
-import { addDays, dayLabel, downloadFile, fmtDur, toCSV, today, weekStart } from "../utils";
+import { addDays, fmtDate, downloadFile, fmtDur, toCSV, today, weekStart } from "../utils";
 import { HBarChart, useToast } from "../components/ui";
+import { Icon } from "../components/Icon";
 
 type Period = "semana" | "mes" | "personalizado";
 
@@ -100,8 +101,8 @@ export function Reports() {
       <div className="page-head">
         <h1>Reportes</h1>
         <span className="spacer" />
-        <button className="btn btn-secondary" onClick={exportCSV}>⬇ CSV / Excel</button>
-        <button className="btn btn-secondary" onClick={() => { window.print(); }}>🖨 PDF</button>
+        <button className="btn btn-secondary" onClick={exportCSV}><Icon name="download" size={14} /> CSV / Excel</button>
+        <button className="btn btn-secondary" onClick={() => { window.print(); }}><Icon name="printer" size={14} /> PDF</button>
       </div>
 
       <div className="card card-pad no-print" style={{ marginBottom: 14 }}>
@@ -158,21 +159,21 @@ export function Reports() {
       </div>
 
       <p className="page-sub" style={{ margin: "0 0 14px" }}>
-        Período: {dayLabel(rFrom)} → {dayLabel(rTo)} · {filtered.length} registros
+        Período: {fmtDate(rFrom)} → {fmtDate(rTo)} · {filtered.length} registros
       </p>
 
       <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))" }}>
         <div className="card kpi">
-          <span className="label">⏱️ Total de horas</span>
+          <span className="label"><Icon name="timer" size={14} /> Total de horas</span>
           <div className="value">{fmtDur(total)}</div>
         </div>
         <div className="card kpi">
-          <span className="label">📊 Registros</span>
+          <span className="label"><Icon name="dashboard" size={14} /> Registros</span>
           <div className="value">{filtered.length}</div>
           <div className="hint">{new Set(filtered.map((e) => e.date)).size} días con carga</div>
         </div>
         <div className="card kpi">
-          <span className="label">🌴 Ausencias en el período</span>
+          <span className="label"><Icon name="sun" size={14} /> Ausencias en el período</span>
           <div className="value">{absencesInRange.length}</div>
           <div className="hint">{absencesInRange.filter((a) => a.status === "Pendiente").length} pendientes</div>
         </div>

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
 import { hashHue, initials } from "../utils";
+import { Icon, type IconName } from "./Icon";
 
 export function Modal({
   title,
@@ -17,7 +18,7 @@ export function Modal({
       <div className="modal" role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
           <h2>{title}</h2>
-          <button className="iconbtn" onClick={onClose} aria-label="Cerrar">✕</button>
+          <button className="iconbtn" onClick={onClose} aria-label="Cerrar"><Icon name="x" /></button>
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}
@@ -44,6 +45,99 @@ export function Dot({ color }: { color: string }) {
   return <span className="swatch" style={{ background: color, width: 8, height: 8, borderRadius: "50%", display: "inline-block" }} />;
 }
 
+/**
+ * Campo de fecha con doble entrada: texto manual en dd/mm/aaaa y selector de calendario.
+ * `value`/`onChange` trabajan en ISO (YYYY-MM-DD).
+ */
+export function DateField({
+  value,
+  onChange,
+  min,
+  max,
+}: {
+  value: string;
+  onChange: (iso: string) => void;
+  min?: string;
+  max?: string;
+}) {
+  const isoToText = (iso: string) => (iso ? iso.split("-").reverse().join("/") : "");
+  const [text, setText] = useState(isoToText(value));
+  const dateRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => setText(isoToText(value)), [value]);
+
+  function commit(raw: string) {
+    const m = raw.trim().match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
+    if (!m) {
+      setText(isoToText(value)); // revertir si no es válido
+      return;
+    }
+    let [, d, mo, y] = m;
+    if (y.length === 2) y = "20" + y;
+    const iso = `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    const parsed = new Date(iso + "T00:00:00");
+    if (isNaN(parsed.getTime())) {
+      setText(isoToText(value));
+      return;
+    }
+    onChange(iso);
+  }
+
+  function openPicker() {
+    const el = dateRef.current;
+    if (!el) return;
+    // showPicker() abre el calendario nativo; fallback a focus/click
+    if (typeof (el as HTMLInputElement & { showPicker?: () => void }).showPicker === "function") {
+      (el as HTMLInputElement & { showPicker?: () => void }).showPicker!();
+    } else {
+      el.focus();
+      el.click();
+    }
+  }
+
+  return (
+    <div style={{ position: "relative", display: "flex", gap: 6 }}>
+      <input
+        className="input"
+        inputMode="numeric"
+        placeholder="dd/mm/aaaa"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit((e.target as HTMLInputElement).value);
+          }
+        }}
+        aria-label="Fecha (dd/mm/aaaa)"
+      />
+      <button
+        type="button"
+        className="btn btn-secondary"
+        style={{ padding: "0 10px", flexShrink: 0 }}
+        onClick={openPicker}
+        title="Elegir en el calendario"
+        aria-label="Abrir calendario"
+      >
+        <Icon name="calendar" size={16} />
+      </button>
+      {/* input nativo oculto que provee el calendario */}
+      <input
+        ref={dateRef}
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ position: "absolute", width: 1, height: 1, opacity: 0, right: 8, bottom: 0, pointerEvents: "none" }}
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+    </div>
+  );
+}
+
 export function Switch({ on, onToggle, label }: { on: boolean; onToggle: () => void; label?: string }) {
   return (
     <button
@@ -56,10 +150,10 @@ export function Switch({ on, onToggle, label }: { on: boolean; onToggle: () => v
   );
 }
 
-export function Empty({ icon, text, sub }: { icon: string; text: string; sub?: string }) {
+export function Empty({ icon, text, sub }: { icon: IconName; text: string; sub?: string }) {
   return (
     <div className="empty">
-      <div className="big">{icon}</div>
+      <div className="big" style={{ color: "var(--text-3)" }}><Icon name={icon} size={34} strokeWidth={1.6} /></div>
       <div style={{ fontWeight: 600, color: "var(--text-2)" }}>{text}</div>
       {sub && <div style={{ fontSize: 12.5, marginTop: 4 }}>{sub}</div>}
     </div>
@@ -69,7 +163,7 @@ export function Empty({ icon, text, sub }: { icon: string; text: string; sub?: s
 /* ---------- Menú contextual ---------- */
 export interface CtxItem {
   label: string;
-  ico?: string;
+  ico?: IconName;
   danger?: boolean;
   onClick: () => void;
 }
@@ -100,7 +194,7 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
             it.onClick();
           }}
         >
-          {it.ico && <span style={{ width: 18, textAlign: "center" }}>{it.ico}</span>}
+          {it.ico && <span style={{ width: 18, display: "grid", placeItems: "center" }}><Icon name={it.ico} size={15} /></span>}
           {it.label}
         </button>
       ))}

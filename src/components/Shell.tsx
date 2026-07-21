@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useStore, vacationInfo } from "../store";
-import { dayLabel, today } from "../utils";
+import { dayLabel, fmtDate, today } from "../utils";
 import { Avatar, Modal } from "./ui";
+import { Icon, type IconName } from "./Icon";
 
 /** Páginas visibles para el rol empleado (vista básica) */
 export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "absences", "corp"];
@@ -19,45 +20,45 @@ export type PageKey =
   | "admin"
   | "integrations";
 
-const NAV: { section: string; items: { key: PageKey; label: string; ico: string }[] }[] = [
+const NAV: { section: string; items: { key: PageKey; label: string; ico: IconName }[] }[] = [
   {
     section: "Tiempo",
     items: [
-      { key: "tracker", label: "Registro de tiempo", ico: "⏱️" },
-      { key: "calendar", label: "Calendario", ico: "🗓️" },
-      { key: "dashboard", label: "Dashboard", ico: "📊" },
-      { key: "reports", label: "Reportes", ico: "📈" },
+      { key: "tracker", label: "Registro de tiempo", ico: "timer" },
+      { key: "calendar", label: "Calendario", ico: "calendar" },
+      { key: "dashboard", label: "Dashboard", ico: "dashboard" },
+      { key: "reports", label: "Reportes", ico: "trending-up" },
     ],
   },
   {
     section: "Gestión",
     items: [
-      { key: "projects", label: "Clientes y proyectos", ico: "📁" },
-      { key: "team", label: "Equipo", ico: "👥" },
-      { key: "control", label: "Control de horas", ico: "✅" },
-      { key: "absences", label: "Gestión", ico: "🗂️" },
-      { key: "corp", label: "Calendario corporativo", ico: "🏢" },
+      { key: "projects", label: "Clientes y proyectos", ico: "folder" },
+      { key: "team", label: "Equipo", ico: "users" },
+      { key: "control", label: "Control de horas", ico: "check-circle" },
+      { key: "absences", label: "Gestión", ico: "briefcase" },
+      { key: "corp", label: "Calendario corporativo", ico: "building" },
     ],
   },
   {
     section: "Configuración",
     items: [
-      { key: "admin", label: "Administración", ico: "⚙️" },
-      { key: "integrations", label: "Integraciones (pendiente)", ico: "🔌" },
+      { key: "admin", label: "Administración", ico: "settings" },
+      { key: "integrations", label: "Integraciones (pendiente)", ico: "plug" },
     ],
   },
 ];
 
-const KIND_ICON: Record<string, string> = {
-  "timer-start": "▶️",
-  "timer-stop": "⏹️",
-  "registro-incompleto": "✏️",
-  solicitud: "📩",
-  aprobacion: "✅",
-  feriado: "🎉",
-  exceso: "🔥",
-  "falta-carga": "⚠️",
-  vencimiento: "⌛",
+const KIND_ICON: Record<string, IconName> = {
+  "timer-start": "play",
+  "timer-stop": "stop",
+  "registro-incompleto": "pencil",
+  solicitud: "mail",
+  aprobacion: "check-circle",
+  feriado: "party",
+  exceso: "flame",
+  "falta-carga": "alert",
+  vencimiento: "hourglass",
 };
 
 export function Shell({
@@ -105,9 +106,9 @@ export function Shell({
     state.clients.forEach((c) => c.name.toLowerCase().includes(q) && out.push({ kind: "Cliente", label: c.name, go: "projects" }));
     state.users.forEach((u) => u.name.toLowerCase().includes(q) && out.push({ kind: "Persona", label: u.name, go: "team" }));
     state.entries.forEach(
-      (e) => e.description.toLowerCase().includes(q) && out.push({ kind: "Registro", label: `${e.description} · ${e.date}`, go: "tracker" }),
+      (e) => e.description.toLowerCase().includes(q) && out.push({ kind: "Registro", label: `${e.description} · ${fmtDate(e.date)}`, go: "tracker" }),
     );
-    state.corpEvents.forEach((e) => e.title.toLowerCase().includes(q) && out.push({ kind: "Evento", label: `${e.title} · ${e.date}`, go: "corp" }));
+    state.corpEvents.forEach((e) => e.title.toLowerCase().includes(q) && out.push({ kind: "Evento", label: `${e.title} · ${fmtDate(e.date)}`, go: "corp" }));
     return out.slice(0, 12);
   }, [query, state]);
 
@@ -141,7 +142,7 @@ export function Shell({
                   setMenuOpen(false);
                 }}
               >
-                <span className="ico">{it.ico}</span>
+                <span className="ico"><Icon name={it.ico} size={17} /></span>
                 {it.label}
                 {it.key === "absences" && pending > 0 && <span className="count">{pending}</span>}
               </button>
@@ -163,17 +164,17 @@ export function Shell({
             title="Cerrar sesión"
             aria-label="Cerrar sesión"
           >
-            ⏻
+            <Icon name="power" />
           </button>
         </div>
       </aside>
 
       <div className="main">
         <header className="topbar">
-          <button className="iconbtn menu-toggle" onClick={() => setMenuOpen(true)} aria-label="Abrir menú">☰</button>
+          <button className="iconbtn menu-toggle" onClick={() => setMenuOpen(true)} aria-label="Abrir menú"><Icon name="menu" /></button>
           <span className="page-title">{title}</span>
           <div className="searchbox">
-            <span className="lens">🔎</span>
+            <span className="lens"><Icon name="search" size={15} /></span>
             <input
               ref={searchRef}
               placeholder="Buscar proyectos, personas, registros…"
@@ -206,10 +207,10 @@ export function Shell({
             aria-label="Cambiar tema"
             title={state.theme === "light" ? "Tema oscuro" : "Tema claro"}
           >
-            {state.theme === "light" ? "🌙" : "☀️"}
+            <Icon name={state.theme === "light" ? "moon" : "sun"} />
           </button>
           <button className="iconbtn" onClick={() => setNotifOpen((o) => !o)} aria-label="Notificaciones">
-            🔔
+            <Icon name="bell" />
             {unread > 0 && <span className="dot" />}
           </button>
         </header>
@@ -227,11 +228,16 @@ export function Shell({
             )}
             {state.notifications.slice(0, 20).map((n) => (
               <div key={n.id} className={`notif ${n.read ? "" : "unread"}`}>
-                <span className="ic">{KIND_ICON[n.kind] || "🔔"}</span>
+                <span className="ic"><Icon name={KIND_ICON[n.kind] || "bell"} size={18} /></span>
                 <div>
                   <div style={{ fontWeight: 650, fontSize: 13 }}>{n.title}</div>
                   <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{n.body}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{n.date}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2, display: "flex", alignItems: "center", gap: 5 }}>
+                    {fmtDate(n.date)}
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "var(--success)" }} title={`Copia enviada a ${me.email}`}>
+                      · <Icon name="mail" size={12} /> copia por correo
+                    </span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -257,7 +263,7 @@ export function Shell({
                   dispatch({ type: "logout" });
                 }}
               >
-                ⏻ Sí, salir
+                <Icon name="power" size={15} /> Sí, salir
               </button>
             </>
           }
@@ -266,8 +272,8 @@ export function Shell({
             ¿Estás seguro de que querés cerrar la sesión de <strong>{me.name}</strong>?
           </p>
           {state.timers.length > 0 && (
-            <p style={{ fontSize: 12.5, color: "var(--warning)", fontWeight: 600 }}>
-              ⚠ Tenés {state.timers.length} cronómetro{state.timers.length > 1 ? "s" : ""} en marcha. Seguirá{state.timers.length > 1 ? "n" : ""} corriendo hasta que lo{state.timers.length > 1 ? "s" : ""} detengas.
+            <p style={{ fontSize: 12.5, color: "var(--warning)", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+              <Icon name="alert" size={14} /> Tenés {state.timers.length} cronómetro{state.timers.length > 1 ? "s" : ""} en marcha. Seguirá{state.timers.length > 1 ? "n" : ""} corriendo hasta que lo{state.timers.length > 1 ? "s" : ""} detengas.
             </p>
           )}
         </Modal>

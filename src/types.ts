@@ -116,6 +116,12 @@ export type AbsenceType =
 
 export type AbsenceStatus = "Pendiente" | "Aprobado" | "Rechazado";
 
+export interface Attachment {
+  name: string;
+  url?: string; // data URL del archivo cargado (para previsualizar/descargar)
+  size?: number;
+}
+
 export interface AbsenceRequest {
   id: ID;
   userId: ID;
@@ -125,7 +131,7 @@ export interface AbsenceRequest {
   timeFrom?: string;
   timeTo?: string;
   reason: string;
-  attachments: string[]; // nombres de archivo
+  attachments: Attachment[];
   status: AbsenceStatus;
   supervisorComment?: string;
   createdAt: string;
@@ -194,6 +200,15 @@ export interface OvertimeRequest {
   supervisorComment?: string;
 }
 
+/** Copia por correo de una notificación (bandeja de salida) */
+export interface EmailRecord {
+  id: ID;
+  to: string;
+  subject: string;
+  body: string;
+  at: string; // ISO
+}
+
 export interface AuditLog {
   id: ID;
   at: string; // ISO
@@ -238,6 +253,7 @@ export interface AppState {
   overtime: OvertimeRequest[];
   corpEvents: CorpEvent[];
   notifications: Notification[];
+  emails: EmailRecord[];
   audit: AuditLog[];
   integrations: Integration[];
   company: CompanySettings;

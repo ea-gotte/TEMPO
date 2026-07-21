@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
-import { addDays, dayLabel, fmtDur, today, uid, weekStart } from "../utils";
+import { addDays, dayLabel, fmtDate, fmtDur, today, uid, weekStart } from "../utils";
 import { Avatar, Empty, useToast } from "../components/ui";
+import { Icon } from "../components/Icon";
 
 const DAY_SHORT = ["L", "M", "X", "J", "V", "S", "D"];
 
@@ -50,7 +51,7 @@ export function HoursControl() {
   if (me.role === "empleado") {
     return (
       <div className="card">
-        <Empty icon="🔒" text="Sección restringida" sub="El control de horas está disponible para administradores y supervisores." />
+        <Empty icon="lock" text="Sección restringida" sub="El control de horas está disponible para administradores y supervisores." />
       </div>
     );
   }
@@ -91,9 +92,9 @@ export function HoursControl() {
       <div className="page-head">
         <h1>Control de horas</h1>
         <span className="spacer" />
-        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, -7))} aria-label="Semana anterior">←</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, -7))} aria-label="Semana anterior"><Icon name="arrow-left" size={14} /></button>
         <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
-        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, 7))} aria-label="Semana siguiente">→</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, 7))} aria-label="Semana siguiente"><Icon name="arrow-right" size={14} /></button>
       </div>
       <p className="page-sub">
         Semana del {dayLabel(ws)} al {dayLabel(addDays(ws, 6))} · la carga esperada se controla según el tipo de jornada de cada persona (completa o media).
@@ -101,20 +102,20 @@ export function HoursControl() {
 
       <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))" }}>
         <div className="card kpi">
-          <span className="label">✅ Carga OK</span>
+          <span className="label"><Icon name="check-circle" size={14} /> Carga OK</span>
           <div className="value">{summary.ok}</div>
         </div>
         <div className="card kpi">
-          <span className="label">⚠️ Incompletos</span>
+          <span className="label"><Icon name="alert" size={14} /> Incompletos</span>
           <div className="value">{summary.incompleto}</div>
         </div>
         <div className="card kpi">
-          <span className="label">🚫 Sin carga</span>
+          <span className="label"><Icon name="ban" size={14} /> Sin carga</span>
           <div className="value">{summary.sinCarga}</div>
           <div className="hint">Se les notifica automáticamente</div>
         </div>
         <div className="card kpi">
-          <span className="label">🖋️ Validadas</span>
+          <span className="label"><Icon name="check" size={14} /> Validadas</span>
           <div className="value">{summary.validadas} / {rows.length}</div>
         </div>
       </div>
@@ -182,17 +183,17 @@ export function HoursControl() {
                   <td>
                     {status === "sin-carga" && (
                       <div>
-                        <span className="badge bad">🚫 Sin carga</span>
+                        <span className="badge bad"><Icon name="ban" size={11} /> Sin carga</span>
                         <div>
                           <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={() => notifyMissing(u.name)}>
-                            🔔 Notificar
+                            <Icon name="bell" size={12} /> Notificar
                           </button>
                         </div>
                       </div>
                     )}
-                    {status === "incompleto" && <span className="badge warn">⚠ Incompleto</span>}
-                    {status === "ok" && <span className="badge ok">✓ OK</span>}
-                    {status === "extra" && <span className="badge ok">✓ OK + extra</span>}
+                    {status === "incompleto" && <span className="badge warn"><Icon name="alert" size={11} /> Incompleto</span>}
+                    {status === "ok" && <span className="badge ok"><Icon name="check" size={11} /> OK</span>}
+                    {status === "extra" && <span className="badge ok"><Icon name="check" size={11} /> OK + extra</span>}
                   </td>
                   <td>
                     {overtimeMin > 0 ? (
@@ -202,10 +203,10 @@ export function HoursControl() {
                         </span>
                       ) : (
                         <div>
-                          <span className="badge warn">🔥 {fmtDur(overtimeMin)}</span>
+                          <span className="badge warn"><Icon name="flame" size={11} /> {fmtDur(overtimeMin)}</span>
                           <div>
                             <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={() => sendOvertime(u.id, overtimeMin)}>
-                              → A supervisión
+                              <Icon name="arrow-right" size={12} /> A supervisión
                             </button>
                           </div>
                         </div>
@@ -217,15 +218,15 @@ export function HoursControl() {
                   <td>
                     {validation ? (
                       <div>
-                        <span className="badge ok">✓ Validado</span>
+                        <span className="badge ok"><Icon name="check" size={11} /> Validado</span>
                         <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>
                           {state.users.find((x) => x.id === validation.validatedBy)?.name.split(" ")[0]} ·{" "}
-                          {new Date(validation.at).toLocaleDateString("es-AR")}
+                          {fmtDate(validation.at.slice(0, 10))}
                         </div>
                       </div>
                     ) : (
                       <button className="btn btn-secondary btn-sm" disabled={loaded === 0} onClick={() => validate(u.id)} title={loaded === 0 ? "No hay horas cargadas para validar" : "Validar la carga de la semana"}>
-                        Validar ✓
+                        <Icon name="check" size={13} /> Validar
                       </button>
                     )}
                   </td>

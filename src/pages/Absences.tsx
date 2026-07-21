@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { useStore, validatedOvertimeMin, vacationInfo } from "../store";
-import type { AbsenceRequest, AbsenceType } from "../types";
-import { dayLabel, fmtDur, parseISO, today, uid } from "../utils";
+import type { AbsenceRequest, AbsenceType, Attachment } from "../types";
+import { fmtDate, fmtDur, today, uid } from "../utils";
 import { Avatar, Empty, Modal, useToast } from "../components/ui";
+import { Icon, type IconName } from "../components/Icon";
 
 const TYPES: AbsenceType[] = [
   "Vacaciones",
@@ -18,23 +19,57 @@ const TYPES: AbsenceType[] = [
   "Compensación de horas",
 ];
 
-const TYPE_ICON: Record<AbsenceType, string> = {
-  Vacaciones: "🌴",
-  "Día personal": "🏠",
-  "Licencia médica": "🤒",
-  "Salida médica": "🏥",
-  "Licencia por estudio": "📚",
-  "Maternidad/Paternidad": "👶",
-  "Trabajo remoto": "💻",
-  "Permiso especial": "📋",
-  "Medio día": "🌗",
-  "Horario reducido": "⏳",
-  "Compensación de horas": "⚖️",
+const TYPE_ICON: Record<AbsenceType, IconName> = {
+  Vacaciones: "sun",
+  "Día personal": "home",
+  "Licencia médica": "thermometer",
+  "Salida médica": "cross",
+  "Licencia por estudio": "graduation",
+  "Maternidad/Paternidad": "baby",
+  "Trabajo remoto": "laptop",
+  "Permiso especial": "clipboard",
+  "Medio día": "circle-half",
+  "Horario reducido": "hourglass",
+  "Compensación de horas": "scale",
 };
 
 function StatusBadge({ s }: { s: AbsenceRequest["status"] }) {
   const cls = s === "Aprobado" ? "ok" : s === "Rechazado" ? "bad" : "warn";
   return <span className={`badge ${cls}`}>{s}</span>;
+}
+
+function AttachmentChip({ f }: { f: Attachment }) {
+  const open = () => {
+    if (!f.url) return;
+    const w = window.open();
+    if (w) w.document.write(`<iframe src="${f.url}" style="width:100%;height:100%;border:0" title="${f.name}"></iframe>`);
+  };
+  return (
+    <span
+      className="badge"
+      style={{ cursor: f.url ? "pointer" : "default" }}
+      onClick={open}
+      title={f.url ? "Abrir adjunto" : "Archivo de demostración (sin contenido)"}
+    >
+      <Icon name="paperclip" size={12} /> {f.name}
+      {f.url && (
+        <button
+          className="btn btn-ghost btn-sm"
+          style={{ padding: "0 4px" }}
+          onClick={(e) => {
+            e.stopPropagation();
+            const a = document.createElement("a");
+            a.href = f.url!;
+            a.download = f.name;
+            a.click();
+          }}
+          aria-label="Descargar"
+        >
+          <Icon name="download" size={12} />
+        </button>
+      )}
+    </span>
+  );
 }
 
 export function Absences() {
@@ -44,28 +79,26 @@ export function Absences() {
   const canApprove = me.role !== "empleado";
   const [tab, setTab] = useState<"mias" | "aprobar" | "extra" | "registro">("mias");
   const [showNew, setShowNew] = useState(false);
-  const [resolveId, setResolveId] = useState<string | null>(null);
-  const [resolveOtId, setResolveOtId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<AbsenceRequest | null>(null);
   const [comment, setComment] = useState("");
 
   const mine = state.absences.filter((a) => a.userId === me.id);
   const toApprove = state.absences.filter((a) => a.status === "Pendiente" && a.userId !== me.id);
   const otPending = state.overtime.filter((o) => o.status === "Pendiente" && o.userId !== me.id);
   const myOvertime = state.overtime.filter((o) => o.userId === me.id);
-  // Solo cuentan las horas extra aprobadas Y con la semana validada por el admin
   const myOtApproved = validatedOvertimeMin(state, me.id);
   const dailyMin = (me.weeklyHours * 60) / Math.max(1, me.workDays.length);
   const otDays = Math.floor(myOtApproved / dailyMin);
+  const [resolveOtId, setResolveOtId] = useState<string | null>(null);
 
   const vac = vacationInfo(state, me.id, today());
-
   const list = tab === "mias" ? mine : toApprove;
 
   function resolve(status: "Aprobado" | "Rechazado") {
-    if (!resolveId) return;
-    dispatch({ type: "resolveAbsence", id: resolveId, status, comment, by: me.id });
+    if (!detail) return;
+    dispatch({ type: "resolveAbsence", id: detail.id, status, comment, by: me.id });
     toast(`Solicitud ${status.toLowerCase()}.`);
-    setResolveId(null);
+    setDetail(null);
     setComment("");
   }
 
@@ -82,34 +115,36 @@ export function Absences() {
       <div className="page-head">
         <h1>Gestión</h1>
         <span className="spacer" />
-        <button className="btn btn-primary" onClick={() => setShowNew(true)}>＋ Nueva solicitud</button>
+        <button className="btn btn-primary" onClick={() => setShowNew(true)}>
+          <Icon name="plus" size={15} /> Nueva solicitud
+        </button>
       </div>
 
       <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
         <div className="card kpi">
-          <span className="label">🌴 Vacaciones disponibles</span>
+          <span className="label"><Icon name="sun" size={14} /> Vacaciones disponibles</span>
           <div className="value">{vac.available} días</div>
           <div className="hint">
             {vac.used} usados de {vac.entitled}
             {vac.accruing && " · acumulando 1 día/mes"}
           </div>
           <div className="hint" style={vac.daysToExpire <= 90 ? { color: "var(--warning)", fontWeight: 600 } : undefined}>
-            {vac.daysToExpire <= 90 ? "⌛ " : ""}Vencen el {dayLabel(vac.expiration)}
+            Vencen el {fmtDate(vac.expiration)}
           </div>
         </div>
         <div className="card kpi">
-          <span className="label">⚖️ Días por horas extra</span>
+          <span className="label"><Icon name="scale" size={14} /> Días por horas extra</span>
           <div className="value">{otDays} día{otDays !== 1 ? "s" : ""}</div>
           <div className="hint">{fmtDur(myOtApproved)} validadas por el admin y aprobadas</div>
         </div>
         <div className="card kpi">
-          <span className="label">📩 Mis solicitudes</span>
+          <span className="label"><Icon name="mail" size={14} /> Mis solicitudes</span>
           <div className="value">{mine.length}</div>
           <div className="hint">{mine.filter((a) => a.status === "Pendiente").length} pendientes</div>
         </div>
         {canApprove && (
           <div className="card kpi">
-            <span className="label">✅ Por aprobar</span>
+            <span className="label"><Icon name="check-circle" size={14} /> Por aprobar</span>
             <div className="value">{toApprove.length}</div>
             <div className="hint">Solicitudes de tu equipo</div>
           </div>
@@ -134,7 +169,7 @@ export function Absences() {
       {tab === "extra" && (
         <>
           <div className="card card-pad" style={{ marginBottom: 14 }}>
-            <div className="card-title">⚖️ Mi saldo de horas extra</div>
+            <div className="card-title"><Icon name="scale" size={14} /> Mi saldo de horas extra</div>
             <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center" }}>
               <div>
                 <div style={{ fontSize: 24, fontWeight: 700 }}>{fmtDur(myOtApproved)}</div>
@@ -152,14 +187,14 @@ export function Absences() {
           </div>
           <div className="card">
             {[...(canApprove ? otPending : []), ...myOvertime].length === 0 && (
-              <Empty icon="🔥" text="Sin horas extra registradas" sub="Cuando una semana supere la jornada, el administrador las enviará a supervisión desde Control de horas." />
+              <Empty icon="flame" text="Sin horas extra registradas" sub="Cuando una semana supere la jornada, el administrador las enviará a supervisión desde Control de horas." />
             )}
             {[...(canApprove ? otPending : []), ...myOvertime].map((o) => {
               const u = state.users.find((x) => x.id === o.userId);
               const isMineOt = o.userId === me.id;
               return (
                 <div key={o.id} style={{ display: "flex", gap: 12, padding: "13px 16px", borderBottom: "1px solid var(--border)", alignItems: "center", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 22 }}>🔥</span>
+                  <span style={{ color: "var(--warning)" }}><Icon name="flame" size={20} /></span>
                   <div style={{ flex: 1, minWidth: 220 }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                       <strong>{fmtDur(o.minutes)} extra</strong>
@@ -171,19 +206,15 @@ export function Absences() {
                       )}
                     </div>
                     <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 3 }}>
-                      Semana del {dayLabel(o.weekStart)} · informado el {dayLabel(o.createdAt)}
+                      Semana del {fmtDate(o.weekStart)} · informado el {fmtDate(o.createdAt)}
                       {o.status !== "Pendiente" && o.resolvedBy && (
-                        <>
-                          {" · "}
-                          {o.status === "Aprobado" ? "✅" : "❌"} {o.status.toLowerCase()} por{" "}
-                          <strong>{state.users.find((x) => x.id === o.resolvedBy)?.name ?? "?"}</strong>
-                          {o.resolvedAt && ` el ${dayLabel(o.resolvedAt)}`}
-                        </>
+                        <> · {o.status.toLowerCase()} por <strong>{state.users.find((x) => x.id === o.resolvedBy)?.name ?? "?"}</strong>
+                          {o.resolvedAt && ` el ${fmtDate(o.resolvedAt)}`}</>
                       )}
                     </div>
                     {o.supervisorComment && (
-                      <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--text-2)", background: "var(--surface-2)", padding: "6px 10px", borderRadius: 8 }}>
-                        💬 <strong>{state.users.find((x) => x.id === o.resolvedBy)?.name ?? "Supervisor"}:</strong> {o.supervisorComment}
+                      <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--text-2)", background: "var(--surface-2)", padding: "6px 10px", borderRadius: 8, display: "flex", gap: 6 }}>
+                        <Icon name="message" size={14} /> <span><strong>{state.users.find((x) => x.id === o.resolvedBy)?.name ?? "Supervisor"}:</strong> {o.supervisorComment}</span>
                       </div>
                     )}
                   </div>
@@ -199,15 +230,20 @@ export function Absences() {
 
       {(tab === "mias" || tab === "aprobar") && (
       <div className="card">
-        {list.length === 0 && <Empty icon="🌴" text="Sin solicitudes" sub={tab === "mias" ? "Creá una nueva solicitud de ausencia." : "No hay solicitudes pendientes de aprobación."} />}
+        {list.length === 0 && <Empty icon="sun" text="Sin solicitudes" sub={tab === "mias" ? "Creá una nueva solicitud de ausencia." : "No hay solicitudes pendientes de aprobación."} />}
         {list
           .slice()
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
           .map((a) => {
             const u = state.users.find((x) => x.id === a.userId);
             return (
-              <div key={a.id} style={{ display: "flex", gap: 12, padding: "13px 16px", borderBottom: "1px solid var(--border)", alignItems: "flex-start", flexWrap: "wrap" }}>
-                <span style={{ fontSize: 22 }}>{TYPE_ICON[a.type]}</span>
+              <button
+                key={a.id}
+                onClick={() => { setDetail(a); setComment(""); }}
+                style={{ display: "flex", gap: 12, padding: "13px 16px", borderBottom: "1px solid var(--border)", alignItems: "center", flexWrap: "wrap", width: "100%", textAlign: "left", background: "none" }}
+                className="request-row"
+              >
+                <span style={{ color: "var(--accent)" }}><Icon name={TYPE_ICON[a.type]} size={20} /></span>
                 <div style={{ flex: 1, minWidth: 220 }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <strong>{a.type}</strong>
@@ -217,41 +253,18 @@ export function Absences() {
                         <Avatar name={u.name} size={20} /> {u.name}
                       </span>
                     )}
-                  </div>
-                  <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 3 }}>
-                    {dayLabel(a.dateFrom)}
-                    {a.dateFrom !== a.dateTo && ` → ${dayLabel(a.dateTo)}`}
-                    {a.timeFrom && ` · ${a.timeFrom}–${a.timeTo}`}
-                  </div>
-                  {/* Trazabilidad de la solicitud */}
-                  <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 4, display: "flex", gap: 12, flexWrap: "wrap" }}>
-                    <span>📩 Solicitado por <strong>{u?.name ?? "?"}</strong> · {dayLabel(a.createdAt)}</span>
-                    {a.status !== "Pendiente" && a.resolvedBy && (
-                      <span>
-                        {a.status === "Aprobado" ? "✅" : "❌"} {a.status} por{" "}
-                        <strong>{state.users.find((x) => x.id === a.resolvedBy)?.name ?? "?"}</strong>
-                        {a.resolvedAt && ` · ${dayLabel(a.resolvedAt)}`}
-                      </span>
+                    {a.attachments.length > 0 && (
+                      <span className="badge"><Icon name="paperclip" size={11} /> {a.attachments.length}</span>
                     )}
                   </div>
-                  <div style={{ fontSize: 13, marginTop: 4 }}>{a.reason}</div>
-                  {a.attachments.length > 0 && (
-                    <div style={{ marginTop: 5, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {a.attachments.map((f) => (
-                        <span key={f} className="badge">📎 {f}</span>
-                      ))}
-                    </div>
-                  )}
-                  {a.supervisorComment && (
-                    <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--text-2)", background: "var(--surface-2)", padding: "6px 10px", borderRadius: 8 }}>
-                      💬 <strong>{state.users.find((x) => x.id === a.resolvedBy)?.name ?? "Supervisor"}:</strong> {a.supervisorComment}
-                    </div>
-                  )}
+                  <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 3 }}>
+                    {fmtDate(a.dateFrom)}
+                    {a.dateFrom !== a.dateTo && ` → ${fmtDate(a.dateTo)}`}
+                    {a.timeFrom && ` · ${a.timeFrom}–${a.timeTo}`}
+                  </div>
                 </div>
-                {tab === "aprobar" && a.status === "Pendiente" && (
-                  <button className="btn btn-secondary btn-sm" onClick={() => setResolveId(a.id)}>Revisar</button>
-                )}
-              </div>
+                <span style={{ color: "var(--text-3)" }}><Icon name="chevron-right" size={16} /></span>
+              </button>
             );
           })}
       </div>
@@ -259,22 +272,15 @@ export function Absences() {
 
       {showNew && <NewAbsence onClose={() => setShowNew(false)} initialType={tab === "extra" ? "Compensación de horas" : undefined} />}
 
-      {resolveId && (
-        <Modal
-          title="Revisar solicitud"
-          onClose={() => setResolveId(null)}
-          footer={
-            <>
-              <button className="btn btn-danger" onClick={() => resolve("Rechazado")}>Rechazar</button>
-              <button className="btn btn-primary" onClick={() => resolve("Aprobado")}>Aprobar</button>
-            </>
-          }
-        >
-          <div className="field">
-            <label>Comentario del supervisor</label>
-            <textarea className="textarea" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comentario opcional para el solicitante…" />
-          </div>
-        </Modal>
+      {detail && (
+        <RequestDetail
+          request={detail}
+          canApprove={canApprove && detail.userId !== me.id && detail.status === "Pendiente"}
+          comment={comment}
+          setComment={setComment}
+          onResolve={resolve}
+          onClose={() => setDetail(null)}
+        />
       )}
 
       {resolveOtId && (
@@ -301,6 +307,93 @@ export function Absences() {
   );
 }
 
+/** Detalle completo de una solicitud, con adjuntos y (para supervisores) acciones de aprobación */
+function RequestDetail({
+  request: a,
+  canApprove,
+  comment,
+  setComment,
+  onResolve,
+  onClose,
+}: {
+  request: AbsenceRequest;
+  canApprove: boolean;
+  comment: string;
+  setComment: (s: string) => void;
+  onResolve: (s: "Aprobado" | "Rechazado") => void;
+  onClose: () => void;
+}) {
+  const { state } = useStore();
+  const u = state.users.find((x) => x.id === a.userId);
+  const resolver = state.users.find((x) => x.id === a.resolvedBy);
+  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div style={{ display: "flex", gap: 10, padding: "7px 0", borderBottom: "1px solid var(--border)" }}>
+      <span style={{ width: 130, flexShrink: 0, color: "var(--text-3)", fontSize: 12.5, fontWeight: 600 }}>{label}</span>
+      <span style={{ fontSize: 13.5, flex: 1 }}>{children}</span>
+    </div>
+  );
+
+  return (
+    <Modal
+      title="Detalle de la solicitud"
+      onClose={onClose}
+      footer={
+        canApprove ? (
+          <>
+            <button className="btn btn-danger" onClick={() => onResolve("Rechazado")}>Rechazar</button>
+            <button className="btn btn-primary" onClick={() => onResolve("Aprobado")}>Aprobar</button>
+          </>
+        ) : (
+          <button className="btn btn-secondary" onClick={onClose}>Cerrar</button>
+        )
+      }
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <span style={{ color: "var(--accent)" }}><Icon name={TYPE_ICON[a.type]} size={24} /></span>
+        <strong style={{ fontSize: 16 }}>{a.type}</strong>
+        <StatusBadge s={a.status} />
+      </div>
+      <div>
+        <Row label="Solicitante">
+          <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+            <Avatar name={u?.name ?? "?"} size={22} /> {u?.name ?? "—"}
+          </span>
+        </Row>
+        <Row label="Fechas">
+          {fmtDate(a.dateFrom)}
+          {a.dateFrom !== a.dateTo && ` → ${fmtDate(a.dateTo)}`}
+        </Row>
+        {(a.timeFrom || a.timeTo) && <Row label="Horario">{a.timeFrom || "—"} – {a.timeTo || "—"}</Row>}
+        <Row label="Solicitado el">{fmtDate(a.createdAt)}</Row>
+        <Row label="Motivo">{a.reason ? a.reason : <em style={{ color: "var(--text-3)" }}>Sin especificar</em>}</Row>
+        <Row label="Adjuntos">
+          {a.attachments.length === 0 ? (
+            <em style={{ color: "var(--text-3)" }}>Sin adjuntos</em>
+          ) : (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {a.attachments.map((f, i) => (
+                <AttachmentChip key={i} f={f} />
+              ))}
+            </div>
+          )}
+        </Row>
+        {a.status !== "Pendiente" && (
+          <Row label={a.status === "Aprobado" ? "Aprobado por" : "Rechazado por"}>
+            {resolver?.name ?? "—"}{a.resolvedAt && ` · ${fmtDate(a.resolvedAt)}`}
+          </Row>
+        )}
+        {a.supervisorComment && <Row label="Comentario">{a.supervisorComment}</Row>}
+      </div>
+      {canApprove && (
+        <div className="field" style={{ marginTop: 6 }}>
+          <label>Comentario del supervisor (opcional)</label>
+          <textarea className="textarea" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comentario para el solicitante…" />
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 /** Registro cronológico de solicitudes: quién solicitó, quién resolvió y cuándo */
 function RequestLog() {
   const { state } = useStore();
@@ -308,19 +401,20 @@ function RequestLog() {
   const canSeeAll = me.role !== "empleado";
   const name = (id?: string | null) => state.users.find((x) => x.id === id)?.name ?? "—";
 
-  type Ev = { at: string; icon: string; what: string; who: string; status: string };
+  type Ev = { at: string; icon: IconName; color: string; what: string; who: string; status: string };
   const events: Ev[] = [];
 
   for (const a of state.absences) {
     if (!canSeeAll && a.userId !== me.id) continue;
     events.push({
-      at: a.createdAt, icon: "📩",
-      what: `Solicitud de ${a.type} (${dayLabel(a.dateFrom)}${a.dateFrom !== a.dateTo ? ` → ${dayLabel(a.dateTo)}` : ""})`,
+      at: a.createdAt, icon: "mail", color: "var(--accent)",
+      what: `Solicitud de ${a.type} (${fmtDate(a.dateFrom)}${a.dateFrom !== a.dateTo ? ` → ${fmtDate(a.dateTo)}` : ""})`,
       who: name(a.userId), status: "Solicitado",
     });
     if (a.status !== "Pendiente" && a.resolvedBy) {
       events.push({
-        at: a.resolvedAt ?? a.createdAt, icon: a.status === "Aprobado" ? "✅" : "❌",
+        at: a.resolvedAt ?? a.createdAt, icon: a.status === "Aprobado" ? "check-circle" : "x-circle",
+        color: a.status === "Aprobado" ? "var(--success)" : "var(--danger)",
         what: `${a.type} de ${name(a.userId)}${a.supervisorComment ? ` — "${a.supervisorComment}"` : ""}`,
         who: name(a.resolvedBy), status: a.status,
       });
@@ -329,13 +423,14 @@ function RequestLog() {
   for (const o of state.overtime) {
     if (!canSeeAll && o.userId !== me.id) continue;
     events.push({
-      at: o.createdAt, icon: "🔥",
-      what: `Horas extra informadas: ${fmtDur(o.minutes)} (semana del ${dayLabel(o.weekStart)})`,
+      at: o.createdAt, icon: "flame", color: "var(--warning)",
+      what: `Horas extra informadas: ${fmtDur(o.minutes)} (semana del ${fmtDate(o.weekStart)})`,
       who: name(o.userId), status: "Informado",
     });
     if (o.status !== "Pendiente" && o.resolvedBy) {
       events.push({
-        at: o.resolvedAt ?? o.createdAt, icon: o.status === "Aprobado" ? "✅" : "❌",
+        at: o.resolvedAt ?? o.createdAt, icon: o.status === "Aprobado" ? "check-circle" : "x-circle",
+        color: o.status === "Aprobado" ? "var(--success)" : "var(--danger)",
         what: `Horas extra de ${name(o.userId)} (${fmtDur(o.minutes)})${o.supervisorComment ? ` — "${o.supervisorComment}"` : ""}`,
         who: name(o.resolvedBy), status: o.status,
       });
@@ -344,8 +439,8 @@ function RequestLog() {
   for (const v of state.validations) {
     if (!canSeeAll && v.userId !== me.id) continue;
     events.push({
-      at: v.at.slice(0, 10), icon: "🖋️",
-      what: `Carga de horas validada: ${name(v.userId)} (semana del ${dayLabel(v.weekStart)})`,
+      at: v.at.slice(0, 10), icon: "check-circle", color: "var(--success)",
+      what: `Carga de horas validada: ${name(v.userId)} (semana del ${fmtDate(v.weekStart)})`,
       who: name(v.validatedBy), status: "Validado",
     });
   }
@@ -353,7 +448,7 @@ function RequestLog() {
 
   return (
     <div className="card" style={{ overflowX: "auto" }}>
-      {events.length === 0 && <Empty icon="📜" text="Sin movimientos registrados" sub="Acá vas a ver el historial de solicitudes, aprobaciones y validaciones." />}
+      {events.length === 0 && <Empty icon="history" text="Sin movimientos registrados" sub="Acá vas a ver el historial de solicitudes, aprobaciones y validaciones." />}
       {events.length > 0 && (
         <table className="table">
           <thead>
@@ -367,8 +462,12 @@ function RequestLog() {
           <tbody>
             {events.map((e, i) => (
               <tr key={i}>
-                <td style={{ whiteSpace: "nowrap", fontFamily: "var(--mono)", fontSize: 12 }}>{dayLabel(e.at)}</td>
-                <td>{e.icon} {e.what}</td>
+                <td style={{ whiteSpace: "nowrap", fontFamily: "var(--mono)", fontSize: 12 }}>{fmtDate(e.at)}</td>
+                <td>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ color: e.color }}><Icon name={e.icon} size={15} /></span> {e.what}
+                  </span>
+                </td>
                 <td style={{ fontWeight: 600 }}>{e.who}</td>
                 <td>
                   <span className={`badge ${e.status === "Aprobado" || e.status === "Validado" ? "ok" : e.status === "Rechazado" ? "bad" : "acc"}`}>
@@ -394,10 +493,26 @@ function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType
   const [timeFrom, setTimeFrom] = useState("");
   const [timeTo, setTimeTo] = useState("");
   const [reason, setReason] = useState("");
-  const [files, setFiles] = useState<string[]>([]);
+  const [files, setFiles] = useState<Attachment[]>([]);
 
   const partial = ["Salida médica", "Medio día", "Horario reducido", "Compensación de horas"].includes(type);
-  const valid = dateTo >= dateFrom && reason.trim().length > 0;
+  // Cambio 6: solo el tipo y la fecha son obligatorios; el resto es opcional
+  const valid = Boolean(type) && Boolean(dateFrom) && dateTo >= dateFrom;
+
+  function onFiles(list: FileList | null) {
+    if (!list) return;
+    Promise.all(
+      [...list].map(
+        (f) =>
+          new Promise<Attachment>((res) => {
+            const reader = new FileReader();
+            reader.onload = () => res({ name: f.name, url: reader.result as string, size: f.size });
+            reader.onerror = () => res({ name: f.name });
+            reader.readAsDataURL(f);
+          }),
+      ),
+    ).then(setFiles);
+  }
 
   function submit() {
     if (!valid) return;
@@ -433,27 +548,28 @@ function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType
       }
     >
       <div className="field">
-        <label>Tipo de ausencia</label>
+        <label>Tipo de ausencia <span style={{ color: "var(--danger)" }}>*</span></label>
         <select className="select" value={type} onChange={(e) => setType(e.target.value as AbsenceType)}>
           {TYPES.map((t) => (
-            <option key={t} value={t}>{TYPE_ICON[t]} {t}</option>
+            <option key={t} value={t}>{t}</option>
           ))}
         </select>
       </div>
       {type === "Compensación de horas" && (
-        <div style={{ fontSize: 12.5, background: otBalance > 0 ? "var(--success-soft)" : "var(--warning-soft)", color: otBalance > 0 ? "var(--success)" : "var(--warning)", padding: "8px 12px", borderRadius: 8, fontWeight: 600 }}>
+        <div style={{ fontSize: 12.5, background: otBalance > 0 ? "var(--success-soft)" : "var(--warning-soft)", color: otBalance > 0 ? "var(--success)" : "var(--warning)", padding: "8px 12px", borderRadius: 8, fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}>
+          <Icon name={otBalance > 0 ? "scale" : "alert"} size={14} />
           {otBalance > 0
-            ? `⚖️ Tenés ${fmtDur(otBalance)} extra aprobadas disponibles para recuperar.`
-            : "⚠️ No tenés horas extra aprobadas. La solicitud puede ser rechazada."}
+            ? `Tenés ${fmtDur(otBalance)} extra aprobadas disponibles para recuperar.`
+            : "No tenés horas extra aprobadas. La solicitud puede ser rechazada."}
         </div>
       )}
       <div className="form-grid">
         <div className="field">
-          <label>Desde</label>
+          <label>Desde <span style={{ color: "var(--danger)" }}>*</span></label>
           <input type="date" className="input" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); if (dateTo < e.target.value) setDateTo(e.target.value); }} />
         </div>
         <div className="field">
-          <label>Hasta</label>
+          <label>Hasta <span style={{ color: "var(--danger)" }}>*</span></label>
           <input type="date" className="input" value={dateTo} min={dateFrom} onChange={(e) => setDateTo(e.target.value)} />
         </div>
         {partial && (
@@ -470,21 +586,16 @@ function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType
         )}
       </div>
       <div className="field">
-        <label>Motivo</label>
+        <label>Motivo <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional)</span></label>
         <textarea className="textarea" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Contanos brevemente el motivo…" />
       </div>
       <div className="field">
-        <label>Adjuntos (certificados, comprobantes)</label>
-        <input
-          type="file"
-          className="input"
-          multiple
-          onChange={(e) => setFiles([...(e.target.files ?? [])].map((f) => f.name))}
-        />
+        <label>Adjuntos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional — certificados, comprobantes)</span></label>
+        <input type="file" className="input" multiple onChange={(e) => onFiles(e.target.files)} />
         {files.length > 0 && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-            {files.map((f) => (
-              <span className="badge" key={f}>📎 {f}</span>
+            {files.map((f, i) => (
+              <AttachmentChip key={i} f={f} />
             ))}
           </div>
         )}

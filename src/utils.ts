@@ -34,7 +34,28 @@ export function monthLabel(s: string): string {
   return parseISO(s).toLocaleDateString("es-AR", { month: "long", year: "numeric" });
 }
 
-export function dayLabel(s: string, opts: Intl.DateTimeFormatOptions = { weekday: "short", day: "numeric", month: "short" }): string {
+/** YYYY-MM-DD -> "dd/mm/aaaa" (formato usado en toda la app) */
+export function fmtDate(s: string): string {
+  if (!s) return "";
+  const [y, m, d] = s.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+/** ISO datetime -> "dd/mm/aaaa hh:mm" */
+export function fmtDateTime(iso: string): string {
+  const d = new Date(iso);
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Etiqueta de día: por defecto "dd/mm/aaaa"; con weekday antepone el día de semana */
+export function dayLabel(s: string, opts?: Intl.DateTimeFormatOptions): string {
+  if (!opts) return fmtDate(s);
+  if (opts.weekday && !opts.year && !("month" in opts && opts.month === "long")) {
+    // "lun 21/07" — día de semana + fecha numérica
+    const wd = parseISO(s).toLocaleDateString("es-AR", { weekday: opts.weekday });
+    if (opts.day && opts.month) return `${wd} ${fmtDate(s).slice(0, 5)}`;
+    return wd;
+  }
   return parseISO(s).toLocaleDateString("es-AR", opts);
 }
 

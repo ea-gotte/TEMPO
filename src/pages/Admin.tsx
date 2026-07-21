@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { useStore } from "../store";
 import { useToast } from "../components/ui";
-import { uid } from "../utils";
+import { Icon } from "../components/Icon";
+import { fmtDateTime, uid } from "../utils";
 
 const TAG_COLORS = ["#5b6cff", "#12b5a5", "#f5a524", "#f0446c", "#8b5cf6", "#0ea5e9", "#84cc16", "#f97316"];
 
@@ -20,7 +21,7 @@ export function Admin() {
   const { state, dispatch } = useStore();
   const toast = useToast();
   const [c, setC] = useState(state.company);
-  const [tab, setTab] = useState<"empresa" | "roles" | "licencias" | "etiquetas" | "auditoria">("empresa");
+  const [tab, setTab] = useState<"empresa" | "roles" | "licencias" | "etiquetas" | "correos" | "auditoria">("empresa");
   const [newTag, setNewTag] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
   const isAdmin = state.users.find((u) => u.id === state.currentUserId)?.role === "admin";
@@ -73,6 +74,7 @@ export function Admin() {
           <button className={tab === "roles" ? "active" : ""} onClick={() => setTab("roles")}>Roles y permisos</button>
           <button className={tab === "licencias" ? "active" : ""} onClick={() => setTab("licencias")}>Tipos de licencia</button>
           <button className={tab === "etiquetas" ? "active" : ""} onClick={() => setTab("etiquetas")}>Etiquetas</button>
+          <button className={tab === "correos" ? "active" : ""} onClick={() => setTab("correos")}>Correos</button>
           <button className={tab === "auditoria" ? "active" : ""} onClick={() => setTab("auditoria")}>Auditoría</button>
         </div>
       </div>
@@ -125,8 +127,8 @@ export function Admin() {
           <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
             <button className="btn btn-primary" onClick={saveCompany}>Guardar cambios</button>
           </div>
-          <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 14 }}>
-            🔐 Autenticación: OAuth 2.0 con Google y Microsoft (configurado a nivel de organización). Arquitectura multi-tenant: los datos de cada empresa se aíslan por <code>tenant_id</code>.
+          <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 14, display: "flex", gap: 6, alignItems: "flex-start" }}>
+            <Icon name="lock" size={13} style={{ marginTop: 2 }} /> <span>Autenticación: OAuth 2.0 con Google y Microsoft (configurado a nivel de organización). Arquitectura multi-tenant: los datos de cada empresa se aíslan por <code>tenant_id</code>.</span>
           </p>
         </div>
       )}
@@ -138,7 +140,7 @@ export function Admin() {
               <div style={{ fontWeight: 700, marginBottom: 8 }}>{r.role}</div>
               {r.perms.map((p) => (
                 <div className="list-item" key={p}>
-                  <span style={{ color: "var(--success)" }}>✓</span> {p}
+                  <span style={{ color: "var(--success)" }}><Icon name="check" size={15} /></span> {p}
                 </div>
               ))}
             </div>
@@ -151,7 +153,7 @@ export function Admin() {
           <div className="card-title">Tipos de licencia habilitados</div>
           {LEAVE_TYPES.map((t) => (
             <div className="list-item" key={t}>
-              <span style={{ color: "var(--success)" }}>✓</span>
+              <span style={{ color: "var(--success)" }}><Icon name="check" size={15} /></span>
               <span style={{ flex: 1 }}>{t}</span>
               <span className="badge ok">Activo</span>
             </div>
@@ -200,7 +202,7 @@ export function Admin() {
                   </span>
                   {isAdmin && (
                     <button className="btn btn-danger btn-sm" onClick={() => deleteTag(g.id)} title="Eliminar etiqueta (se quita de todos los registros)">
-                      🗑
+                      <Icon name="trash" size={14} />
                     </button>
                   )}
                 </div>
@@ -227,9 +229,43 @@ export function Admin() {
                   />
                 ))}
               </div>
-              <button className="btn btn-primary btn-sm" onClick={addTag} disabled={!newTag.trim()}>＋ Agregar</button>
+              <button className="btn btn-primary btn-sm" onClick={addTag} disabled={!newTag.trim()}><Icon name="plus" size={14} /> Agregar</button>
             </div>
           )}
+        </div>
+      )}
+
+      {tab === "correos" && (
+        <div className="card card-pad">
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <Icon name="mail" size={14} /> Bandeja de salida — copia por correo de cada notificación
+          </div>
+          <p style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 12 }}>
+            Cada notificación genera automáticamente una copia por correo. En esta demo se registran acá; con backend
+            se enviarían por SMTP. Podés abrir cualquiera en tu cliente de correo.
+          </p>
+          {state.emails.length === 0 && (
+            <div style={{ color: "var(--text-3)", fontSize: 12.5 }}>Todavía no se envió ningún correo.</div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {state.emails.slice(0, 40).map((m) => (
+              <div key={m.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                  <strong style={{ fontSize: 13 }}>{m.subject}</strong>
+                  <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>{fmtDateTime(m.at)}</span>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-2)", margin: "2px 0" }}>Para: {m.to}</div>
+                <div style={{ fontSize: 12.5 }}>{m.body}</div>
+                <a
+                  className="btn btn-ghost btn-sm"
+                  style={{ marginTop: 4 }}
+                  href={`mailto:${encodeURIComponent(m.to)}?subject=${encodeURIComponent(m.subject)}&body=${encodeURIComponent(m.body)}`}
+                >
+                  <Icon name="mail" size={12} /> Abrir en cliente de correo
+                </a>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -248,7 +284,7 @@ export function Admin() {
               {state.audit.slice(0, 60).map((a) => (
                 <tr key={a.id}>
                   <td style={{ fontFamily: "var(--mono)", fontSize: 12, whiteSpace: "nowrap" }}>
-                    {new Date(a.at).toLocaleString("es-AR")}
+                    {fmtDateTime(a.at)}
                   </td>
                   <td>{state.users.find((u) => u.id === a.userId)?.name ?? a.userId}</td>
                   <td style={{ fontWeight: 600 }}>{a.action}</td>

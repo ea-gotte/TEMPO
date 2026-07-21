@@ -3,6 +3,7 @@ import { useStore } from "../store";
 import type { Project, ProjectStatus } from "../types";
 import { fmtDur, uid } from "../utils";
 import { Avatar, Dot, Empty, Modal, useToast } from "../components/ui";
+import { Icon } from "../components/Icon";
 
 const COLORS = ["#5b6cff", "#12b5a5", "#f5a524", "#f0446c", "#8b5cf6", "#0ea5e9", "#84cc16", "#f97316"];
 
@@ -34,8 +35,8 @@ export function Projects() {
             </button>
           ))}
         </div>
-        {tab === "proyectos" && <button className="btn btn-primary" onClick={() => setEditProject("new")}>＋ Proyecto</button>}
-        {tab === "clientes" && <button className="btn btn-primary" onClick={() => setNewClient(true)}>＋ Cliente</button>}
+        {tab === "proyectos" && <button className="btn btn-primary" onClick={() => setEditProject("new")}><Icon name="plus" size={15} /> Proyecto</button>}
+        {tab === "clientes" && <button className="btn btn-primary" onClick={() => setNewClient(true)}><Icon name="plus" size={15} /> Cliente</button>}
       </div>
 
       {tab === "proyectos" && (
@@ -73,7 +74,7 @@ export function Projects() {
                           return u ? <Avatar key={id} name={u.name} size={20} /> : null;
                         })}
                         {p.memberIds.length === 0 && (
-                          <span style={{ fontSize: 11, color: "var(--warning)" }}>⚠ Sin equipo asignado</span>
+                          <span style={{ fontSize: 11, color: "var(--warning)", display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="alert" size={11} /> Sin equipo asignado</span>
                         )}
                       </div>
                     </td>
@@ -86,7 +87,7 @@ export function Projects() {
                         <>
                           <div style={{ fontSize: 12, marginBottom: 4 }}>
                             {fmtDur(spent)} / {p.budgetHours} h
-                            {pct !== null && pct >= 90 && <span className="overlap-flag"> ⚠</span>}
+                            {pct !== null && pct >= 90 && <span className="overlap-flag"> <Icon name="alert" size={11} /></span>}
                           </div>
                           <div className="progress">
                             <div style={{ width: `${pct}%`, background: pct! >= 90 ? "var(--danger)" : pct! >= 70 ? "var(--warning)" : "var(--accent)" }} />
@@ -99,14 +100,14 @@ export function Projects() {
                     <td>
                       {p.notionUrl ? (
                         <a href={p.notionUrl} target="_blank" rel="noreferrer" className="badge acc" title={p.notionUrl}>
-                          📓 Abrir en Notion
+                          <Icon name="book" size={11} /> Abrir en Notion
                         </a>
                       ) : (
                         <span style={{ color: "var(--text-3)" }}>—</span>
                       )}
                     </td>
                     <td>
-                      <button className="btn btn-ghost btn-sm" onClick={() => setEditProject(p)}>✎ Editar</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditProject(p)}><Icon name="pencil" size={13} /> Editar</button>
                     </td>
                   </tr>
                 );

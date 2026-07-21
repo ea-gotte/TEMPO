@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { useStore, vacationInfo } from "../store";
 import type { Jornada, Role, User } from "../types";
-import { uid, weekStart, addDays, fmtDur, today } from "../utils";
-import { Avatar, Modal, useToast } from "../components/ui";
+import { uid, weekStart, addDays, fmtDate, fmtDur, today } from "../utils";
+import { Avatar, DateField, Modal, useToast } from "../components/ui";
+import { Icon } from "../components/Icon";
 
 const DAY_NAMES = ["L", "M", "X", "J", "V", "S", "D"];
 
@@ -20,25 +21,25 @@ export function Team() {
       <div className="page-head">
         <h1>Equipo</h1>
         <span className="spacer" />
-        {isAdmin && <button className="btn btn-primary" onClick={() => setEdit("new")}>＋ Agregar usuario</button>}
+        {isAdmin && <button className="btn btn-primary" onClick={() => setEdit("new")}><Icon name="plus" size={15} /> Agregar usuario</button>}
       </div>
 
       <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
         <div className="card kpi">
-          <span className="label">👥 Personas activas</span>
+          <span className="label"><Icon name="users" size={14} /> Personas activas</span>
           <div className="value">{state.users.filter((u) => u.active).length}</div>
         </div>
         <div className="card kpi">
-          <span className="label">🟢 Conectados ahora</span>
+          <span className="label"><Icon name="dot" size={12} style={{ color: "var(--success)" }} /> Conectados ahora</span>
           <div className="value">{state.users.filter((u) => u.online).length}</div>
         </div>
         <div className="card kpi">
-          <span className="label">🏷️ Equipos</span>
+          <span className="label"><Icon name="tag" size={14} /> Equipos</span>
           <div className="value">{state.teams.length}</div>
           <div className="hint">{state.teams.map((t) => t.name).join(" · ")}</div>
         </div>
         <div className="card kpi">
-          <span className="label">🏛️ Departamentos</span>
+          <span className="label"><Icon name="building-columns" size={14} /> Departamentos</span>
           <div className="value">{state.departments.length}</div>
           <div className="hint">{state.departments.map((d) => d.name).join(" · ")}</div>
         </div>
@@ -96,13 +97,13 @@ export function Team() {
                     <div style={{ color: "var(--text-3)", fontSize: 11.5 }}>{u.dayStart}–{u.dayEnd} flexible</div>
                   </td>
                   <td style={{ fontSize: 12 }}>
-                    <div>📅 {u.hireDate}</div>
-                    <div style={{ marginTop: 3 }}>
-                      🌴 {vac.available} de {vac.entitled} días
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}><Icon name="calendar" size={12} /> {fmtDate(u.hireDate)}</div>
+                    <div style={{ marginTop: 3, display: "flex", alignItems: "center", gap: 5 }}>
+                      <Icon name="sun" size={12} /> {vac.available} de {vac.entitled} días
                       {vac.accruing && <span className="badge warn" style={{ marginLeft: 4 }}>acumulando</span>}
                     </div>
                     <div style={{ color: vac.daysToExpire <= 90 ? "var(--warning)" : "var(--text-3)", fontSize: 11 }}>
-                      vencen {u.hireDate && new Date(vac.expiration + "T00:00:00").toLocaleDateString("es-AR")}
+                      vencen {u.hireDate && fmtDate(vac.expiration)}
                     </div>
                   </td>
                   <td>
@@ -132,7 +133,7 @@ export function Team() {
                   </td>
                   {isAdmin && (
                     <td>
-                      <button className="btn btn-secondary btn-sm" onClick={() => setEdit(u)}>✎ Editar</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setEdit(u)}><Icon name="pencil" size={13} /> Editar</button>
                     </td>
                   )}
                 </tr>
@@ -280,14 +281,14 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
         </div>
         <div className="field">
           <label>Fecha de ingreso</label>
-          <input type="date" className="input" value={hireDate} onChange={(e) => setHireDate(e.target.value)} />
+          <DateField value={hireDate} onChange={setHireDate} max={today()} />
           <span style={{ fontSize: 11, color: "var(--text-3)" }}>
-            Vacaciones automáticas: 1 día/mes hasta 10 el primer año; luego 10 días por año.
+            Escribí dd/mm/aaaa o elegí en el calendario. Vacaciones automáticas: 1 día/mes hasta 10 el primer año; luego 10 días por año.
           </span>
         </div>
         <div className="field">
           <label>Fecha de cumpleaños</label>
-          <input type="date" className="input" value={birthday} onChange={(e) => setBirthday(e.target.value)} />
+          <DateField value={birthday} onChange={setBirthday} max={today()} />
           <span style={{ fontSize: 11, color: "var(--text-3)" }}>
             Se agrega automáticamente al calendario corporativo.
           </span>

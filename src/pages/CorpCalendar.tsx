@@ -1,15 +1,16 @@
 import React, { useMemo, useState } from "react";
 import { useStore } from "../store";
 import type { CorpEvent, CorpEventType } from "../types";
-import { addDays, isoDate, monthLabel, parseISO, rangeDates, today, uid, weekStart } from "../utils";
+import { addDays, fmtDate, isoDate, monthLabel, parseISO, rangeDates, today, uid, weekStart } from "../utils";
 import { Modal, useToast } from "../components/ui";
+import { Icon, type IconName } from "../components/Icon";
 
 /** Categorías unificadas que se muestran en el calendario corporativo */
-const EVENT_STYLES: Record<string, { bg: string; icon: string }> = {
-  "Feriado / No laborable": { bg: "#f0446c", icon: "🎉" },
-  "Cumpleaños": { bg: "#ec4899", icon: "🎂" },
-  "Capacitación": { bg: "#0ea5e9", icon: "🎓" },
-  "Ausencia": { bg: "#12b5a5", icon: "🌴" },
+const EVENT_STYLES: Record<string, { bg: string; icon: IconName }> = {
+  "Feriado / No laborable": { bg: "#f0446c", icon: "party" },
+  "Cumpleaños": { bg: "#ec4899", icon: "cake" },
+  "Capacitación": { bg: "#0ea5e9", icon: "graduation" },
+  "Ausencia": { bg: "#12b5a5", icon: "sun" },
 };
 
 const TYPES = Object.keys(EVENT_STYLES);
@@ -82,10 +83,10 @@ export function CorpCalendar() {
       <div className="page-head">
         <h1>Calendario corporativo</h1>
         <span className="spacer" />
-        <button className="btn btn-secondary btn-sm" onClick={() => shiftMonth(-1)} aria-label="Mes anterior">←</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => shiftMonth(-1)} aria-label="Mes anterior"><Icon name="arrow-left" size={14} /></button>
         <strong style={{ textTransform: "capitalize", minWidth: 140, textAlign: "center" }}>{monthLabel(anchor)}</strong>
-        <button className="btn btn-secondary btn-sm" onClick={() => shiftMonth(1)} aria-label="Mes siguiente">→</button>
-        {isAdmin && <button className="btn btn-primary" onClick={() => setShowNew(true)}>＋ Evento</button>}
+        <button className="btn btn-secondary btn-sm" onClick={() => shiftMonth(1)} aria-label="Mes siguiente"><Icon name="arrow-right" size={14} /></button>
+        {isAdmin && <button className="btn btn-primary" onClick={() => setShowNew(true)}><Icon name="plus" size={15} /> Evento</button>}
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }} className="no-print">
@@ -101,7 +102,7 @@ export function CorpCalendar() {
               })
             }
           >
-            {EVENT_STYLES[t].icon} {t}
+            <Icon name={EVENT_STYLES[t].icon} size={13} /> {t}
           </button>
         ))}
         {filters.size > 0 && (
@@ -122,10 +123,10 @@ export function CorpCalendar() {
             <div key={day} className={`month-cell ${inMonth ? "" : "dim"}`}>
               <span className={`num ${day === today() ? "today" : ""}`}>{parseISO(day).getDate()}</span>
               {items.slice(0, 3).map((i) => {
-                const st = EVENT_STYLES[i.type] ?? { bg: "#888", icon: "📌" };
+                const st = EVENT_STYLES[i.type] ?? { bg: "#888", icon: "map-pin" as IconName };
                 return (
-                  <span key={i.key} className="month-evt" style={{ background: st.bg + "26", color: st.bg }} title={`${i.type}: ${i.label}`}>
-                    {st.icon} {i.label}
+                  <span key={i.key} className="month-evt" style={{ background: st.bg + "26", color: st.bg, display: "inline-flex", alignItems: "center", gap: 4 }} title={`${i.type}: ${i.label}`}>
+                    <Icon name={st.icon} size={10} /> {i.label}
                   </span>
                 );
               })}

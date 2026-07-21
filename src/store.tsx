@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react";
-import type { AppState, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest } from "./types";
+import type { AppState, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid } from "./utils";
 
@@ -35,7 +35,31 @@ function withAudit(s: AppState, action: string, detail: string): AppState {
   };
 }
 
+/**
+ * Toda notificación nueva genera automáticamente una copia por correo,
+ * dirigida a la persona relacionada (o al usuario actual) — bandeja de salida.
+ */
+function mirrorNotificationsToEmail(prev: AppState, next: AppState): AppState {
+  if (next.notifications === prev.notifications || next.notifications.length <= prev.notifications.length) {
+    return next;
+  }
+  const added = next.notifications.slice(0, next.notifications.length - prev.notifications.length);
+  const currentEmail = next.users.find((u) => u.id === next.currentUserId)?.email ?? "";
+  const newEmails: EmailRecord[] = added.map((n) => ({
+    id: uid(),
+    to: currentEmail,
+    subject: `[TEMPO] ${n.title}`,
+    body: n.body,
+    at: new Date().toISOString(),
+  }));
+  return { ...next, emails: [...newEmails, ...next.emails] };
+}
+
 function reducer(s: AppState, a: Action): AppState {
+  return mirrorNotificationsToEmail(s, baseReducer(s, a));
+}
+
+function baseReducer(s: AppState, a: Action): AppState {
   switch (a.type) {
     case "patch":
       return { ...s, ...a.patch };
@@ -203,6 +227,7 @@ function loadInitial(): AppState {
           ...parsed,
           validations: parsed.validations ?? [],
           overtime: parsed.overtime ?? [],
+          emails: parsed.emails ?? [],
           authenticated: parsed.authenticated ?? false,
           users: parsed.users.map((u) => ({
             ...u,
@@ -215,6 +240,13 @@ function loadInitial(): AppState {
           projects: parsed.projects.map((p) => ({
             ...p,
             memberIds: p.memberIds ?? parsed.users.map((u) => u.id),
+          })),
+          absences: parsed.absences.map((a) => ({
+            ...a,
+            // Versiones anteriores guardaban adjuntos como string[]
+            attachments: (a.attachments ?? []).map((f: unknown) =>
+              typeof f === "string" ? { name: f } : (f as { name: string; url?: string }),
+            ),
           })),
         };
       }

@@ -1,5 +1,6 @@
 import React from "react";
 import { useStore } from "../store";
+import { Icon, type IconName } from "../components/Icon";
 
 export function Integrations() {
   const { state } = useStore();
@@ -14,7 +15,9 @@ export function Integrations() {
         className="card card-pad"
         style={{ marginBottom: 14, borderLeft: "3px solid var(--warning)" }}
       >
-        <strong>🚧 Módulo pendiente de implementación.</strong>
+        <strong style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <Icon name="alert" /> Módulo pendiente de implementación.
+        </strong>
         <p style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 4 }}>
           Las integraciones estarán disponibles cuando se conecte el backend. Por ahora se listan las
           herramientas previstas; ninguna está activa.
@@ -23,7 +26,7 @@ export function Integrations() {
       <div className="int-grid">
         {state.integrations.map((i) => (
           <div className="card int-card" key={i.id} style={{ opacity: 0.75 }}>
-            <span className="ic">{i.icon}</span>
+            <span className="ic"><Icon name={i.icon as IconName} size={22} /></span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <strong>{i.name}</strong>

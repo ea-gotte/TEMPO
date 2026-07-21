@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useStore } from "../store";
 import { Avatar } from "../components/ui";
+import { Icon } from "../components/Icon";
 
 export function Login() {
   const { state, dispatch } = useStore();
@@ -72,7 +73,7 @@ export function Login() {
           </div>
           {error && (
             <div style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600 }} role="alert">
-              ⚠ {error}
+              <Icon name="alert" size={13} /> {error}
             </div>
           )}
           <button className="btn btn-primary" type="submit" style={{ justifyContent: "center", padding: "10px 14px" }}>

@@ -3,6 +3,7 @@ import { useStore, overlaps, visibleProjects } from "../store";
 import type { TimeEntry } from "../types";
 import { hmToMin, minToHM, today, uid } from "../utils";
 import { Modal, useToast } from "./ui";
+import { Icon } from "./Icon";
 
 export function EntryModal({
   initial,
@@ -141,7 +142,7 @@ export function EntryModal({
       </div>
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
         <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, fontWeight: 600, color: "var(--text-2)" }}>
-          <input type="checkbox" checked={favorite} onChange={(e) => setFavorite(e.target.checked)} /> ⭐ Favorito
+          <input type="checkbox" checked={favorite} onChange={(e) => setFavorite(e.target.checked)} /> <Icon name="star" size={13} /> Favorito
         </label>
         <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, fontWeight: 600, color: "var(--text-2)" }}>
           Recurrente:
@@ -160,7 +161,7 @@ export function EntryModal({
       {invalid && <div style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600 }}>La hora de fin debe ser posterior a la de inicio.</div>}
       {!invalid && conflict.length > 0 && (
         <div style={{ color: "var(--warning)", fontSize: 12.5, fontWeight: 600 }}>
-          ⚠️ Se solapa con {conflict.length} registro{conflict.length > 1 ? "s" : ""} existente{conflict.length > 1 ? "s" : ""} (
+          <Icon name="alert" size={13} /> Se solapa con {conflict.length} registro{conflict.length > 1 ? "s" : ""} existente{conflict.length > 1 ? "s" : ""} (
           {conflict.map((c) => c.description || "sin descripción").join(", ")}).
         </div>
       )}
