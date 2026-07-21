@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useReducer } from
 import type { AppState, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword } from "./utils";
+import { supabase } from "./supabase";
 
 const LS_KEY = "tempo-state-v1";
 
@@ -348,6 +349,62 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
     migratePasswords();
   }, [state.users]);
+
+  // Sincronizar sesión y perfiles desde Supabase
+  useEffect(() => {
+    let authListener: any = null;
+    try {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        try {
+          if (session) {
+            const { data: profiles, error } = await supabase.from("profiles").select("*");
+            if (error) throw error;
+
+            const currentUserId = session.user.id;
+            const patch: Partial<AppState> = {
+              authenticated: true,
+              currentUserId: currentUserId,
+            };
+            if (profiles) {
+              const mappedUsers = profiles.map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                email: p.email,
+                password: "", // Supabase Auth maneja la clave
+                role: p.role,
+                jornada: p.jornada,
+                teamId: p.team_id,
+                departmentId: p.department_id,
+                supervisorId: p.supervisor_id,
+                weeklyHours: p.weekly_hours,
+                workDays: [1, 2, 3, 4, 5],
+                dayStart: p.day_start,
+                dayEnd: p.day_end,
+                birthday: p.birthday || "1990-01-01",
+                hireDate: p.hire_date || "2024-01-01",
+                active: p.active,
+                online: p.online,
+                mustChangePassword: p.must_change_password
+              }));
+              patch.users = mappedUsers;
+            }
+            dispatch({ type: "patch", patch });
+          } else {
+            dispatch({ type: "patch", patch: { authenticated: false, currentUserId: "" } });
+          }
+        } catch (dbErr) {
+          console.warn("Supabase Database error (check your table/RLS setup):", dbErr);
+        }
+      });
+      authListener = subscription;
+    } catch (authErr) {
+      console.warn("Supabase Auth initialization failed (check your VITE_SUPABASE_* keys in .env):", authErr);
+    }
+
+    return () => {
+      if (authListener) authListener.unsubscribe();
+    };
+  }, []);
 
   const value = useMemo(() => ({ state, dispatch }), [state]);
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;

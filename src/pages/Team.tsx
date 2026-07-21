@@ -4,6 +4,7 @@ import type { Jornada, Role, User } from "../types";
 import { uid, weekStart, addDays, fmtDate, fmtDur, today, hashPassword, validatePassword } from "../utils";
 import { Avatar, DateField, Modal, Switch, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
+import { supabase } from "../supabase";
 
 const DAY_NAMES = ["L", "M", "X", "J", "V", "S", "D"];
 
@@ -203,6 +204,32 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
       active: user?.active ?? true,
       online: user?.online ?? false,
     };
+
+    try {
+      // Sincronizar perfil en Supabase
+      const { error: dbErr } = await supabase.from("profiles").upsert({
+        id: next.id,
+        name: next.name,
+        email: next.email,
+        role: next.role,
+        jornada: next.jornada,
+        team_id: next.teamId,
+        department_id: next.departmentId,
+        supervisor_id: next.supervisorId || null,
+        weekly_hours: next.weeklyHours,
+        day_start: next.dayStart,
+        day_end: next.dayEnd,
+        birthday: next.birthday || null,
+        hire_date: next.hireDate || null,
+        must_change_password: next.mustChangePassword ?? false,
+        active: next.active,
+        online: next.online
+      });
+      if (dbErr) throw dbErr;
+    } catch (err) {
+      console.warn("Supabase profile sync failed, falling back to local storage:", err);
+    }
+
     dispatch({
       type: "patch",
       patch: { users: user ? state.users.map((u) => (u.id === user.id ? next : u)) : [...state.users, next] },

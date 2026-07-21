@@ -4,6 +4,7 @@ import { Avatar, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { hashPassword, validatePassword, uid } from "../utils";
 import emailjs from "@emailjs/browser";
+import { supabase } from "../supabase";
 
 const DEMO_PASSWORDS: Record<string, string> = {
   u1: "Admin123!",
@@ -32,78 +33,115 @@ export function Login() {
   async function submit(e?: React.FormEvent) {
     e?.preventDefault();
     setError("");
-    const user = state.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.active);
-    if (!user) {
-      setError("Email o clave incorrectos. Verificá tus credenciales.");
-      return;
+
+    try {
+      const { data, error: authErr } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password,
+      });
+
+      if (authErr) {
+        // Fallback to local authentication for offline/mock/demo testing
+        const user = state.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.active);
+        if (user) {
+          const inputHash = await hashPassword(password);
+          if (user.password === inputHash) {
+            dispatch({ type: "login", userId: user.id });
+            return;
+          }
+        }
+        setError("Error al iniciar sesión: " + authErr.message);
+        return;
+      }
+    } catch (err) {
+      console.warn("Supabase auth failed, falling back to local credentials", err);
+      const user = state.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.active);
+      if (!user) {
+        setError("Email o clave incorrectos. Verificá tus credenciales.");
+        return;
+      }
+      const inputHash = await hashPassword(password);
+      if (user.password !== inputHash) {
+        setError("Email o clave incorrectos. Verificá tus credenciales.");
+        return;
+      }
+      dispatch({ type: "login", userId: user.id });
     }
-    const inputHash = await hashPassword(password);
-    if (user.password !== inputHash) {
-      setError("Email o clave incorrectos. Verificá tus credenciales.");
-      return;
-    }
-    dispatch({ type: "login", userId: user.id });
   }
 
-  function handleForgotPassword(e: React.FormEvent) {
+  async function handleForgotPassword(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     const targetEmail = recoveryEmail.trim().toLowerCase();
-    const user = state.users.find((u) => u.email.toLowerCase() === targetEmail && u.active);
-    if (!user) {
-      setError("No encontramos ninguna cuenta activa con ese correo electrónico.");
-      return;
-    }
 
-    // Generate recovery code
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiryMin = state.company.passwordResetExpireMin ?? 30;
-    const expires = new Date(Date.now() + expiryMin * 60 * 1000).toISOString();
+    try {
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(targetEmail, {
+        redirectTo: window.location.origin,
+      });
 
-    // Update user in state
-    const updatedUsers = state.users.map((u) =>
-      u.id === user.id ? { ...u, recoveryCode: code, recoveryExpires: expires } : u
-    );
-    dispatch({ type: "patch", patch: { users: updatedUsers } });
+      if (resetErr) throw resetErr;
 
-    // Send email outbox record
-    const emailRecord = {
-      id: uid(),
-      to: user.email,
-      subject: "[TEMPO] Recuperación de contraseña",
-      body: `Hola,\n\nTu código temporal para restablecer la contraseña es: ${code}.\n\nEste código vencerá en ${expiryMin} minutos y solo puede ser utilizado una vez.\n\nSi no solicitaste este cambio, ignorá este mensaje.\n\nSaludos,\nEl equipo de TEMPO`,
-      at: new Date().toISOString(),
-    };
-    dispatch({ type: "patch", patch: { emails: [emailRecord, ...state.emails] } });
+      toast(`Enlace de recuperación enviado a ${targetEmail} por correo.`);
+      setMode("login");
+    } catch (err: any) {
+      console.warn("Supabase resetPasswordForEmail failed, falling back to local simulation:", err);
 
-    // Send real email via EmailJS
-    emailjs.send(
-      "default_service",
-      "template_s020w0n",
-      {
-        to_email: user.email,
-        to_name: user.name,
-        recovery_code: code,
-        expiry_minutes: expiryMin,
-      },
-      "9kvYrC80SMCYOFFpO"
-    ).then(
-      () => {
-        console.log("EmailJS: Correo real enviado correctamente.");
-      },
-      (error) => {
-        console.error("EmailJS: Fallo al enviar correo:", error);
+      const user = state.users.find((u) => u.email.toLowerCase() === targetEmail && u.active);
+      if (!user) {
+        setError("No encontramos ninguna cuenta activa con ese correo electrónico.");
+        return;
       }
-    );
 
-    // Show toast with simulation helper
-    toast(`Código de recuperación enviado a ${user.email}`);
-    // Expose in toast for developer/user convenience
-    setTimeout(() => {
-      toast(`[SIMULACIÓN] Código enviado: ${code} (Vence en ${expiryMin}m)`);
-    }, 800);
+      // Generate recovery code
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiryMin = state.company.passwordResetExpireMin ?? 30;
+      const expires = new Date(Date.now() + expiryMin * 60 * 1000).toISOString();
 
-    setMode("reset");
+      // Update user in state
+      const updatedUsers = state.users.map((u) =>
+        u.id === user.id ? { ...u, recoveryCode: code, recoveryExpires: expires } : u
+      );
+      dispatch({ type: "patch", patch: { users: updatedUsers } });
+
+      // Send email outbox record
+      const emailRecord = {
+        id: uid(),
+        to: user.email,
+        subject: "[TEMPO] Recuperación de contraseña",
+        body: `Hola,\n\nTu código temporal para restablecer la contraseña es: ${code}.\n\nEste código vencerá en ${expiryMin} minutos y solo puede ser utilizado una vez.\n\nSi no solicitaste este cambio, ignorá este mensaje.\n\nSaludos,\nEl equipo de TEMPO`,
+        at: new Date().toISOString(),
+      };
+      dispatch({ type: "patch", patch: { emails: [emailRecord, ...state.emails] } });
+
+      // Send real email via EmailJS
+      emailjs.send(
+        "default_service",
+        "template_s020w0n",
+        {
+          to_email: user.email,
+          to_name: user.name,
+          recovery_code: code,
+          expiry_minutes: expiryMin,
+        },
+        "9kvYrC80SMCYOFFpO"
+      ).then(
+        () => {
+          console.log("EmailJS: Correo real enviado correctamente.");
+        },
+        (error) => {
+          console.error("EmailJS: Fallo al enviar correo:", error);
+        }
+      );
+
+      // Show toast with simulation helper
+      toast(`Código de recuperación enviado a ${user.email}`);
+      // Expose in toast for developer/user convenience
+      setTimeout(() => {
+        toast(`[SIMULACIÓN] Código enviado: ${code} (Vence en ${expiryMin}m)`);
+      }, 800);
+
+      setMode("reset");
+    }
   }
 
   async function handleResetPassword(e: React.FormEvent) {
