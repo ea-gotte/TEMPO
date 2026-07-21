@@ -232,12 +232,6 @@ function loadInitial(): AppState {
       if (parsed.users && parsed.entries) {
         // Migración de estados guardados con versiones anteriores del esquema
         const defaults = seedState();
-        const validUsers = parsed.users.filter((u) => !u.email.endsWith("@quantia.com"));
-        for (const seedU of defaults.users) {
-          if (!validUsers.some((u) => u.email.toLowerCase() === seedU.email.toLowerCase())) {
-            validUsers.push(seedU);
-          }
-        }
         return {
           ...parsed,
           validations: parsed.validations ?? [],
@@ -246,17 +240,10 @@ function loadInitial(): AppState {
           authenticated: parsed.authenticated ?? false,
           rolePermissions: parsed.rolePermissions ?? defaults.rolePermissions,
           leaveTypeConfig: parsed.leaveTypeConfig ?? defaults.leaveTypeConfig,
-          users: validUsers.map((u) => ({
-            ...u,
-            jornada: u.jornada ?? ((u.weeklyHours ?? 40) >= 35 ? ("completa" as const) : ("media" as const)),
-            password: u.password ?? (u.role === "admin" ? "Admin123!" : `${u.name.split(" ")[0].charAt(0).toUpperCase() + u.name.split(" ")[0].slice(1).toLowerCase()}123!`),
-            hireDate: u.hireDate ?? "2024-01-01",
-            // Versiones anteriores guardaban el cumpleaños como "MM-DD"
-            birthday: u.birthday && u.birthday.length === 5 ? `1990-${u.birthday}` : (u.birthday ?? "1990-01-01"),
-          })),
+          users: [],
           projects: parsed.projects.map((p) => ({
             ...p,
-            memberIds: p.memberIds ?? parsed.users.map((u) => u.id),
+            memberIds: p.memberIds ?? [],
           })),
           absences: parsed.absences.map((a) => ({
             ...a,
@@ -281,11 +268,12 @@ function loadInitial(): AppState {
  */
 function persist(state: AppState) {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    localStorage.setItem(LS_KEY, JSON.stringify({ ...state, users: [] }));
   } catch {
     try {
       const light: AppState = {
         ...state,
+        users: [],
         absences: state.absences.map((a) => ({
           ...a,
           attachments: a.attachments.map((f) => ({ name: f.name, size: f.size })),
@@ -311,50 +299,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.theme = state.theme;
   }, [state.theme]);
-
-  useEffect(() => {
-    async function migratePasswords() {
-      let changed = false;
-      const updatedUsers = await Promise.all(
-        state.users.map(async (u) => {
-          let currentPassword = u.password;
-
-          // Map old plain text passwords to new complex passwords
-          if (currentPassword === "admin123") currentPassword = "Admin123!";
-          else if (currentPassword === "carla123") currentPassword = "Carla123!";
-          else if (currentPassword === "martin123") currentPassword = "Martin123!";
-          else if (currentPassword === "lucia123") currentPassword = "Lucia123!";
-
-          // Map old SHA-256 hashes to new complex passwords (to be hashed)
-          const oldHashes: Record<string, string> = {
-            "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9": "Admin123!", // admin123
-            "e408145e7fc3f031d5aa3b08710d0eddabf61cb11864822af9b16b92c0c9c576": "Carla123!", // carla123
-            "9fbb9e42930bd3c25b8238030e97136de5e305a756b975ebebafc158a51a417e": "Martin123!", // martin123
-            "5e96a6cf706c46feaeda94715b59ffa61c09f2d46c122ce7456f385de6c51a06": "Lucia123!", // lucia123
-          };
-
-          if (oldHashes[currentPassword]) {
-            currentPassword = oldHashes[currentPassword];
-            const hash = await hashPassword(currentPassword);
-            changed = true;
-            return { ...u, password: hash };
-          }
-
-          const isHashed = /^[0-9a-f]{64}$/i.test(currentPassword);
-          if (!isHashed || currentPassword !== u.password) {
-            changed = true;
-            const hash = await hashPassword(currentPassword);
-            return { ...u, password: hash };
-          }
-          return u;
-        })
-      );
-      if (changed) {
-        dispatch({ type: "patch", patch: { users: updatedUsers } });
-      }
-    }
-    migratePasswords();
-  }, [state.users]);
 
   // Sincronizar sesión y perfiles desde Supabase
   useEffect(() => {
@@ -411,23 +355,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               });
             }
 
-            const finalUsers: User[] = [...mappedUsers];
-            for (const existing of state.users) {
-              if (!finalUsers.some((u) => u.id === existing.id || u.email.toLowerCase() === existing.email.toLowerCase())) {
-                finalUsers.push(existing);
-              }
-            }
-
             dispatch({
               type: "patch",
               patch: {
                 authenticated: true,
                 currentUserId: currentUserId,
-                users: finalUsers
+                users: mappedUsers
               }
             });
           } else {
-            dispatch({ type: "patch", patch: { authenticated: false, currentUserId: "" } });
+            dispatch({ type: "patch", patch: { authenticated: false, currentUserId: "", users: [] } });
           }
         } catch (dbErr) {
           console.warn("Supabase Database sync warning:", dbErr);

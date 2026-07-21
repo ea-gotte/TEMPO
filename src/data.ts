@@ -207,20 +207,7 @@ export function seedState(): AppState {
       { id: "g3", name: "Reunión", color: P.amber },
       { id: "g4", name: "Revisión", color: P.teal },
     ],
-    users: [
-      {
-        id: "u1", name: "Emmanuel Gotte", email: "emmanuel.gotte@quantia.es", password: "Admin123!", role: "admin", jornada: "completa",
-        teamId: "e1", departmentId: "d1", supervisorId: null, weeklyHours: 40,
-        workDays: [1, 2, 3, 4, 5], dayStart: "09:00", dayEnd: "18:00", birthday: "1988-03-14",
-        hireDate: "2021-03-01", active: true, online: true,
-      },
-      {
-        id: "u2", name: "EA Gotte", email: "ea.gotte@gmail.com", password: "User123!", role: "usuario", jornada: "completa",
-        teamId: "e1", departmentId: "d1", supervisorId: "u1", weeklyHours: 40,
-        workDays: [1, 2, 3, 4, 5], dayStart: "09:00", dayEnd: "18:00", birthday: "1990-01-01",
-        hireDate: "2024-01-01", active: true, online: true,
-      },
-    ],
+    users: [],
     teams: [
       { id: "e1", name: "Estructuras" },
       { id: "e2", name: "BIM" },

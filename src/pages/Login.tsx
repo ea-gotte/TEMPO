@@ -44,18 +44,6 @@ export function Login() {
       });
 
       if (authErr) {
-        // Fallback to local authentication for offline/mock/demo testing
-        const user = state.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.active);
-        if (user) {
-          const inputHash = await hashPassword(password);
-          if (user.password === inputHash) {
-            const msg = "¡Inicio de sesión correcto! Bienvenido/a.";
-            setSuccessMsg(msg);
-            toast(msg);
-            dispatch({ type: "login", userId: user.id });
-            return;
-          }
-        }
         const errMsg = authErr.message === "Invalid login credentials"
           ? "Email o contraseña incorrectos. Verificá tus credenciales."
           : `Error al iniciar sesión: ${authErr.message}`;
@@ -65,57 +53,15 @@ export function Login() {
       }
 
       if (data?.user) {
-        const currentUserId = data.user.id;
-        const exists = state.users.some((u) => u.id === currentUserId || u.email.toLowerCase() === data.user.email?.toLowerCase());
-        if (!exists) {
-          const meta = data.user.user_metadata || {};
-          const newUser = {
-            id: currentUserId,
-            name: meta.name || data.user.email?.split("@")[0] || "Usuario",
-            email: data.user.email || "",
-            password: "",
-            role: (meta.role as any) || "admin",
-            jornada: (meta.jornada as any) || "completa",
-            teamId: "t1",
-            departmentId: "d1",
-            supervisorId: null,
-            weeklyHours: 40,
-            workDays: [1, 2, 3, 4, 5],
-            dayStart: "09:00",
-            dayEnd: "18:00",
-            birthday: "1990-01-01",
-            hireDate: "2024-01-01",
-            active: true,
-            online: true,
-            mustChangePassword: false
-          };
-          dispatch({ type: "patch", patch: { users: [...state.users, newUser] } });
-        }
         const msg = "¡Inicio de sesión correcto! Bienvenido/a.";
         setSuccessMsg(msg);
         toast(msg);
-        dispatch({ type: "login", userId: currentUserId });
+        dispatch({ type: "login", userId: data.user.id });
       }
-    } catch (err) {
-      console.warn("Supabase auth failed, falling back to local credentials", err);
-      const user = state.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.active);
-      if (!user) {
-        const msg = "Email o clave incorrectos. Verificá tus credenciales.";
-        setError(msg);
-        toast(msg);
-        return;
-      }
-      const inputHash = await hashPassword(password);
-      if (user.password !== inputHash) {
-        const msg = "Email o clave incorrectos. Verificá tus credenciales.";
-        setError(msg);
-        toast(msg);
-        return;
-      }
-      const msg = "¡Inicio de sesión correcto! Bienvenido/a.";
-      setSuccessMsg(msg);
+    } catch (err: any) {
+      const msg = "Error al conectar con Supabase: " + (err.message || err);
+      setError(msg);
       toast(msg);
-      dispatch({ type: "login", userId: user.id });
     }
   }
 
@@ -129,68 +75,17 @@ export function Login() {
         redirectTo: window.location.origin,
       });
 
-      if (resetErr) throw resetErr;
-
-      toast(`Enlace de recuperación enviado a ${targetEmail} por correo.`);
-      setMode("login");
-    } catch (err: any) {
-      console.warn("Supabase resetPasswordForEmail failed, falling back to local simulation:", err);
-
-      const user = state.users.find((u) => u.email.toLowerCase() === targetEmail && u.active);
-      if (!user) {
-        setError("No encontramos ninguna cuenta activa con ese correo electrónico.");
+      if (resetErr) {
+        setError("Error al solicitar recuperación: " + resetErr.message);
+        toast("Error al solicitar recuperación: " + resetErr.message);
         return;
       }
 
-      // Generate recovery code
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      const expiryMin = state.company.passwordResetExpireMin ?? 30;
-      const expires = new Date(Date.now() + expiryMin * 60 * 1000).toISOString();
-
-      // Update user in state
-      const updatedUsers = state.users.map((u) =>
-        u.id === user.id ? { ...u, recoveryCode: code, recoveryExpires: expires } : u
-      );
-      dispatch({ type: "patch", patch: { users: updatedUsers } });
-
-      // Send email outbox record
-      const emailRecord = {
-        id: uid(),
-        to: user.email,
-        subject: "[TEMPO] Recuperación de contraseña",
-        body: `Hola,\n\nTu código temporal para restablecer la contraseña es: ${code}.\n\nEste código vencerá en ${expiryMin} minutos y solo puede ser utilizado una vez.\n\nSi no solicitaste este cambio, ignorá este mensaje.\n\nSaludos,\nEl equipo de TEMPO`,
-        at: new Date().toISOString(),
-      };
-      dispatch({ type: "patch", patch: { emails: [emailRecord, ...state.emails] } });
-
-      // Send real email via EmailJS
-      emailjs.send(
-        "default_service",
-        "template_s020w0n",
-        {
-          to_email: user.email,
-          to_name: user.name,
-          recovery_code: code,
-          expiry_minutes: expiryMin,
-        },
-        "9kvYrC80SMCYOFFpO"
-      ).then(
-        () => {
-          console.log("EmailJS: Correo real enviado correctamente.");
-        },
-        (error) => {
-          console.error("EmailJS: Fallo al enviar correo:", error);
-        }
-      );
-
-      // Show toast with simulation helper
-      toast(`Código de recuperación enviado a ${user.email}`);
-      // Expose in toast for developer/user convenience
-      setTimeout(() => {
-        toast(`[SIMULACIÓN] Código enviado: ${code} (Vence en ${expiryMin}m)`);
-      }, 800);
-
-      setMode("reset");
+      toast(`Enlace de recuperación enviado por correo a ${targetEmail}.`);
+      setSuccessMsg(`Se envió un correo de recuperación a ${targetEmail}.`);
+      setMode("login");
+    } catch (err: any) {
+      setError("Error al procesar la solicitud: " + (err.message || err));
     }
   }
 
