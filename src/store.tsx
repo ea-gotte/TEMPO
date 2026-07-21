@@ -310,11 +310,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       let changed = false;
       const updatedUsers = await Promise.all(
         state.users.map(async (u) => {
-          // A SHA-256 hash is a 64-char hex string
-          const isHashed = /^[0-9a-f]{64}$/i.test(u.password);
-          if (!isHashed) {
+          let currentPassword = u.password;
+
+          // Map old plain text passwords to new complex passwords
+          if (currentPassword === "admin123") currentPassword = "Admin123!";
+          else if (currentPassword === "carla123") currentPassword = "Carla123!";
+          else if (currentPassword === "martin123") currentPassword = "Martin123!";
+          else if (currentPassword === "lucia123") currentPassword = "Lucia123!";
+
+          // Map old SHA-256 hashes to new complex passwords (to be hashed)
+          const oldHashes: Record<string, string> = {
+            "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9": "Admin123!", // admin123
+            "e408145e7fc3f031d5aa3b08710d0eddabf61cb11864822af9b16b92c0c9c576": "Carla123!", // carla123
+            "9fbb9e42930bd3c25b8238030e97136de5e305a756b975ebebafc158a51a417e": "Martin123!", // martin123
+            "5e96a6cf706c46feaeda94715b59ffa61c09f2d46c122ce7456f385de6c51a06": "Lucia123!", // lucia123
+          };
+
+          if (oldHashes[currentPassword]) {
+            currentPassword = oldHashes[currentPassword];
+            const hash = await hashPassword(currentPassword);
             changed = true;
-            const hash = await hashPassword(u.password);
+            return { ...u, password: hash };
+          }
+
+          const isHashed = /^[0-9a-f]{64}$/i.test(currentPassword);
+          if (!isHashed || currentPassword !== u.password) {
+            changed = true;
+            const hash = await hashPassword(currentPassword);
             return { ...u, password: hash };
           }
           return u;
