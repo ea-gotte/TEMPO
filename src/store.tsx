@@ -232,6 +232,12 @@ function loadInitial(): AppState {
       if (parsed.users && parsed.entries) {
         // Migración de estados guardados con versiones anteriores del esquema
         const defaults = seedState();
+        const validUsers = parsed.users.filter((u) => !u.email.endsWith("@quantia.com"));
+        for (const seedU of defaults.users) {
+          if (!validUsers.some((u) => u.email.toLowerCase() === seedU.email.toLowerCase())) {
+            validUsers.push(seedU);
+          }
+        }
         return {
           ...parsed,
           validations: parsed.validations ?? [],
@@ -240,7 +246,7 @@ function loadInitial(): AppState {
           authenticated: parsed.authenticated ?? false,
           rolePermissions: parsed.rolePermissions ?? defaults.rolePermissions,
           leaveTypeConfig: parsed.leaveTypeConfig ?? defaults.leaveTypeConfig,
-          users: parsed.users.map((u) => ({
+          users: validUsers.map((u) => ({
             ...u,
             jornada: u.jornada ?? ((u.weeklyHours ?? 40) >= 35 ? ("completa" as const) : ("media" as const)),
             password: u.password ?? (u.role === "admin" ? "Admin123!" : `${u.name.split(" ")[0].charAt(0).toUpperCase() + u.name.split(" ")[0].slice(1).toLowerCase()}123!`),
