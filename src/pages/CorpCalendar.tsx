@@ -90,21 +90,30 @@ export function CorpCalendar() {
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }} className="no-print">
-        {TYPES.map((t) => (
-          <button
-            key={t}
-            className={`chip ${filters.has(t) ? "on" : ""}`}
-            onClick={() =>
-              setFilters((f) => {
-                const n = new Set(f);
-                n.has(t) ? n.delete(t) : n.add(t);
-                return n;
-              })
-            }
-          >
-            <Icon name={EVENT_STYLES[t].icon} size={13} /> {t}
-          </button>
-        ))}
+        {TYPES.map((t) => {
+          const active = filters.has(t);
+          const color = EVENT_STYLES[t].bg;
+          return (
+            <button
+              key={t}
+              className="chip"
+              style={{
+                borderColor: color,
+                background: active ? color : color + "1a",
+                color: active ? "#fff" : color,
+              }}
+              onClick={() =>
+                setFilters((f) => {
+                  const n = new Set(f);
+                  n.has(t) ? n.delete(t) : n.add(t);
+                  return n;
+                })
+              }
+            >
+              {t}
+            </button>
+          );
+        })}
         {filters.size > 0 && (
           <button className="btn btn-ghost btn-sm" onClick={() => setFilters(new Set())}>Limpiar filtros</button>
         )}

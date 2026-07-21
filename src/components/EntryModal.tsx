@@ -142,7 +142,7 @@ export function EntryModal({
       </div>
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
         <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, fontWeight: 600, color: "var(--text-2)" }}>
-          <input type="checkbox" checked={favorite} onChange={(e) => setFavorite(e.target.checked)} /> <Icon name="star" size={13} /> Favorito
+          <input type="checkbox" checked={favorite} onChange={(e) => setFavorite(e.target.checked)} /> Favorito
         </label>
         <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, fontWeight: 600, color: "var(--text-2)" }}>
           Recurrente:

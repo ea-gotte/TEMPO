@@ -73,6 +73,7 @@ export function Shell({
   const { state, dispatch } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [allNotifsOpen, setAllNotifsOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -226,21 +227,18 @@ export function Shell({
             {state.notifications.length === 0 && (
               <div style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Sin notificaciones</div>
             )}
-            {state.notifications.slice(0, 20).map((n) => (
-              <div key={n.id} className={`notif ${n.read ? "" : "unread"}`}>
-                <span className="ic"><Icon name={KIND_ICON[n.kind] || "bell"} size={18} /></span>
-                <div>
-                  <div style={{ fontWeight: 650, fontSize: 13 }}>{n.title}</div>
-                  <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{n.body}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2, display: "flex", alignItems: "center", gap: 5 }}>
-                    {fmtDate(n.date)}
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "var(--success)" }} title={`Copia enviada a ${me.email}`}>
-                      · <Icon name="mail" size={12} /> copia por correo
-                    </span>
-                  </div>
-                </div>
-              </div>
+            {state.notifications.slice(0, 6).map((n) => (
+              <NotifItem key={n.id} n={n} email={me.email} />
             ))}
+            {state.notifications.length > 6 && (
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ width: "100%", justifyContent: "center", marginTop: 4 }}
+                onClick={() => { setAllNotifsOpen(true); setNotifOpen(false); }}
+              >
+                Ver más ({state.notifications.length - 6} más)
+              </button>
+            )}
           </div>
         )}
 
@@ -278,6 +276,46 @@ export function Shell({
           )}
         </Modal>
       )}
+
+      {allNotifsOpen && (
+        <Modal
+          title={`Todas las notificaciones (${state.notifications.length})`}
+          onClose={() => setAllNotifsOpen(false)}
+          footer={
+            <>
+              <button className="btn btn-ghost" onClick={() => dispatch({ type: "markNotifsRead" })}>Marcar todas leídas</button>
+              <button className="btn btn-secondary" onClick={() => setAllNotifsOpen(false)}>Cerrar</button>
+            </>
+          }
+        >
+          {state.notifications.length === 0 && (
+            <div style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Sin notificaciones</div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, margin: "-4px 0" }}>
+            {state.notifications.map((n) => (
+              <NotifItem key={n.id} n={n} email={me.email} />
+            ))}
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function NotifItem({ n, email }: { n: { id: string; kind: string; title: string; body: string; date: string; read: boolean }; email: string }) {
+  return (
+    <div className={`notif ${n.read ? "" : "unread"}`}>
+      <span className="ic"><Icon name={KIND_ICON[n.kind] || "bell"} size={18} /></span>
+      <div>
+        <div style={{ fontWeight: 650, fontSize: 13 }}>{n.title}</div>
+        <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{n.body}</div>
+        <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2, display: "flex", alignItems: "center", gap: 5 }}>
+          {fmtDate(n.date)}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "var(--success)" }} title={`Copia enviada a ${email}`}>
+            · <Icon name="mail" size={12} /> copia por correo
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

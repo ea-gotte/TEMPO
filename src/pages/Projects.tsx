@@ -186,6 +186,11 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
   const [notionUrl, setNotionUrl] = useState(project?.notionUrl ?? "");
   const [tasksText, setTasksText] = useState(project?.tasks.map((t) => t.name).join("\n") ?? "");
   const [memberIds, setMemberIds] = useState<string[]>(project?.memberIds ?? [state.currentUserId]);
+  const [memberQuery, setMemberQuery] = useState("");
+  const activeUsers = state.users.filter((u) => u.active);
+  const filteredUsers = activeUsers.filter(
+    (u) => u.name.toLowerCase().includes(memberQuery.toLowerCase()) || u.email.toLowerCase().includes(memberQuery.toLowerCase()),
+  );
 
   function save() {
     if (!name.trim()) return;
@@ -286,19 +291,65 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
         </div>
       </div>
       <div className="field">
-        <label>Equipo del proyecto — solo los miembros ven este proyecto</label>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", paddingTop: 4 }}>
-          {state.users.filter((u) => u.active).map((u) => (
-            <button
-              key={u.id}
-              className={`chip ${memberIds.includes(u.id) ? "on" : ""}`}
-              onClick={() =>
-                setMemberIds((ids) => (ids.includes(u.id) ? ids.filter((x) => x !== u.id) : [...ids, u.id]))
-              }
-            >
-              {u.name}
-            </button>
-          ))}
+        <label>
+          Equipo del proyecto — solo los miembros ven este proyecto
+          <span style={{ color: "var(--text-3)", fontWeight: 400 }}> · {memberIds.length} de {activeUsers.length} seleccionados</span>
+        </label>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+          <div style={{ position: "relative", flex: 1 }}>
+            <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: "var(--text-3)", display: "grid" }}>
+              <Icon name="search" size={14} />
+            </span>
+            <input
+              className="input"
+              style={{ paddingLeft: 30 }}
+              placeholder="Buscar persona…"
+              value={memberQuery}
+              onChange={(e) => setMemberQuery(e.target.value)}
+            />
+          </div>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMemberIds(activeUsers.map((u) => u.id))}>
+            Todos
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMemberIds([])}>
+            Ninguno
+          </button>
+        </div>
+        <div
+          style={{
+            maxHeight: 200, overflowY: "auto", border: "1px solid var(--border-strong)",
+            borderRadius: "var(--r-md)", padding: 4, display: "flex", flexDirection: "column",
+          }}
+        >
+          {filteredUsers.length === 0 && (
+            <div style={{ padding: 10, color: "var(--text-3)", fontSize: 12.5 }}>Sin coincidencias.</div>
+          )}
+          {filteredUsers.map((u) => {
+            const on = memberIds.includes(u.id);
+            return (
+              <label
+                key={u.id}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "6px 8px",
+                  borderRadius: "var(--r-sm)", cursor: "pointer", background: on ? "var(--accent-soft)" : "transparent",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() =>
+                    setMemberIds((ids) => (ids.includes(u.id) ? ids.filter((x) => x !== u.id) : [...ids, u.id]))
+                  }
+                />
+                <Avatar name={u.name} size={24} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{u.name}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-3)" }}>{u.email}</div>
+                </div>
+                <span className="badge" style={{ textTransform: "capitalize" }}>{u.role}</span>
+              </label>
+            );
+          })}
         </div>
       </div>
       <div className="field">

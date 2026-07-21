@@ -53,8 +53,6 @@ export function Dashboard() {
     { label: "Hoy", ico: "timer", value: fmtDur(todayMin), hint: `Jornada: ${Math.round(targetWeek / 5 / 60)} h` },
     { label: "Esta semana", ico: "calendar", value: fmtDur(weekMin), hint: `Objetivo ${user.weeklyHours} h` },
     { label: "Este mes", ico: "calendar-days", value: fmtDur(monthMin) },
-    { label: "Pendientes (semana)", ico: "hourglass", value: fmtDur(pendingWeek) },
-    { label: "Horas extra", ico: "flame", value: fmtDur(overtime), hint: "Aprobadas y validadas" },
     {
       label: "Vacaciones disponibles", ico: "sun", value: `${vac.available} días`,
       hint: `${vac.used} usados de ${vac.entitled}${vac.accruing ? " (acumulando)" : ""} · vencen ${fmtDate(vac.expiration)}`,
