@@ -72,7 +72,7 @@ export function Login() {
 
     try {
       const { error: resetErr } = await supabase.auth.resetPasswordForEmail(targetEmail, {
-        redirectTo: window.location.origin,
+        redirectTo: window.location.origin + window.location.pathname,
       });
 
       if (resetErr) {
