@@ -102,8 +102,9 @@ export function Absences() {
   const otPending = state.overtime.filter((o) => o.status === "Pendiente" && o.userId !== me.id);
   const myOvertime = state.overtime.filter((o) => o.userId === me.id);
   const myOtApproved = validatedOvertimeMin(state, me.id);
-  const dailyMin = (me.weeklyHours * 60) / Math.max(1, me.workDays.length);
-  const otDays = Math.floor(myOtApproved / dailyMin);
+  const dailyMin = me.jornada === "media" ? 4 * 60 : (me.weeklyHours * 60) / Math.max(1, me.workDays.length);
+  const otDaysRaw = myOtApproved / dailyMin;
+  const otDays = Math.trunc(otDaysRaw * 100) / 100;
   const [resolveOtId, setResolveOtId] = useState<string | null>(null);
 
   const vac = vacationInfo(state, me.id, today());
@@ -566,7 +567,11 @@ function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType
       }
       if (minutes === 0) {
         const u = state.users.find((x) => x.id === state.currentUserId);
-        minutes = u ? Math.round((u.weeklyHours * 60) / Math.max(1, u.workDays.length)) : 8 * 60;
+        minutes = u
+          ? u.jornada === "media"
+            ? 4 * 60
+            : Math.round((u.weeklyHours * 60) / Math.max(1, u.workDays.length))
+          : 8 * 60;
       }
       dispatch({
         type: "addOvertime",

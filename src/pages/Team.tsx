@@ -267,7 +267,8 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
             onChange={(e) => {
               const j = e.target.value as Jornada;
               setJornada(j);
-              setWeeklyHours(j === "media" ? Math.round(state.company.defaultWeeklyHours / 2) : state.company.defaultWeeklyHours);
+              setWeeklyHours(j === "media" ? 20 : state.company.defaultWeeklyHours);
+              setWorkDays([1, 2, 3, 4, 5]);
             }}
           >
             <option value="completa">Jornada completa</option>

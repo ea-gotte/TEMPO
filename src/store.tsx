@@ -333,14 +333,19 @@ export function validatedOvertimeMin(state: AppState, userId: string): number {
         return acc + (mins > 0 ? mins : 0);
       }
       const u = state.users.find((x) => x.id === userId);
-      const dailyMin = u ? (u.weeklyHours * 60) / Math.max(1, u.workDays.length) : 8 * 60;
+      const dailyMin = u
+        ? u.jornada === "media"
+          ? 4 * 60
+          : (u.weeklyHours * 60) / Math.max(1, u.workDays.length)
+        : 8 * 60;
       const d = new Date(a.dateFrom + "T00:00:00");
       const end = new Date(a.dateTo + "T00:00:00");
       let workDaysCount = 0;
       let guard = 0;
+      const activeWorkDays = u ? (u.jornada === "media" ? [1, 2, 3, 4, 5] : u.workDays) : [1, 2, 3, 4, 5];
       while (d <= end && guard < 400) {
         const dow = ((d.getDay() + 6) % 7) + 1;
-        if (!u || u.workDays.includes(dow)) workDaysCount++;
+        if (activeWorkDays.includes(dow)) workDaysCount++;
         d.setDate(d.getDate() + 1);
         guard++;
       }
@@ -415,7 +420,7 @@ export function vacationInfo(state: AppState, userId: string, todayISO: string):
         a.dateFrom >= fmt(periodStart) &&
         a.dateFrom < fmt(periodEnd),
     )
-    .reduce((acc, a) => acc + countWorkDays(a.dateFrom, a.dateTo, u.workDays), 0);
+    .reduce((acc, a) => acc + countWorkDays(a.dateFrom, a.dateTo, u.jornada === "media" ? [1, 2, 3, 4, 5] : u.workDays), 0);
 
   const expiration = fmt(periodEnd);
   const daysToExpire = Math.round((periodEnd.getTime() - now.getTime()) / 86400000);

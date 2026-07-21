@@ -228,7 +228,7 @@ export function seedState(): AppState {
       {
         id: "u4", name: "Lucía Ferrer", email: "lucia@quantia.com", password: "lucia123", role: "empleado", jornada: "media",
         teamId: "e3", departmentId: "d2", supervisorId: "u1", weeklyHours: 20,
-        workDays: [1, 2, 3, 4], dayStart: "09:00", dayEnd: "14:00", birthday: "1998-07-24",
+        workDays: [1, 2, 3, 4, 5], dayStart: "09:00", dayEnd: "13:00", birthday: "1998-07-24",
         hireDate: "2026-01-15", active: true, online: true,
       },
     ],
