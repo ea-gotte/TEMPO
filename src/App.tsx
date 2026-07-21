@@ -14,6 +14,7 @@ import { Absences } from "./pages/Absences";
 import { CorpCalendar } from "./pages/CorpCalendar";
 import { Admin } from "./pages/Admin";
 import { Integrations } from "./pages/Integrations";
+import { ForceChangePassword } from "./pages/ForceChangePassword";
 
 const PAGES: Record<PageKey, React.ComponentType> = {
   dashboard: Dashboard,
@@ -34,6 +35,7 @@ function Root() {
   const [page, setPage] = useState<PageKey>("tracker");
   if (!state.authenticated) return <Login />;
   const me = state.users.find((u) => u.id === state.currentUserId);
+  if (me?.mustChangePassword) return <ForceChangePassword />;
   // Vista básica para empleados: si la página actual no está permitida, volver al tracker
   const allowed = me?.role === "empleado" ? EMPLOYEE_PAGES : (Object.keys(PAGES) as PageKey[]);
   const effective = allowed.includes(page) ? page : "tracker";

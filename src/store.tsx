@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react";
 import type { AppState, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord } from "./types";
 import { seedState } from "./data";
-import { isoDate, uid } from "./utils";
+import { isoDate, uid, hashPassword } from "./utils";
 
 const LS_KEY = "tempo-state-v1";
 
@@ -242,7 +242,7 @@ function loadInitial(): AppState {
           users: parsed.users.map((u) => ({
             ...u,
             jornada: u.jornada ?? ((u.weeklyHours ?? 40) >= 35 ? ("completa" as const) : ("media" as const)),
-            password: u.password ?? (u.role === "admin" ? "admin123" : `${u.name.split(" ")[0].toLowerCase()}123`),
+            password: u.password ?? (u.role === "admin" ? "Admin123!" : `${u.name.split(" ")[0].charAt(0).toUpperCase() + u.name.split(" ")[0].slice(1).toLowerCase()}123!`),
             hireDate: u.hireDate ?? "2024-01-01",
             // Versiones anteriores guardaban el cumpleaños como "MM-DD"
             birthday: u.birthday && u.birthday.length === 5 ? `1990-${u.birthday}` : (u.birthday ?? "1990-01-01"),
@@ -304,6 +304,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.theme = state.theme;
   }, [state.theme]);
+
+  useEffect(() => {
+    async function migratePasswords() {
+      let changed = false;
+      const updatedUsers = await Promise.all(
+        state.users.map(async (u) => {
+          // A SHA-256 hash is a 64-char hex string
+          const isHashed = /^[0-9a-f]{64}$/i.test(u.password);
+          if (!isHashed) {
+            changed = true;
+            const hash = await hashPassword(u.password);
+            return { ...u, password: hash };
+          }
+          return u;
+        })
+      );
+      if (changed) {
+        dispatch({ type: "patch", patch: { users: updatedUsers } });
+      }
+    }
+    migratePasswords();
+  }, [state.users]);
 
   const value = useMemo(() => ({ state, dispatch }), [state]);
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;

@@ -155,6 +155,10 @@ export function Admin() {
               <label>Horas semanales por defecto</label>
               <input type="number" className="input" value={c.defaultWeeklyHours} onChange={(e) => setC({ ...c, defaultWeeklyHours: Number(e.target.value) })} />
             </div>
+            <div className="field">
+              <label>Expiración de recuperación de clave (minutos)</label>
+              <input type="number" className="input" value={c.passwordResetExpireMin ?? 30} onChange={(e) => setC({ ...c, passwordResetExpireMin: Number(e.target.value) })} />
+            </div>
           </div>
           <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
             <button className="btn btn-primary" onClick={saveCompany}>Guardar cambios</button>

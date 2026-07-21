@@ -206,3 +206,39 @@ export function hashHue(s: string): number {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
   return h;
 }
+
+/** Hashea una contraseña usando SHA-256 de forma asíncrona */
+export async function hashPassword(password: string): Promise<string> {
+  const msgUint8 = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Valida los requisitos de seguridad de la contraseña:
+ * - Al menos 8 caracteres de longitud.
+ * - Al menos una letra mayúscula.
+ * - Al menos una letra minúscula.
+ * - Al menos un número.
+ * - Al menos un carácter especial.
+ * Retorna un string con el error o null si es válida.
+ */
+export function validatePassword(password: string): string | null {
+  if (password.length < 8) {
+    return "La contraseña debe tener al menos 8 caracteres.";
+  }
+  if (!/[A-Z]/.test(password)) {
+    return "La contraseña debe incluir al menos una letra mayúscula.";
+  }
+  if (!/[a-z]/.test(password)) {
+    return "La contraseña debe incluir al menos una letra minúscula.";
+  }
+  if (!/[0-9]/.test(password)) {
+    return "La contraseña debe incluir al menos un número.";
+  }
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    return "La contraseña debe incluir al menos un carácter especial (ej. !, @, #, $, %).";
+  }
+  return null;
+}
+

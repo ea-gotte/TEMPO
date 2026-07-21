@@ -48,6 +48,9 @@ export interface User {
   email: string;
   /** Clave de acceso (demo; en producción sería un hash + OAuth) */
   password: string;
+  mustChangePassword?: boolean;
+  recoveryCode?: string | null;
+  recoveryExpires?: string | null;
   role: Role;
   jornada: Jornada;
   teamId: ID | null;
@@ -234,6 +237,7 @@ export interface CompanySettings {
   defaultDayEnd: string;
   defaultWeeklyHours: number;
   currency: string;
+  passwordResetExpireMin?: number;
 }
 
 /** Permiso individual dentro de un rol, configurable desde Administración */

@@ -157,6 +157,7 @@ export function seedState(): AppState {
       defaultDayEnd: "18:00",
       defaultWeeklyHours: 40,
       currency: "USD",
+      passwordResetExpireMin: 30,
     },
     clients: [
       { id: "c1", name: "Constructora Andes", color: P.sky },
@@ -208,25 +209,25 @@ export function seedState(): AppState {
     ],
     users: [
       {
-        id: "u1", name: "Emmanuel Gotte", email: "ea.gotte@gmail.com", password: "admin123", role: "admin", jornada: "completa",
+        id: "u1", name: "Emmanuel Gotte", email: "ea.gotte@gmail.com", password: "Admin123!", role: "admin", jornada: "completa",
         teamId: "e1", departmentId: "d1", supervisorId: null, weeklyHours: 40,
         workDays: [1, 2, 3, 4, 5], dayStart: "09:00", dayEnd: "18:00", birthday: "1988-03-14",
         hireDate: "2021-03-01", active: true, online: true,
       },
       {
-        id: "u2", name: "Carla Domínguez", email: "carla@quantia.com", password: "carla123", role: "supervisor", jornada: "completa",
+        id: "u2", name: "Carla Domínguez", email: "carla@quantia.com", password: "Carla123!", role: "supervisor", jornada: "completa",
         teamId: "e1", departmentId: "d1", supervisorId: "u1", weeklyHours: 40,
         workDays: [1, 2, 3, 4, 5], dayStart: "08:30", dayEnd: "17:30", birthday: "1990-07-28",
         hireDate: "2022-08-15", active: true, online: true,
       },
       {
-        id: "u3", name: "Martín Suárez", email: "martin@quantia.com", password: "martin123", role: "empleado", jornada: "completa",
+        id: "u3", name: "Martín Suárez", email: "martin@quantia.com", password: "Martin123!", role: "empleado", jornada: "completa",
         teamId: "e2", departmentId: "d1", supervisorId: "u2", weeklyHours: 40,
         workDays: [1, 2, 3, 4, 5], dayStart: "09:00", dayEnd: "18:00", birthday: "1995-11-02",
         hireDate: "2024-11-10", active: true, online: false,
       },
       {
-        id: "u4", name: "Lucía Ferrer", email: "lucia@quantia.com", password: "lucia123", role: "empleado", jornada: "media",
+        id: "u4", name: "Lucía Ferrer", email: "lucia@quantia.com", password: "Lucia123!", role: "empleado", jornada: "media",
         teamId: "e3", departmentId: "d2", supervisorId: "u1", weeklyHours: 20,
         workDays: [1, 2, 3, 4, 5], dayStart: "09:00", dayEnd: "13:00", birthday: "1998-07-24",
         hireDate: "2026-01-15", active: true, online: true,

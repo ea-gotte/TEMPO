@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useStore, vacationInfo } from "../store";
-import { dayLabel, fmtDate, today } from "../utils";
-import { Avatar, Modal } from "./ui";
+import { dayLabel, fmtDate, today, hashPassword, validatePassword } from "../utils";
+import { Avatar, Modal, useToast } from "./ui";
 import { Icon, type IconName } from "./Icon";
 
 /** Páginas visibles para el rol empleado (vista básica) */
@@ -75,6 +75,7 @@ export function Shell({
   const [notifOpen, setNotifOpen] = useState(false);
   const [allNotifsOpen, setAllNotifsOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -159,6 +160,14 @@ export function Shell({
             </div>
             <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "capitalize" }}>{me.role}</div>
           </div>
+          <button
+            className="iconbtn"
+            onClick={() => setShowProfile(true)}
+            title="Mi perfil"
+            aria-label="Mi perfil"
+          >
+            <Icon name="user" />
+          </button>
           <button
             className="iconbtn"
             onClick={() => setConfirmLogout(true)}
@@ -298,6 +307,9 @@ export function Shell({
           </div>
         </Modal>
       )}
+      {showProfile && (
+        <ProfileModal onClose={() => setShowProfile(false)} />
+      )}
     </div>
   );
 }
@@ -319,3 +331,153 @@ function NotifItem({ n, email }: { n: { id: string; kind: string; title: string;
     </div>
   );
 }
+
+function ProfileModal({ onClose }: { onClose: () => void }) {
+  const { state, dispatch } = useStore();
+  const toast = useToast();
+  const me = state.users.find((u) => u.id === state.currentUserId)!;
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    setError("");
+
+    if (!currentPassword && !newPassword && !confirmPassword) {
+      onClose();
+      return;
+    }
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setError("Para cambiar la contraseña, debés completar todos los campos.");
+      return;
+    }
+
+    const currentHash = await hashPassword(currentPassword);
+    if (me.password !== currentHash) {
+      setError("La contraseña actual es incorrecta.");
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      setError("La nueva contraseña debe ser diferente a la actual.");
+      return;
+    }
+
+    const complexityError = validatePassword(newPassword);
+    if (complexityError) {
+      setError(complexityError);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError("Las contraseñas nuevas no coinciden.");
+      return;
+    }
+
+    const newHash = await hashPassword(newPassword);
+    const updatedUsers = state.users.map((u) =>
+      u.id === me.id ? { ...u, password: newHash } : u
+    );
+
+    dispatch({
+      type: "patch",
+      patch: { users: updatedUsers },
+    });
+    dispatch({
+      type: "audit",
+      action: "Cambio voluntario de clave",
+      detail: me.email,
+    });
+
+    toast("Contraseña actualizada con éxito.");
+    onClose();
+  }
+
+  return (
+    <Modal
+      title={`Mi Perfil — ${me.name}`}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSave}>Guardar cambios</button>
+        </>
+      }
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="form-grid">
+          <div className="field">
+            <label>Nombre</label>
+            <input className="input" value={me.name} disabled style={{ opacity: 0.8 }} />
+          </div>
+          <div className="field">
+            <label>Email</label>
+            <input className="input" value={me.email} disabled style={{ opacity: 0.8 }} />
+          </div>
+          <div className="field">
+            <label>Rol</label>
+            <input className="input" value={me.role === "admin" ? "Administrador" : me.role === "supervisor" ? "Supervisor" : "Empleado"} disabled style={{ opacity: 0.8 }} />
+          </div>
+          <div className="field">
+            <label>Jornada</label>
+            <input className="input" value={`${me.weeklyHours} h/semana (${me.jornada === "completa" ? "Completa" : "Media"})`} disabled style={{ opacity: 0.8 }} />
+          </div>
+        </div>
+
+        <hr style={{ border: "0.5px solid var(--border)", margin: "8px 0" }} />
+
+        <div>
+          <strong style={{ fontSize: 13.5, display: "block", marginBottom: 10 }}>Cambiar contraseña</strong>
+          <div className="form-grid">
+            <div className="field">
+              <label htmlFor="profile-curr-pass">Contraseña actual</label>
+              <input
+                id="profile-curr-pass"
+                className="input"
+                type="password"
+                value={currentPassword}
+                onChange={(e) => { setCurrentPassword(e.target.value); setError(""); }}
+                placeholder="••••••••"
+                autoComplete="current-password"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="profile-new-pass">Nueva contraseña</label>
+              <input
+                id="profile-new-pass"
+                className="input"
+                type="password"
+                value={newPassword}
+                onChange={(e) => { setNewPassword(e.target.value); setError(""); }}
+                placeholder="Mínimo 8 caracteres"
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="field" style={{ gridColumn: "span 2" }}>
+              <label htmlFor="profile-conf-pass">Confirmar nueva contraseña</label>
+              <input
+                id="profile-conf-pass"
+                className="input"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => { setConfirmPassword(e.target.value); setError(""); }}
+                placeholder="••••••••"
+                autoComplete="new-password"
+              />
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 650, display: "flex", alignItems: "center", gap: 6 }} role="alert">
+            <Icon name="alert" size={13} /> {error}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
