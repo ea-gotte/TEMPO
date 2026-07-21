@@ -17,6 +17,7 @@ const TYPES: AbsenceType[] = [
   "Medio día",
   "Horario reducido",
   "Compensación de horas",
+  "Horas extra",
 ];
 
 const TYPE_ICON: Record<AbsenceType, IconName> = {
@@ -31,6 +32,7 @@ const TYPE_ICON: Record<AbsenceType, IconName> = {
   "Medio día": "circle-half",
   "Horario reducido": "hourglass",
   "Compensación de horas": "scale",
+  "Horas extra": "flame",
 };
 
 function StatusBadge({ s }: { s: AbsenceRequest["status"] }) {
@@ -110,6 +112,12 @@ export function Absences() {
   function resolve(status: "Aprobado" | "Rechazado") {
     if (!detail) return;
     dispatch({ type: "resolveAbsence", id: detail.id, status, comment, by: me.id });
+    if (detail.type === "Horas extra") {
+      const matchingOt = state.overtime.find((o) => o.userId === detail.userId && o.createdAt === detail.createdAt);
+      if (matchingOt) {
+        dispatch({ type: "resolveOvertime", id: matchingOt.id, status, comment, by: me.id });
+      }
+    }
     toast(`Solicitud ${status.toLowerCase()}.`);
     setDetail(null);
     setComment("");
@@ -117,7 +125,14 @@ export function Absences() {
 
   function resolveOt(status: "Aprobado" | "Rechazado") {
     if (!resolveOtId) return;
+    const ot = state.overtime.find((x) => x.id === resolveOtId);
     dispatch({ type: "resolveOvertime", id: resolveOtId, status, comment, by: me.id });
+    if (ot) {
+      const matchingAbs = state.absences.find((a) => a.userId === ot.userId && a.type === "Horas extra" && a.createdAt === ot.createdAt);
+      if (matchingAbs) {
+        dispatch({ type: "resolveAbsence", id: matchingAbs.id, status, comment, by: me.id });
+      }
+    }
     toast(`Horas extra ${status.toLowerCase()}s.`);
     setResolveOtId(null);
     setComment("");
@@ -507,7 +522,7 @@ function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType
   const [reason, setReason] = useState("");
   const [files, setFiles] = useState<Attachment[]>([]);
 
-  const partial = ["Salida médica", "Medio día", "Horario reducido", "Compensación de horas"].includes(type);
+  const partial = ["Salida médica", "Medio día", "Horario reducido", "Compensación de horas", "Horas extra"].includes(type);
   // Cambio 6: solo el tipo y la fecha son obligatorios; el resto es opcional
   const valid = Boolean(type) && Boolean(dateFrom) && dateTo >= dateFrom;
 
@@ -540,6 +555,33 @@ function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType
 
   function submit() {
     if (!valid) return;
+    const created = today();
+
+    if (type === "Horas extra") {
+      let minutes = 0;
+      if (timeFrom && timeTo) {
+        const [h1, m1] = timeFrom.split(":").map(Number);
+        const [h2, m2] = timeTo.split(":").map(Number);
+        minutes = Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1));
+      }
+      if (minutes === 0) {
+        const u = state.users.find((x) => x.id === state.currentUserId);
+        minutes = u ? Math.round((u.weeklyHours * 60) / Math.max(1, u.workDays.length)) : 8 * 60;
+      }
+      dispatch({
+        type: "addOvertime",
+        o: {
+          id: uid(),
+          userId: state.currentUserId,
+          weekStart: dateFrom,
+          minutes,
+          status: "Pendiente",
+          createdAt: created,
+          supervisorComment: reason.trim() || undefined,
+        },
+      });
+    }
+
     dispatch({
       type: "addAbsence",
       absence: {
@@ -553,7 +595,7 @@ function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType
         reason: reason.trim(),
         attachments: files,
         status: "Pendiente",
-        createdAt: today(),
+        createdAt: created,
       },
     });
     toast("Solicitud enviada. Tu supervisor la revisará.");

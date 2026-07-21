@@ -316,18 +316,38 @@ export function useStore() {
 }
 
 /**
- * Horas extra disponibles: aprobadas por el supervisor Y cuya semana
- * fue validada por el admin en Control de horas.
+ * Horas extra disponibles: horas extra aprobadas menos las ausencias de compensación aprobadas.
  */
 export function validatedOvertimeMin(state: AppState, userId: string): number {
-  return state.overtime
-    .filter(
-      (o) =>
-        o.userId === userId &&
-        o.status === "Aprobado" &&
-        state.validations.some((v) => v.userId === userId && v.weekStart === o.weekStart),
-    )
+  const approvedOvertime = state.overtime
+    .filter((o) => o.userId === userId && o.status === "Aprobado")
     .reduce((a, o) => a + o.minutes, 0);
+
+  const usedCompensation = state.absences
+    .filter((a) => a.userId === userId && a.type === "Compensación de horas" && a.status === "Aprobado")
+    .reduce((acc, a) => {
+      if (a.timeFrom && a.timeTo) {
+        const [h1, m1] = a.timeFrom.split(":").map(Number);
+        const [h2, m2] = a.timeTo.split(":").map(Number);
+        const mins = h2 * 60 + m2 - (h1 * 60 + m1);
+        return acc + (mins > 0 ? mins : 0);
+      }
+      const u = state.users.find((x) => x.id === userId);
+      const dailyMin = u ? (u.weeklyHours * 60) / Math.max(1, u.workDays.length) : 8 * 60;
+      const d = new Date(a.dateFrom + "T00:00:00");
+      const end = new Date(a.dateTo + "T00:00:00");
+      let workDaysCount = 0;
+      let guard = 0;
+      while (d <= end && guard < 400) {
+        const dow = ((d.getDay() + 6) % 7) + 1;
+        if (!u || u.workDays.includes(dow)) workDaysCount++;
+        d.setDate(d.getDate() + 1);
+        guard++;
+      }
+      return acc + Math.round(workDaysCount * dailyMin);
+    }, 0);
+
+  return Math.max(0, approvedOvertime - usedCompensation);
 }
 
 /** Proyectos visibles para un usuario: admin/supervisor ven todo; empleados solo donde son miembros */

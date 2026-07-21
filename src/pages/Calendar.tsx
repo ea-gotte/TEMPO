@@ -261,12 +261,18 @@ export function CalendarPage() {
             </div>
           )}
           <div className="cal-days" style={view === "dia" ? { gridTemplateColumns: "1fr" } : undefined}>
-            {visibleDays.map((day) => (
-              <div key={`h-${day}`} className={`cal-day-head ${day === today() ? "today" : ""}`}>
-                {dayLabel(day, { weekday: "short" })}
-                <span className="num">{parseISO(day).getDate()}</span>
-              </div>
-            ))}
+            {visibleDays.map((day) => {
+              const dayMin = entries.filter((e) => e.date === day).reduce((acc, e) => acc + (e.end - e.start), 0);
+              return (
+                <div key={`h-${day}`} className={`cal-day-head ${day === today() ? "today" : ""}`}>
+                  {dayLabel(day, { weekday: "short" })}
+                  <span className="num">{parseISO(day).getDate()}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", marginTop: 2, display: "block" }}>
+                    {fmtDur(dayMin)}
+                  </span>
+                </div>
+              );
+            })}
             {visibleDays.map((day) => {
               const dayEntries = entries.filter((e) => e.date === day || (drag && dragged(state.entries.find((x) => x.id === drag.entryId)!).date === day && drag.entryId === e.id));
               return (

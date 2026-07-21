@@ -135,7 +135,7 @@ export function CorpCalendar() {
                 const st = EVENT_STYLES[i.type] ?? { bg: "#888", icon: "map-pin" as IconName };
                 return (
                   <span key={i.key} className="month-evt" style={{ background: st.bg + "26", color: st.bg, display: "inline-flex", alignItems: "center", gap: 4 }} title={`${i.type}: ${i.label}`}>
-                    <Icon name={st.icon} size={10} /> {i.label}
+                    {i.label}
                   </span>
                 );
               })}

@@ -112,7 +112,8 @@ export type AbsenceType =
   | "Permiso especial"
   | "Medio día"
   | "Horario reducido"
-  | "Compensación de horas";
+  | "Compensación de horas"
+  | "Horas extra";
 
 export type AbsenceStatus = "Pendiente" | "Aprobado" | "Rechazado";
 

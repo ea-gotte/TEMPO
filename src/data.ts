@@ -313,6 +313,7 @@ export function seedState(): AppState {
       { type: "Medio día", enabled: true },
       { type: "Horario reducido", enabled: true },
       { type: "Compensación de horas", enabled: true },
+      { type: "Horas extra", enabled: true },
     ],
   };
 }
