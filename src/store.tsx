@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useReducer } from
 import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword } from "./utils";
-import { supabase } from "./supabase";
+import { supabase, isPasswordRecoveryLink } from "./supabase";
 
 const LS_KEY = "tempo-state-v1";
 
@@ -238,7 +238,7 @@ function loadInitial(): AppState {
           overtime: parsed.overtime ?? [],
           emails: parsed.emails ?? [],
           authenticated: parsed.authenticated ?? false,
-          passwordRecovery: false,
+          passwordRecovery: isPasswordRecoveryLink,
           rolePermissions: parsed.rolePermissions ?? defaults.rolePermissions,
           leaveTypeConfig: parsed.leaveTypeConfig ?? defaults.leaveTypeConfig,
           users: [],
@@ -259,7 +259,7 @@ function loadInitial(): AppState {
   } catch {
     /* seed */
   }
-  return seedState();
+  return { ...seedState(), passwordRecovery: isPasswordRecoveryLink };
 }
 
 /**
