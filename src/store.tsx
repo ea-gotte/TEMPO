@@ -238,6 +238,7 @@ function loadInitial(): AppState {
           overtime: parsed.overtime ?? [],
           emails: parsed.emails ?? [],
           authenticated: parsed.authenticated ?? false,
+          passwordRecovery: false,
           rolePermissions: parsed.rolePermissions ?? defaults.rolePermissions,
           leaveTypeConfig: parsed.leaveTypeConfig ?? defaults.leaveTypeConfig,
           users: [],
@@ -360,11 +361,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               patch: {
                 authenticated: true,
                 currentUserId: currentUserId,
-                users: mappedUsers
+                users: mappedUsers,
+                // El evento PASSWORD_RECOVERY se dispara al abrir el enlace del email de
+                // recuperación: hay que mostrar el formulario de nueva clave en vez de la app.
+                ...(event === "PASSWORD_RECOVERY" ? { passwordRecovery: true } : {}),
               }
             });
           } else {
-            dispatch({ type: "patch", patch: { authenticated: false, currentUserId: "", users: [] } });
+            dispatch({ type: "patch", patch: { authenticated: false, currentUserId: "", users: [], passwordRecovery: false } });
           }
         } catch (dbErr) {
           console.warn("Supabase Database sync warning:", dbErr);

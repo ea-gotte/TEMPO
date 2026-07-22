@@ -15,6 +15,7 @@ import { CorpCalendar } from "./pages/CorpCalendar";
 import { Admin } from "./pages/Admin";
 import { Integrations } from "./pages/Integrations";
 import { ForceChangePassword } from "./pages/ForceChangePassword";
+import { ResetPassword } from "./pages/ResetPassword";
 
 const PAGES: Record<PageKey, React.ComponentType> = {
   dashboard: Dashboard,
@@ -33,6 +34,7 @@ const PAGES: Record<PageKey, React.ComponentType> = {
 function Root() {
   const { state } = useStore();
   const [page, setPage] = useState<PageKey>("tracker");
+  if (state.passwordRecovery) return <ResetPassword />;
   if (!state.authenticated) return <Login />;
   const me = state.users.find((u) => u.id === state.currentUserId);
   if (!me) return null;

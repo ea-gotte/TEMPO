@@ -256,6 +256,8 @@ export interface AppState {
   theme: "light" | "dark";
   /** true cuando hay una sesión iniciada; si es false se muestra el login */
   authenticated: boolean;
+  /** true tras abrir un enlace de recuperación de contraseña; muestra el formulario de nueva clave en vez de la app */
+  passwordRecovery: boolean;
   currentUserId: ID;
   clients: Client[];
   projects: Project[];

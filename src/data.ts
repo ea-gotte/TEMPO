@@ -148,6 +148,7 @@ export function seedState(): AppState {
   return {
     theme: "light",
     authenticated: false,
+    passwordRecovery: false,
     currentUserId: "u1",
     company: {
       name: "Quantia Ingeniería",
