@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useStore } from "../store";
 import { Avatar, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
-import { hashPassword, validatePassword, uid } from "../utils";
+import { validatePassword, uid } from "../utils";
 import emailjs from "@emailjs/browser";
 import { supabase, authUrlError } from "../supabase";
 
@@ -81,9 +81,9 @@ export function Login() {
         return;
       }
 
-      toast(`Enlace de recuperación enviado por correo a ${targetEmail}.`);
-      setSuccessMsg(`Se envió un correo de recuperación a ${targetEmail}.`);
-      setMode("login");
+      toast(`Correo de recuperación enviado a ${targetEmail}.`);
+      setSuccessMsg(`Te enviamos un correo a ${targetEmail}. Ingresá el código de 6 dígitos que recibiste junto con tu nueva contraseña.`);
+      setMode("reset");
     } catch (err: any) {
       setError("Error al procesar la solicitud: " + (err.message || err));
     }
@@ -98,17 +98,6 @@ export function Login() {
       return;
     }
 
-    const user = state.users.find((u) => u.email.toLowerCase() === recoveryEmail.trim().toLowerCase() && u.active);
-    if (!user || user.recoveryCode !== enteredCode) {
-      setError("El código de recuperación es incorrecto.");
-      return;
-    }
-
-    if (new Date() > new Date(user.recoveryExpires ?? "")) {
-      setError("El código de recuperación ha expirado. Solicitá uno nuevo.");
-      return;
-    }
-
     const complexityError = validatePassword(newPassword);
     if (complexityError) {
       setError(complexityError);
@@ -120,13 +109,22 @@ export function Login() {
       return;
     }
 
-    const newHash = await hashPassword(newPassword);
-    const updatedUsers = state.users.map((u) =>
-      u.id === user.id ? { ...u, password: newHash, recoveryCode: null, recoveryExpires: null } : u
-    );
+    const { error: verifyErr } = await supabase.auth.verifyOtp({
+      email: recoveryEmail.trim().toLowerCase(),
+      token: enteredCode.trim(),
+      type: "recovery",
+    });
 
-    dispatch({ type: "patch", patch: { users: updatedUsers } });
-    dispatch({ type: "audit", action: "Restablecimiento de clave", detail: user.email });
+    if (verifyErr) {
+      setError("El código es incorrecto o venció: " + verifyErr.message);
+      return;
+    }
+
+    const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
+    if (updateErr) {
+      setError("Error al actualizar la contraseña: " + updateErr.message);
+      return;
+    }
 
     toast("Contraseña restablecida con éxito.");
     setMode("login");
