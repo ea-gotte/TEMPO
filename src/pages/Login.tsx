@@ -4,7 +4,7 @@ import { Avatar, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { hashPassword, validatePassword, uid } from "../utils";
 import emailjs from "@emailjs/browser";
-import { supabase } from "../supabase";
+import { supabase, authUrlError } from "../supabase";
 
 const DEMO_PASSWORDS: Record<string, string> = {
   u1: "Admin123!",
@@ -29,7 +29,7 @@ export function Login() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   
-  const [error, setError] = useState("");
+  const [error, setError] = useState(authUrlError || "");
   const [successMsg, setSuccessMsg] = useState("");
 
   async function submit(e?: React.FormEvent) {
