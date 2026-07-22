@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useStore } from "../store";
 import { Avatar, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
-import { validatePassword, uid } from "../utils";
+import { uid } from "../utils";
 import emailjs from "@emailjs/browser";
 import { supabase, authUrlError } from "../supabase";
 
@@ -26,9 +26,7 @@ export function Login() {
   // Recovery states
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [enteredCode, setEnteredCode] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  
+
   const [error, setError] = useState(authUrlError || "");
   const [successMsg, setSuccessMsg] = useState("");
 
@@ -82,7 +80,7 @@ export function Login() {
       }
 
       toast(`Correo de recuperación enviado a ${targetEmail}.`);
-      setSuccessMsg(`Te enviamos un correo a ${targetEmail}. Ingresá el código de 6 dígitos que recibiste junto con tu nueva contraseña.`);
+      setSuccessMsg(`Te enviamos un correo a ${targetEmail}. Ingresá el código de 6 dígitos que recibiste para continuar.`);
       setMode("reset");
     } catch (err: any) {
       setError("Error al procesar la solicitud: " + (err.message || err));
@@ -93,22 +91,13 @@ export function Login() {
     e.preventDefault();
     setError("");
 
-    if (!enteredCode || !newPassword || !confirmPassword) {
-      setError("Todos los campos son obligatorios.");
+    if (!enteredCode) {
+      setError("Ingresá el código que recibiste por correo.");
       return;
     }
 
-    const complexityError = validatePassword(newPassword);
-    if (complexityError) {
-      setError(complexityError);
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setError("Las contraseñas no coinciden.");
-      return;
-    }
-
+    // Al validarse, dispara el evento PASSWORD_RECOVERY (igual que el link) y la app
+    // pasa sola a la pantalla de nueva contraseña; acá solo se verifica el código.
     const { error: verifyErr } = await supabase.auth.verifyOtp({
       email: recoveryEmail.trim().toLowerCase(),
       token: enteredCode.trim(),
@@ -117,25 +106,7 @@ export function Login() {
 
     if (verifyErr) {
       setError("El código es incorrecto o venció: " + verifyErr.message);
-      return;
     }
-
-    const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
-    if (updateErr) {
-      const msg = updateErr.message === "New password should be different from the old password."
-        ? "La nueva contraseña debe ser diferente a la actual."
-        : "Error al actualizar la contraseña: " + updateErr.message;
-      setError(msg);
-      return;
-    }
-
-    toast("Contraseña restablecida con éxito.");
-    setMode("login");
-    setPassword("");
-    setRecoveryEmail("");
-    setEnteredCode("");
-    setNewPassword("");
-    setConfirmPassword("");
   }
 
   return (
@@ -310,9 +281,9 @@ export function Login() {
 
         {mode === "reset" && (
           <form className="card card-pad" onSubmit={handleResetPassword} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>Establecer nueva contraseña</div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>Verificar código</div>
             <p style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.4 }}>
-              Ingresá el código de 6 dígitos que enviamos a <strong>{recoveryEmail}</strong> y tu nueva contraseña.
+              Ingresá el código que enviamos a <strong>{recoveryEmail}</strong>. Después te vamos a pedir la nueva contraseña.
             </p>
             <div className="field">
               <label htmlFor="recovery-code">Código de recuperación</label>
@@ -326,35 +297,13 @@ export function Login() {
                 autoFocus
               />
             </div>
-            <div className="field">
-              <label htmlFor="reset-pass">Nueva contraseña</label>
-              <input
-                id="reset-pass"
-                className="input"
-                type="password"
-                value={newPassword}
-                onChange={(e) => { setNewPassword(e.target.value); setError(""); }}
-                placeholder="Mínimo 8 caracteres, mayúscula, minúscula, número y símbolo"
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="confirm-reset-pass">Confirmar nueva contraseña</label>
-              <input
-                id="confirm-reset-pass"
-                className="input"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => { setConfirmPassword(e.target.value); setError(""); }}
-                placeholder="••••••••"
-              />
-            </div>
             {error && (
               <div style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600 }} role="alert">
                 <Icon name="alert" size={13} /> {error}
               </div>
             )}
             <button className="btn btn-primary" type="submit" style={{ justifyContent: "center", padding: "10px 14px" }}>
-              Restablecer contraseña
+              Verificar código
             </button>
             <button
               type="button"
