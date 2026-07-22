@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useStore } from "../store";
-import type { Project, ProjectStatus } from "../types";
+import type { Client, Project, ProjectStatus } from "../types";
 import { fmtDur, uid } from "../utils";
 import { Avatar, Dot, Empty, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
@@ -12,7 +12,9 @@ export function Projects() {
   const toast = useToast();
   const [tab, setTab] = useState<"proyectos" | "clientes" | "etiquetas">("proyectos");
   const [editProject, setEditProject] = useState<Project | "new" | null>(null);
-  const [newClient, setNewClient] = useState(false);
+  const [deleteProject, setDeleteProject] = useState<Project | null>(null);
+  const [editClient, setEditClient] = useState<Client | "new" | null>(null);
+  const [deleteClient, setDeleteClient] = useState<Client | null>(null);
 
   const [fQuery, setFQuery] = useState("");
   const [fClient, setFClient] = useState("");
@@ -48,6 +50,22 @@ export function Projects() {
     setFMember("");
   }
 
+  function confirmDeleteProject() {
+    if (!deleteProject) return;
+    dispatch({ type: "patch", patch: { projects: state.projects.filter((p) => p.id !== deleteProject.id) } });
+    dispatch({ type: "audit", action: "Proyecto eliminado", detail: deleteProject.name });
+    toast(`Proyecto "${deleteProject.name}" eliminado.`);
+    setDeleteProject(null);
+  }
+
+  function confirmDeleteClient() {
+    if (!deleteClient) return;
+    dispatch({ type: "patch", patch: { clients: state.clients.filter((c) => c.id !== deleteClient.id) } });
+    dispatch({ type: "audit", action: "Cliente eliminado", detail: deleteClient.name });
+    toast(`Cliente "${deleteClient.name}" eliminado.`);
+    setDeleteClient(null);
+  }
+
   return (
     <>
       <div className="page-head">
@@ -61,7 +79,7 @@ export function Projects() {
           ))}
         </div>
         {tab === "proyectos" && <button className="btn btn-primary" onClick={() => setEditProject("new")}><Icon name="plus" size={15} /> Proyecto</button>}
-        {tab === "clientes" && <button className="btn btn-primary" onClick={() => setNewClient(true)}><Icon name="plus" size={15} /> Cliente</button>}
+        {tab === "clientes" && <button className="btn btn-primary" onClick={() => setEditClient("new")}><Icon name="plus" size={15} /> Cliente</button>}
       </div>
 
       {tab === "proyectos" && (
@@ -190,6 +208,7 @@ export function Projects() {
                     </td>
                     <td>
                       <button className="btn btn-ghost btn-sm" onClick={() => setEditProject(p)}><Icon name="pencil" size={13} /> Editar</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setDeleteProject(p)}><Icon name="trash" size={13} /> Eliminar</button>
                     </td>
                   </tr>
                 );
@@ -211,10 +230,12 @@ export function Projects() {
                   <span style={{ width: 34, height: 34, borderRadius: 10, background: c.color, display: "grid", placeItems: "center", color: "#fff", fontWeight: 700 }}>
                     {c.name[0]}
                   </span>
-                  <div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700 }}>{c.name}</div>
                     <div style={{ fontSize: 12, color: "var(--text-3)" }}>{projs.length} proyectos · {fmtDur(total)}</div>
                   </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditClient(c)} aria-label={`Editar ${c.name}`}><Icon name="pencil" size={13} /></button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setDeleteClient(c)} aria-label={`Eliminar ${c.name}`}><Icon name="trash" size={13} /></button>
                 </div>
                 {projs.map((p) => (
                   <div className="list-item" key={p.id}>
@@ -253,7 +274,44 @@ export function Projects() {
           onClose={() => setEditProject(null)}
         />
       )}
-      {newClient && <ClientModal onClose={() => setNewClient(false)} />}
+      {deleteProject && (
+        <Modal
+          title="Eliminar proyecto"
+          onClose={() => setDeleteProject(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setDeleteProject(null)}>Cancelar</button>
+              <button className="btn btn-danger" onClick={confirmDeleteProject}><Icon name="trash" size={14} /> Sí, eliminar</button>
+            </>
+          }
+        >
+          <p style={{ fontSize: 13.5 }}>
+            ¿Eliminar el proyecto <strong>{deleteProject.name}</strong>? Los registros de tiempo ya cargados con este proyecto no se borran, pero dejan de mostrar a qué proyecto pertenecían.
+          </p>
+        </Modal>
+      )}
+      {editClient && (
+        <ClientModal
+          client={editClient === "new" ? null : editClient}
+          onClose={() => setEditClient(null)}
+        />
+      )}
+      {deleteClient && (
+        <Modal
+          title="Eliminar cliente"
+          onClose={() => setDeleteClient(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setDeleteClient(null)}>Cancelar</button>
+              <button className="btn btn-danger" onClick={confirmDeleteClient}><Icon name="trash" size={14} /> Sí, eliminar</button>
+            </>
+          }
+        >
+          <p style={{ fontSize: 13.5 }}>
+            ¿Eliminar el cliente <strong>{deleteClient.name}</strong>? Los proyectos asociados quedan sin cliente asignado, no se eliminan.
+          </p>
+        </Modal>
+      )}
     </>
   );
 }
@@ -265,6 +323,9 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
   const [clientId, setClientId] = useState(project?.clientId ?? state.clients[0]?.id ?? "");
   const [color, setColor] = useState(project?.color ?? COLORS[0]);
   const [status, setStatus] = useState<ProjectStatus>(project?.status ?? "activo");
+  const [billable, setBillable] = useState(project?.billable ?? false);
+  const [hourlyRate, setHourlyRate] = useState<string>(project?.hourlyRate?.toString() ?? "0");
+  const [costRate, setCostRate] = useState<string>(project?.costRate?.toString() ?? "0");
   const [budgetHours, setBudgetHours] = useState<string>(project?.budgetHours?.toString() ?? "");
   const [notionUrl, setNotionUrl] = useState(project?.notionUrl ?? "");
   const [tasksText, setTasksText] = useState(project?.tasks.map((t) => t.name).join("\n") ?? "");
@@ -288,9 +349,9 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
       name: name.trim(),
       color,
       status,
-      billable: project?.billable ?? false,
-      hourlyRate: project?.hourlyRate ?? 0,
-      costRate: project?.costRate ?? 0,
+      billable,
+      hourlyRate: Number(hourlyRate) || 0,
+      costRate: Number(costRate) || 0,
       budgetHours: budgetHours ? Number(budgetHours) : null,
       tasks,
       memberIds,
@@ -345,6 +406,20 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
         <div className="field">
           <label>Horas proyectadas</label>
           <input type="number" className="input" value={budgetHours} onChange={(e) => setBudgetHours(e.target.value)} placeholder="Sin proyección" />
+        </div>
+        <div className="field">
+          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} />
+            Facturable
+          </label>
+        </div>
+        <div className="field">
+          <label>Tarifa facturable (por hora)</label>
+          <input type="number" className="input" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} disabled={!billable} />
+        </div>
+        <div className="field">
+          <label>Costo interno (por hora)</label>
+          <input type="number" className="input" value={costRate} onChange={(e) => setCostRate(e.target.value)} />
         </div>
         <div className="field">
           <label>Link a Notion</label>
@@ -443,28 +518,35 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
   );
 }
 
-function ClientModal({ onClose }: { onClose: () => void }) {
+function ClientModal({ client, onClose }: { client: Client | null; onClose: () => void }) {
   const { state, dispatch } = useStore();
   const toast = useToast();
-  const [name, setName] = useState("");
-  const [color, setColor] = useState(COLORS[5]);
+  const [name, setName] = useState(client?.name ?? "");
+  const [color, setColor] = useState(client?.color ?? COLORS[5]);
 
   function save() {
     if (!name.trim()) return;
-    dispatch({ type: "patch", patch: { clients: [...state.clients, { id: uid(), name: name.trim(), color }] } });
-    dispatch({ type: "audit", action: "Cliente creado", detail: name.trim() });
-    toast("Cliente creado.");
+    dispatch({
+      type: "patch",
+      patch: {
+        clients: client
+          ? state.clients.map((c) => (c.id === client.id ? { ...c, name: name.trim(), color } : c))
+          : [...state.clients, { id: uid(), name: name.trim(), color }],
+      },
+    });
+    dispatch({ type: "audit", action: client ? "Cliente modificado" : "Cliente creado", detail: name.trim() });
+    toast(client ? "Cliente actualizado." : "Cliente creado.");
     onClose();
   }
 
   return (
     <Modal
-      title="Nuevo cliente"
+      title={client ? "Editar cliente" : "Nuevo cliente"}
       onClose={onClose}
       footer={
         <>
           <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={!name.trim()}>Crear</button>
+          <button className="btn btn-primary" onClick={save} disabled={!name.trim()}>{client ? "Guardar" : "Crear"}</button>
         </>
       }
     >
