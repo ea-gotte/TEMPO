@@ -172,7 +172,8 @@ export interface Notification {
     | "feriado"
     | "exceso"
     | "falta-carga"
-    | "vencimiento";
+    | "vencimiento"
+    | "error";
   title: string;
   body: string;
   date: string;

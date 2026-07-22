@@ -59,6 +59,7 @@ const KIND_ICON: Record<string, IconName> = {
   exceso: "flame",
   "falta-carga": "alert",
   vencimiento: "hourglass",
+  error: "alert",
 };
 
 export function Shell({

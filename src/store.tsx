@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer } from "react";
 import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword } from "./utils";
@@ -16,7 +16,7 @@ type Action =
   | { type: "deleteEntry"; id: string }
   | { type: "addEntries"; entries: TimeEntry[] }
   | { type: "startTimer"; timer: RunningTimer }
-  | { type: "stopTimer"; id: string; discard?: boolean }
+  | { type: "stopTimer"; id: string; discard?: boolean; entry?: TimeEntry }
   | { type: "addAbsence"; absence: AbsenceRequest }
   | { type: "resolveAbsence"; id: string; status: "Aprobado" | "Rechazado"; comment: string; by: string }
   | { type: "validateWeek"; v: WeekValidation }
@@ -25,7 +25,31 @@ type Action =
   | { type: "resolveOvertime"; id: string; status: "Aprobado" | "Rechazado"; comment: string; by: string }
   | { type: "notify"; n: Omit<Notification, "id" | "read" | "date"> }
   | { type: "markNotifsRead" }
-  | { type: "audit"; action: string; detail: string };
+  | { type: "audit"; action: string; detail: string }
+  | { type: "syncEntries"; entries: TimeEntry[] }
+  | { type: "syncAbsences"; absences: AbsenceRequest[] };
+
+/** Construye el registro que resulta de detener un cronómetro (compartido con la sincronización a Supabase) */
+function buildStoppedEntry(t: RunningTimer, currentUserId: string): TimeEntry {
+  const now = new Date();
+  const started = new Date(t.startedAt);
+  const sameDay = isoDate(started);
+  const startMin = started.getHours() * 60 + started.getMinutes();
+  const endMinRaw = isoDate(now) === sameDay ? now.getHours() * 60 + now.getMinutes() : 24 * 60 - 1;
+  const endMin = Math.max(endMinRaw, startMin + 1);
+  return {
+    id: uid(),
+    userId: currentUserId,
+    projectId: t.projectId,
+    taskId: t.taskId,
+    description: t.description,
+    tagIds: t.tagIds,
+    date: sameDay,
+    start: startMin,
+    end: endMin,
+    billable: t.billable,
+  };
+}
 
 function withAudit(s: AppState, action: string, detail: string): AppState {
   return {
@@ -100,24 +124,7 @@ function baseReducer(s: AppState, a: Action): AppState {
       if (!t) return s;
       const rest = s.timers.filter((x) => x.id !== a.id);
       if (a.discard) return withAudit({ ...s, timers: rest }, "Cronómetro descartado", t.description || "");
-      const now = new Date();
-      const started = new Date(t.startedAt);
-      const sameDay = isoDate(started);
-      const startMin = started.getHours() * 60 + started.getMinutes();
-      const endMinRaw = isoDate(now) === sameDay ? now.getHours() * 60 + now.getMinutes() : 24 * 60 - 1;
-      const endMin = Math.max(endMinRaw, startMin + 1);
-      const entry: TimeEntry = {
-        id: uid(),
-        userId: s.currentUserId,
-        projectId: t.projectId,
-        taskId: t.taskId,
-        description: t.description,
-        tagIds: t.tagIds,
-        date: sameDay,
-        start: startMin,
-        end: endMin,
-        billable: t.billable,
-      };
+      const entry = a.entry ?? buildStoppedEntry(t, s.currentUserId);
       return withAudit({ ...s, timers: rest, entries: [...s.entries, entry] }, "Cronómetro detenido", t.description || "");
     }
     case "addAbsence":
@@ -221,6 +228,10 @@ function baseReducer(s: AppState, a: Action): AppState {
       return { ...s, notifications: s.notifications.map((n) => ({ ...n, read: true })) };
     case "audit":
       return withAudit(s, a.action, a.detail);
+    case "syncEntries":
+      return { ...s, entries: a.entries };
+    case "syncAbsences":
+      return { ...s, absences: a.absences };
   }
 }
 
@@ -284,6 +295,139 @@ function persist(state: AppState) {
     } catch {
       /* sin espacio: se mantiene solo en memoria */
     }
+  }
+}
+
+// ============================================================
+// Sincronización con Supabase de registros de horas y ausencias (Fase 1)
+// ============================================================
+
+function toEntryRow(e: TimeEntry) {
+  return {
+    id: e.id,
+    user_id: e.userId,
+    project_id: e.projectId,
+    task_id: e.taskId,
+    description: e.description,
+    tag_ids: e.tagIds,
+    date: e.date,
+    start_min: e.start,
+    end_min: e.end,
+    billable: e.billable,
+    favorite: e.favorite ?? false,
+    recurring: e.recurring ?? null,
+  };
+}
+
+function fromEntryRow(r: any): TimeEntry {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    projectId: r.project_id,
+    taskId: r.task_id,
+    description: r.description ?? "",
+    tagIds: r.tag_ids ?? [],
+    date: r.date,
+    start: r.start_min,
+    end: r.end_min,
+    billable: r.billable,
+    favorite: r.favorite,
+    recurring: r.recurring,
+  };
+}
+
+function toAbsenceRow(a: AbsenceRequest) {
+  return {
+    id: a.id,
+    user_id: a.userId,
+    type: a.type,
+    date_from: a.dateFrom,
+    date_to: a.dateTo,
+    time_from: a.timeFrom ?? null,
+    time_to: a.timeTo ?? null,
+    reason: a.reason,
+    attachments: a.attachments,
+    status: a.status,
+    supervisor_comment: a.supervisorComment ?? null,
+    created_at: a.createdAt,
+    resolved_by: a.resolvedBy ?? null,
+    resolved_at: a.resolvedAt ?? null,
+  };
+}
+
+function fromAbsenceRow(r: any): AbsenceRequest {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    type: r.type,
+    dateFrom: r.date_from,
+    dateTo: r.date_to,
+    timeFrom: r.time_from ?? undefined,
+    timeTo: r.time_to ?? undefined,
+    reason: r.reason ?? "",
+    attachments: r.attachments ?? [],
+    status: r.status,
+    supervisorComment: r.supervisor_comment ?? undefined,
+    createdAt: r.created_at,
+    resolvedBy: r.resolved_by ?? undefined,
+    resolvedAt: r.resolved_at ?? undefined,
+  };
+}
+
+async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>) {
+  const [{ data: entryRows, error: entriesErr }, { data: absenceRows, error: absencesErr }] = await Promise.all([
+    supabase.from("time_entries").select("*"),
+    supabase.from("absence_requests").select("*"),
+  ]);
+  if (entriesErr) console.warn("Error al leer time_entries:", entriesErr);
+  if (absencesErr) console.warn("Error al leer absence_requests:", absencesErr);
+  dispatch({ type: "syncEntries", entries: (entryRows || []).map(fromEntryRow) });
+  dispatch({ type: "syncAbsences", absences: (absenceRows || []).map(fromAbsenceRow) });
+}
+
+/** Refleja en Supabase las acciones que modifican registros de horas y ausencias. */
+async function syncActionToSupabase(a: Action): Promise<string | null> {
+  switch (a.type) {
+    case "addEntry": {
+      const { error } = await supabase.from("time_entries").insert(toEntryRow(a.entry));
+      return error?.message ?? null;
+    }
+    case "updateEntry": {
+      const { error } = await supabase.from("time_entries").update(toEntryRow(a.entry)).eq("id", a.entry.id);
+      return error?.message ?? null;
+    }
+    case "deleteEntry": {
+      const { error } = await supabase.from("time_entries").delete().eq("id", a.id);
+      return error?.message ?? null;
+    }
+    case "addEntries": {
+      if (a.entries.length === 0) return null;
+      const { error } = await supabase.from("time_entries").insert(a.entries.map(toEntryRow));
+      return error?.message ?? null;
+    }
+    case "stopTimer": {
+      if (a.discard || !a.entry) return null;
+      const { error } = await supabase.from("time_entries").insert(toEntryRow(a.entry));
+      return error?.message ?? null;
+    }
+    case "addAbsence": {
+      const { error } = await supabase.from("absence_requests").insert(toAbsenceRow(a.absence));
+      return error?.message ?? null;
+    }
+    case "resolveAbsence": {
+      const { error } = await supabase
+        .from("absence_requests")
+        .update({
+          status: a.status,
+          supervisor_comment: a.comment || null,
+          resolved_by: a.by,
+          resolved_at: isoDate(new Date()),
+        })
+        .eq("id", a.id);
+      return error?.message ?? null;
+    }
+    default:
+      return null;
   }
 }
 
@@ -368,7 +512,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               }
             });
           } else {
-            dispatch({ type: "patch", patch: { authenticated: false, currentUserId: "", users: [], passwordRecovery: false } });
+            dispatch({
+              type: "patch",
+              patch: { authenticated: false, currentUserId: "", users: [], passwordRecovery: false, entries: [], absences: [] },
+            });
           }
         } catch (dbErr) {
           console.warn("Supabase Database sync warning:", dbErr);
@@ -384,7 +531,49 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const value = useMemo(() => ({ state, dispatch }), [state]);
+  // Registros de horas y ausencias: carga inicial desde Supabase + Realtime para
+  // reflejar cambios de otros usuarios (o de esta misma sesión en otra pestaña).
+  useEffect(() => {
+    if (!state.authenticated) return;
+    let cancelled = false;
+    const refetch = () => {
+      if (!cancelled) fetchEntriesAndAbsences(dispatch);
+    };
+    refetch();
+    const channel = supabase
+      .channel("tempo-entries-absences")
+      .on("postgres_changes", { event: "*", schema: "public", table: "time_entries" }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "absence_requests" }, refetch)
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, [state.authenticated]);
+
+  // Envuelve el dispatch: además de actualizar el estado local, refleja en Supabase
+  // las acciones sobre registros de horas y ausencias.
+  const syncedDispatch = useCallback<React.Dispatch<Action>>(
+    (a) => {
+      let finalAction = a;
+      if (a.type === "stopTimer" && !a.discard && !a.entry) {
+        const t = state.timers.find((x) => x.id === a.id);
+        if (t) finalAction = { ...a, entry: buildStoppedEntry(t, state.currentUserId) };
+      }
+      dispatch(finalAction);
+      syncActionToSupabase(finalAction).then((errMsg) => {
+        if (!errMsg) return;
+        console.warn("Supabase sync error:", errMsg);
+        dispatch({
+          type: "notify",
+          n: { kind: "error", title: "Error al guardar", body: `No se pudo sincronizar un cambio con el servidor: ${errMsg}` },
+        });
+      });
+    },
+    [state],
+  );
+
+  const value = useMemo(() => ({ state, dispatch: syncedDispatch }), [state, syncedDispatch]);
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }
 
