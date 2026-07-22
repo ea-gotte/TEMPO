@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer } from "react";
-import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord, Holiday } from "./types";
+import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord, Holiday, Client, Project, Team, Department } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
@@ -30,7 +30,11 @@ type Action =
   | { type: "syncAbsences"; absences: AbsenceRequest[] }
   | { type: "addHoliday"; holiday: Holiday }
   | { type: "deleteHoliday"; id: string }
-  | { type: "syncHolidays"; holidays: Holiday[] };
+  | { type: "syncHolidays"; holidays: Holiday[] }
+  | { type: "syncClients"; clients: Client[] }
+  | { type: "syncProjects"; projects: Project[] }
+  | { type: "syncTeams"; teams: Team[] }
+  | { type: "syncDepartments"; departments: Department[] };
 
 /** Construye el registro que resulta de detener un cronómetro (compartido con la sincronización a Supabase) */
 function buildStoppedEntry(t: RunningTimer, currentUserId: string): TimeEntry {
@@ -243,6 +247,14 @@ function baseReducer(s: AppState, a: Action): AppState {
     }
     case "syncHolidays":
       return { ...s, holidays: a.holidays };
+    case "syncClients":
+      return { ...s, clients: a.clients };
+    case "syncProjects":
+      return { ...s, projects: a.projects };
+    case "syncTeams":
+      return { ...s, teams: a.teams };
+    case "syncDepartments":
+      return { ...s, departments: a.departments };
   }
 }
 
@@ -394,27 +406,149 @@ function fromHolidayRow(r: any): Holiday {
   return { id: r.id, date: r.date, type: r.type, title: r.title };
 }
 
+function toClientRow(c: Client) {
+  return { id: c.id, name: c.name, color: c.color, archived: c.archived ?? false };
+}
+function fromClientRow(r: any): Client {
+  return { id: r.id, name: r.name, color: r.color, archived: r.archived ?? false };
+}
+
+function toProjectRow(p: Project) {
+  return {
+    id: p.id,
+    client_id: p.clientId,
+    name: p.name,
+    color: p.color,
+    status: p.status,
+    billable: p.billable,
+    hourly_rate: p.hourlyRate,
+    cost_rate: p.costRate,
+    budget_hours: p.budgetHours,
+    tasks: p.tasks,
+    member_ids: p.memberIds,
+    notion_url: p.notionUrl ?? null,
+  };
+}
+function fromProjectRow(r: any): Project {
+  return {
+    id: r.id,
+    clientId: r.client_id,
+    name: r.name,
+    color: r.color,
+    status: r.status,
+    billable: r.billable,
+    hourlyRate: r.hourly_rate,
+    costRate: r.cost_rate,
+    budgetHours: r.budget_hours,
+    tasks: r.tasks ?? [],
+    memberIds: r.member_ids ?? [],
+    notionUrl: r.notion_url ?? undefined,
+  };
+}
+
+function toTeamRow(t: Team) {
+  return { id: t.id, name: t.name };
+}
+function fromTeamRow(r: any): Team {
+  return { id: r.id, name: r.name };
+}
+
+function toDepartmentRow(d: Department) {
+  return { id: d.id, name: d.name };
+}
+function fromDepartmentRow(r: any): Department {
+  return { id: r.id, name: r.name };
+}
+
 async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>) {
   const [
     { data: entryRows, error: entriesErr },
     { data: absenceRows, error: absencesErr },
     { data: holidayRows, error: holidaysErr },
+    { data: clientRows, error: clientsErr },
+    { data: projectRows, error: projectsErr },
+    { data: teamRows, error: teamsErr },
+    { data: departmentRows, error: departmentsErr },
   ] = await Promise.all([
     supabase.from("time_entries").select("*"),
     supabase.from("absence_requests").select("*"),
     supabase.from("holidays").select("*"),
+    supabase.from("clients").select("*"),
+    supabase.from("projects").select("*"),
+    supabase.from("teams").select("*"),
+    supabase.from("departments").select("*"),
   ]);
   if (entriesErr) console.warn("Error al leer time_entries:", entriesErr);
   if (absencesErr) console.warn("Error al leer absence_requests:", absencesErr);
   if (holidaysErr) console.warn("Error al leer holidays:", holidaysErr);
+  if (clientsErr) console.warn("Error al leer clients:", clientsErr);
+  if (projectsErr) console.warn("Error al leer projects:", projectsErr);
+  if (teamsErr) console.warn("Error al leer teams:", teamsErr);
+  if (departmentsErr) console.warn("Error al leer departments:", departmentsErr);
   dispatch({ type: "syncEntries", entries: (entryRows || []).map(fromEntryRow) });
   dispatch({ type: "syncAbsences", absences: (absenceRows || []).map(fromAbsenceRow) });
   dispatch({ type: "syncHolidays", holidays: (holidayRows || []).map(fromHolidayRow) });
+  dispatch({ type: "syncClients", clients: (clientRows || []).map(fromClientRow) });
+  dispatch({ type: "syncProjects", projects: (projectRows || []).map(fromProjectRow) });
+  dispatch({ type: "syncTeams", teams: (teamRows || []).map(fromTeamRow) });
+  dispatch({ type: "syncDepartments", departments: (departmentRows || []).map(fromDepartmentRow) });
+}
+
+/** Reconcilia una tabla completa contra Supabase: inserta lo nuevo, actualiza lo cambiado, borra lo quitado. */
+async function reconcileTable<T extends { id: string }>(
+  table: string,
+  prevList: T[],
+  nextList: T[],
+  toRow: (item: T) => any,
+): Promise<string | null> {
+  const prevById = new Map(prevList.map((x) => [x.id, x]));
+  const nextIds = new Set(nextList.map((x) => x.id));
+  const toInsert = nextList.filter((x) => !prevById.has(x.id));
+  const toUpdate = nextList.filter((x) => {
+    const prev = prevById.get(x.id);
+    return prev && JSON.stringify(prev) !== JSON.stringify(x);
+  });
+  const toDelete = prevList.filter((x) => !nextIds.has(x.id));
+
+  const errors: string[] = [];
+  if (toInsert.length > 0) {
+    const { error } = await supabase.from(table).insert(toInsert.map(toRow));
+    if (error) errors.push(error.message);
+  }
+  for (const item of toUpdate) {
+    const { error } = await supabase.from(table).update(toRow(item)).eq("id", item.id);
+    if (error) errors.push(error.message);
+  }
+  for (const item of toDelete) {
+    const { error } = await supabase.from(table).delete().eq("id", item.id);
+    if (error) errors.push(error.message);
+  }
+  return errors.length > 0 ? errors.join("; ") : null;
 }
 
 /** Refleja en Supabase las acciones que modifican registros de horas y ausencias. */
-async function syncActionToSupabase(a: Action): Promise<string | null> {
+async function syncActionToSupabase(a: Action, prevState: AppState): Promise<string | null> {
   switch (a.type) {
+    case "patch": {
+      const errors: string[] = [];
+      if (a.patch.clients) {
+        const err = await reconcileTable("clients", prevState.clients, a.patch.clients, toClientRow);
+        if (err) errors.push(err);
+      }
+      if (a.patch.projects) {
+        const err = await reconcileTable("projects", prevState.projects, a.patch.projects, toProjectRow);
+        if (err) errors.push(err);
+      }
+      if (a.patch.teams) {
+        const err = await reconcileTable("teams", prevState.teams, a.patch.teams, toTeamRow);
+        if (err) errors.push(err);
+      }
+      if (a.patch.departments) {
+        const err = await reconcileTable("departments", prevState.departments, a.patch.departments, toDepartmentRow);
+        if (err) errors.push(err);
+      }
+      return errors.length > 0 ? errors.join("; ") : null;
+    }
     case "addEntry": {
       const { error } = await supabase.from("time_entries").insert(toEntryRow(a.entry));
       return error?.message ?? null;
@@ -580,6 +714,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "time_entries" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "absence_requests" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "holidays" }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "projects" }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "departments" }, refetch)
       .subscribe();
     return () => {
       cancelled = true;
@@ -597,7 +735,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (t) finalAction = { ...a, entry: buildStoppedEntry(t, state.currentUserId) };
       }
       dispatch(finalAction);
-      syncActionToSupabase(finalAction).then((errMsg) => {
+      syncActionToSupabase(finalAction, state).then((errMsg) => {
         if (!errMsg) return;
         console.warn("Supabase sync error:", errMsg);
         dispatch({
