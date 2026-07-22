@@ -2,23 +2,42 @@ import React, { useState } from "react";
 import { useStore } from "../store";
 import { Switch, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
-import { fmtDateTime, uid } from "../utils";
-import type { Role } from "../types";
+import { fmtDate, fmtDateTime, today, uid } from "../utils";
+import type { Holiday, HolidayType, Role } from "../types";
 import { AccountsImportPanel, ConfigImportExportPanel, ProjectsImportPanel } from "../components/ImportPanels";
 
 const TAG_COLORS = ["#5b6cff", "#12b5a5", "#f5a524", "#f0446c", "#8b5cf6", "#0ea5e9", "#84cc16", "#f97316"];
 
 const ROLE_LABELS: Record<Role, string> = { admin: "Administrador", supervisor: "Supervisor", usuario: "Usuario" };
 
+const HOLIDAY_TYPES: HolidayType[] = ["Feriado nacional", "Feriado provincial", "Día no laborable"];
+
 export function Admin() {
   const { state, dispatch } = useStore();
   const toast = useToast();
   const [c, setC] = useState(state.company);
-  const [tab, setTab] = useState<"empresa" | "roles" | "licencias" | "etiquetas" | "importar" | "correos" | "auditoria">("empresa");
+  const [tab, setTab] = useState<"empresa" | "roles" | "licencias" | "etiquetas" | "feriados" | "importar" | "correos" | "auditoria">("empresa");
   const [newTag, setNewTag] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
   const [newPerm, setNewPerm] = useState<Record<Role, string>>({ admin: "", supervisor: "", usuario: "" });
+  const [newHolidayDate, setNewHolidayDate] = useState(today());
+  const [newHolidayType, setNewHolidayType] = useState<HolidayType>("Feriado nacional");
+  const [newHolidayTitle, setNewHolidayTitle] = useState("");
   const isAdmin = state.users.find((u) => u.id === state.currentUserId)?.role === "admin";
+
+  function addHoliday() {
+    const title = newHolidayTitle.trim();
+    if (!title) return;
+    const holiday: Holiday = { id: uid(), date: newHolidayDate, type: newHolidayType, title };
+    dispatch({ type: "addHoliday", holiday });
+    toast(`Feriado "${title}" agregado.`);
+    setNewHolidayTitle("");
+  }
+
+  function deleteHoliday(id: string, title: string) {
+    dispatch({ type: "deleteHoliday", id });
+    toast(`Feriado "${title}" eliminado.`);
+  }
 
   function addTag() {
     const name = newTag.trim();
@@ -105,6 +124,7 @@ export function Admin() {
           <button className={tab === "roles" ? "active" : ""} onClick={() => setTab("roles")}>Roles y permisos</button>
           <button className={tab === "licencias" ? "active" : ""} onClick={() => setTab("licencias")}>Tipos de licencia</button>
           <button className={tab === "etiquetas" ? "active" : ""} onClick={() => setTab("etiquetas")}>Etiquetas</button>
+          <button className={tab === "feriados" ? "active" : ""} onClick={() => setTab("feriados")}>Feriados</button>
           <button className={tab === "importar" ? "active" : ""} onClick={() => setTab("importar")}>Importar datos</button>
           <button className={tab === "correos" ? "active" : ""} onClick={() => setTab("correos")}>Correos</button>
           <button className={tab === "auditoria" ? "active" : ""} onClick={() => setTab("auditoria")}>Auditoría</button>
@@ -299,6 +319,74 @@ export function Admin() {
                 ))}
               </div>
               <button className="btn btn-primary btn-sm" onClick={addTag} disabled={!newTag.trim()}><Icon name="plus" size={14} /> Agregar</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "feriados" && (
+        <div className="card card-pad" style={{ maxWidth: 640 }}>
+          <div className="card-title">Feriados</div>
+          {!isAdmin && (
+            <p style={{ fontSize: 12.5, color: "var(--warning)", marginBottom: 10 }}>
+              Solo los administradores pueden agregar o eliminar feriados.
+            </p>
+          )}
+          <p style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 12 }}>
+            Estos feriados se excluyen automáticamente del cálculo de días de vacaciones y de compensación de horas,
+            y se muestran en el Calendario corporativo.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {state.holidays
+              .slice()
+              .sort((a, b) => a.date.localeCompare(b.date))
+              .map((h) => (
+                <div key={h.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 10 }}>
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 12.5, minWidth: 90 }}>{fmtDate(h.date)}</span>
+                  <span className="badge acc">{h.type}</span>
+                  <span style={{ flex: 1 }}>{h.title}</span>
+                  {isAdmin && (
+                    <button className="btn btn-danger btn-sm" onClick={() => deleteHoliday(h.id, h.title)} title="Eliminar feriado">
+                      <Icon name="trash" size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            {state.holidays.length === 0 && (
+              <div style={{ color: "var(--text-3)", fontSize: 12.5 }}>Todavía no hay feriados cargados.</div>
+            )}
+          </div>
+          {isAdmin && (
+            <div className="form-grid" style={{ marginTop: 14 }}>
+              <div className="field">
+                <label>Fecha</label>
+                <input type="date" className="input" value={newHolidayDate} onChange={(e) => setNewHolidayDate(e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Tipo</label>
+                <select className="select" value={newHolidayType} onChange={(e) => setNewHolidayType(e.target.value as HolidayType)}>
+                  {HOLIDAY_TYPES.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field" style={{ gridColumn: "1 / -1" }}>
+                <label>Título</label>
+                <input
+                  className="input"
+                  placeholder="Ej: Día de la Independencia"
+                  value={newHolidayTitle}
+                  onChange={(e) => setNewHolidayTitle(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addHoliday()}
+                />
+              </div>
+            </div>
+          )}
+          {isAdmin && (
+            <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn btn-primary" onClick={addHoliday} disabled={!newHolidayTitle.trim()}>
+                <Icon name="plus" size={14} /> Agregar feriado
+              </button>
             </div>
           )}
         </div>

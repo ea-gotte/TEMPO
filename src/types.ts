@@ -161,6 +161,16 @@ export interface CorpEvent {
   title: string;
 }
 
+export type HolidayType = "Feriado nacional" | "Feriado provincial" | "Día no laborable";
+
+/** Feriado gestionado por el administrador (persistido en base de datos, no local) */
+export interface Holiday {
+  id: ID;
+  date: string; // YYYY-MM-DD
+  type: HolidayType;
+  title: string;
+}
+
 export interface Notification {
   id: ID;
   kind:
@@ -272,6 +282,7 @@ export interface AppState {
   validations: WeekValidation[];
   overtime: OvertimeRequest[];
   corpEvents: CorpEvent[];
+  holidays: Holiday[];
   notifications: Notification[];
   emails: EmailRecord[];
   audit: AuditLog[];

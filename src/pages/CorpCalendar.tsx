@@ -15,12 +15,14 @@ const EVENT_STYLES: Record<string, { bg: string; icon: IconName }> = {
 
 const TYPES = Object.keys(EVENT_STYLES);
 
-/** Mapea el tipo guardado a la categoría unificada; null = no se muestra */
+/** Mapea el tipo guardado a la categoría unificada; null = no se muestra.
+ * Los feriados ahora vienen de state.holidays (gestionados desde Administración),
+ * no de corpEvents, para evitar duplicados. */
 function unifiedType(t: string): string | null {
-  if (t === "Feriado nacional" || t === "Feriado provincial" || t === "Día no laborable") return "Feriado / No laborable";
   if (t === "Capacitación") return "Capacitación";
   if (t === "Cumpleaños") return "Cumpleaños";
-  // Reunión, Horario especial, Home office y Cierre de empresa ya no se muestran
+  // Feriado nacional/provincial/Día no laborable, Reunión, Horario especial,
+  // Home office y Cierre de empresa ya no se muestran desde acá.
   return null;
 }
 
@@ -55,6 +57,9 @@ export function CorpCalendar() {
       const type = unifiedType(e.type);
       if (type) push(e.date, { key: e.id, label: e.title, type });
     }
+    for (const h of state.holidays) {
+      push(h.date, { key: h.id, label: h.title, type: "Feriado / No laborable" });
+    }
     // Vacaciones, licencias y toda ausencia aprobada se unifican en "Ausencia"
     for (const a of state.absences) {
       if (a.status !== "Aprobado") continue;
@@ -68,7 +73,7 @@ export function CorpCalendar() {
       push(`${year}-${u.birthday.slice(5)}`, { key: `bd-${u.id}`, label: `${u.name}`, type: "Cumpleaños" });
     }
     return map;
-  }, [state.corpEvents, state.absences, state.users, anchor]);
+  }, [state.corpEvents, state.holidays, state.absences, state.users, anchor]);
 
   function shiftMonth(n: number) {
     const d = parseISO(anchor);
@@ -154,7 +159,7 @@ function NewEvent({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useStore();
   const toast = useToast();
   const [date, setDate] = useState(today());
-  const [type, setType] = useState<CorpEventType>("Feriado nacional");
+  const [type, setType] = useState<CorpEventType>("Capacitación");
   const [title, setTitle] = useState("");
 
   function save() {
@@ -189,12 +194,15 @@ function NewEvent({ onClose }: { onClose: () => void }) {
         <div className="field">
           <label>Tipo</label>
           <select className="select" value={type} onChange={(e) => setType(e.target.value as CorpEventType)}>
-            {(["Feriado nacional", "Feriado provincial", "Día no laborable", "Capacitación"] as CorpEventType[]).map((t) => (
+            {(["Capacitación"] as CorpEventType[]).map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
         </div>
       </div>
+      <p style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: -4 }}>
+        Los feriados se gestionan desde Administración → Feriados, no desde acá.
+      </p>
     </Modal>
   );
 }

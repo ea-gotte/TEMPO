@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer } from "react";
-import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord } from "./types";
+import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord, Holiday } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
@@ -27,7 +27,10 @@ type Action =
   | { type: "markNotifsRead" }
   | { type: "audit"; action: string; detail: string }
   | { type: "syncEntries"; entries: TimeEntry[] }
-  | { type: "syncAbsences"; absences: AbsenceRequest[] };
+  | { type: "syncAbsences"; absences: AbsenceRequest[] }
+  | { type: "addHoliday"; holiday: Holiday }
+  | { type: "deleteHoliday"; id: string }
+  | { type: "syncHolidays"; holidays: Holiday[] };
 
 /** Construye el registro que resulta de detener un cronómetro (compartido con la sincronización a Supabase) */
 function buildStoppedEntry(t: RunningTimer, currentUserId: string): TimeEntry {
@@ -232,6 +235,14 @@ function baseReducer(s: AppState, a: Action): AppState {
       return { ...s, entries: a.entries };
     case "syncAbsences":
       return { ...s, absences: a.absences };
+    case "addHoliday":
+      return withAudit({ ...s, holidays: [...s.holidays, a.holiday] }, "Feriado agregado", `${a.holiday.title} (${a.holiday.date})`);
+    case "deleteHoliday": {
+      const h = s.holidays.find((x) => x.id === a.id);
+      return withAudit({ ...s, holidays: s.holidays.filter((x) => x.id !== a.id) }, "Feriado eliminado", h?.title ?? a.id);
+    }
+    case "syncHolidays":
+      return { ...s, holidays: a.holidays };
   }
 }
 
@@ -248,6 +259,7 @@ function loadInitial(): AppState {
           validations: parsed.validations ?? [],
           overtime: parsed.overtime ?? [],
           emails: parsed.emails ?? [],
+          holidays: [],
           authenticated: parsed.authenticated ?? false,
           passwordRecovery: isPasswordRecoveryLink,
           rolePermissions: parsed.rolePermissions ?? defaults.rolePermissions,
@@ -374,15 +386,30 @@ function fromAbsenceRow(r: any): AbsenceRequest {
   };
 }
 
+function toHolidayRow(h: Holiday) {
+  return { id: h.id, date: h.date, type: h.type, title: h.title };
+}
+
+function fromHolidayRow(r: any): Holiday {
+  return { id: r.id, date: r.date, type: r.type, title: r.title };
+}
+
 async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>) {
-  const [{ data: entryRows, error: entriesErr }, { data: absenceRows, error: absencesErr }] = await Promise.all([
+  const [
+    { data: entryRows, error: entriesErr },
+    { data: absenceRows, error: absencesErr },
+    { data: holidayRows, error: holidaysErr },
+  ] = await Promise.all([
     supabase.from("time_entries").select("*"),
     supabase.from("absence_requests").select("*"),
+    supabase.from("holidays").select("*"),
   ]);
   if (entriesErr) console.warn("Error al leer time_entries:", entriesErr);
   if (absencesErr) console.warn("Error al leer absence_requests:", absencesErr);
+  if (holidaysErr) console.warn("Error al leer holidays:", holidaysErr);
   dispatch({ type: "syncEntries", entries: (entryRows || []).map(fromEntryRow) });
   dispatch({ type: "syncAbsences", absences: (absenceRows || []).map(fromAbsenceRow) });
+  dispatch({ type: "syncHolidays", holidays: (holidayRows || []).map(fromHolidayRow) });
 }
 
 /** Refleja en Supabase las acciones que modifican registros de horas y ausencias. */
@@ -424,6 +451,14 @@ async function syncActionToSupabase(a: Action): Promise<string | null> {
           resolved_at: isoDate(new Date()),
         })
         .eq("id", a.id);
+      return error?.message ?? null;
+    }
+    case "addHoliday": {
+      const { error } = await supabase.from("holidays").insert(toHolidayRow(a.holiday));
+      return error?.message ?? null;
+    }
+    case "deleteHoliday": {
+      const { error } = await supabase.from("holidays").delete().eq("id", a.id);
       return error?.message ?? null;
     }
     default:
@@ -544,6 +579,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .channel("tempo-entries-absences")
       .on("postgres_changes", { event: "*", schema: "public", table: "time_entries" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "absence_requests" }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "holidays" }, refetch)
       .subscribe();
     return () => {
       cancelled = true;
@@ -606,17 +642,8 @@ export function validatedOvertimeMin(state: AppState, userId: string): number {
           ? 4 * 60
           : (u.weeklyHours * 60) / Math.max(1, u.workDays.length)
         : 8 * 60;
-      const d = new Date(a.dateFrom + "T00:00:00");
-      const end = new Date(a.dateTo + "T00:00:00");
-      let workDaysCount = 0;
-      let guard = 0;
       const activeWorkDays = u ? (u.jornada === "media" ? [1, 2, 3, 4, 5] : u.workDays) : [1, 2, 3, 4, 5];
-      while (d <= end && guard < 400) {
-        const dow = ((d.getDay() + 6) % 7) + 1;
-        if (activeWorkDays.includes(dow)) workDaysCount++;
-        d.setDate(d.getDate() + 1);
-        guard++;
-      }
+      const workDaysCount = countWorkDays(a.dateFrom, a.dateTo, activeWorkDays, holidayDateSet(state));
       return acc + Math.round(workDaysCount * dailyMin);
     }, 0);
 
@@ -630,19 +657,24 @@ export function visibleProjects(state: AppState, userId: string) {
   return state.projects.filter((p) => p.memberIds.includes(userId));
 }
 
-/** Días hábiles del usuario dentro de un rango de fechas (inclusive) */
-function countWorkDays(from: string, to: string, workDays: number[]): number {
+/** Días hábiles del usuario dentro de un rango de fechas (inclusive), excluyendo feriados */
+function countWorkDays(from: string, to: string, workDays: number[], holidays?: Set<string>): number {
   let count = 0;
   const d = new Date(from + "T00:00:00");
   const end = new Date(to + "T00:00:00");
   let guard = 0;
   while (d <= end && guard < 400) {
     const dow = ((d.getDay() + 6) % 7) + 1; // 1=Lun..7=Dom
-    if (workDays.includes(dow)) count++;
+    if (workDays.includes(dow) && !holidays?.has(isoDate(d))) count++;
     d.setDate(d.getDate() + 1);
     guard++;
   }
   return count;
+}
+
+/** Fechas de feriados como set de strings YYYY-MM-DD, para excluirlas del conteo de días hábiles */
+function holidayDateSet(state: AppState): Set<string> {
+  return new Set(state.holidays.map((h) => h.date));
 }
 
 export interface VacationInfo {
@@ -679,6 +711,7 @@ export function vacationInfo(state: AppState, userId: string, todayISO: string):
   const fmt = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+  const holidays = holidayDateSet(state);
   const used = state.absences
     .filter(
       (a) =>
@@ -688,7 +721,7 @@ export function vacationInfo(state: AppState, userId: string, todayISO: string):
         a.dateFrom >= fmt(periodStart) &&
         a.dateFrom < fmt(periodEnd),
     )
-    .reduce((acc, a) => acc + countWorkDays(a.dateFrom, a.dateTo, u.jornada === "media" ? [1, 2, 3, 4, 5] : u.workDays), 0);
+    .reduce((acc, a) => acc + countWorkDays(a.dateFrom, a.dateTo, u.jornada === "media" ? [1, 2, 3, 4, 5] : u.workDays, holidays), 0);
 
   const expiration = fmt(periodEnd);
   const daysToExpire = Math.round((periodEnd.getTime() - now.getTime()) / 86400000);

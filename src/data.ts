@@ -225,6 +225,7 @@ export function seedState(): AppState {
     overtime: [],
     emails: [],
     corpEvents: seedCorpEvents(),
+    holidays: [],
     notifications: [
       {
         id: uid(), kind: "solicitud", title: "Solicitud pendiente",
