@@ -122,7 +122,10 @@ export function Login() {
 
     const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
     if (updateErr) {
-      setError("Error al actualizar la contraseña: " + updateErr.message);
+      const msg = updateErr.message === "New password should be different from the old password."
+        ? "La nueva contraseña debe ser diferente a la actual."
+        : "Error al actualizar la contraseña: " + updateErr.message;
+      setError(msg);
       return;
     }
 
