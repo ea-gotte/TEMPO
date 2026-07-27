@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
-import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord, Holiday, Client, Project, Team, Department, AuditLog, CorpEvent } from "./types";
+import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord, Holiday, Client, Project, Team, Department, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
@@ -37,7 +37,14 @@ type Action =
   | { type: "syncDepartments"; departments: Department[] }
   | { type: "syncOvertime"; overtime: OvertimeRequest[] }
   | { type: "syncAudit"; audit: AuditLog[] }
-  | { type: "syncCorpEvents"; corpEvents: CorpEvent[] };
+  | { type: "syncCorpEvents"; corpEvents: CorpEvent[] }
+  | {
+      type: "syncSettings";
+      company: CompanySettings;
+      rolePermissions: Record<Role, RolePermission[]>;
+      leaveTypeConfig: LeaveTypeConfig[];
+      tags: Tag[];
+    };
 
 /** Construye el registro que resulta de detener un cronómetro (compartido con la sincronización a Supabase) */
 function buildStoppedEntry(t: RunningTimer, currentUserId: string): TimeEntry {
@@ -264,6 +271,8 @@ function baseReducer(s: AppState, a: Action): AppState {
       return { ...s, audit: a.audit };
     case "syncCorpEvents":
       return { ...s, corpEvents: a.corpEvents };
+    case "syncSettings":
+      return { ...s, company: a.company, rolePermissions: a.rolePermissions, leaveTypeConfig: a.leaveTypeConfig, tags: a.tags };
   }
 }
 
@@ -526,7 +535,15 @@ function fromCorpEventRow(r: any): CorpEvent {
   };
 }
 
-async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>) {
+/** Config global de la app (empresa, permisos, tipos de licencia y etiquetas): una sola fila en app_settings. */
+interface LocalSettings {
+  company: CompanySettings;
+  rolePermissions: Record<Role, RolePermission[]>;
+  leaveTypeConfig: LeaveTypeConfig[];
+  tags: Tag[];
+}
+
+async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSettings: LocalSettings) {
   const [
     { data: entryRows, error: entriesErr },
     { data: absenceRows, error: absencesErr },
@@ -538,6 +555,7 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>) {
     { data: overtimeRows, error: overtimeErr },
     { data: auditRows, error: auditErr },
     { data: corpEventRows, error: corpEventsErr },
+    { data: settingsRow, error: settingsErr },
   ] = await Promise.all([
     supabase.from("time_entries").select("*"),
     supabase.from("absence_requests").select("*"),
@@ -549,6 +567,7 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>) {
     supabase.from("overtime_requests").select("*"),
     supabase.from("audit_log").select("*").order("at", { ascending: false }).limit(300),
     supabase.from("corp_events").select("*"),
+    supabase.from("app_settings").select("*").eq("id", "global").maybeSingle(),
   ]);
   if (entriesErr) console.warn("Error al leer time_entries:", entriesErr);
   if (absencesErr) console.warn("Error al leer absence_requests:", absencesErr);
@@ -560,6 +579,7 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>) {
   if (overtimeErr) console.warn("Error al leer overtime_requests:", overtimeErr);
   if (auditErr) console.warn("Error al leer audit_log:", auditErr);
   if (corpEventsErr) console.warn("Error al leer corp_events:", corpEventsErr);
+  if (settingsErr) console.warn("Error al leer app_settings:", settingsErr);
   dispatch({ type: "syncEntries", entries: (entryRows || []).map(fromEntryRow) });
   dispatch({ type: "syncAbsences", absences: (absenceRows || []).map(fromAbsenceRow) });
   dispatch({ type: "syncHolidays", holidays: (holidayRows || []).map(fromHolidayRow) });
@@ -570,6 +590,29 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>) {
   dispatch({ type: "syncOvertime", overtime: (overtimeRows || []).map(fromOvertimeRow) });
   dispatch({ type: "syncAudit", audit: (auditRows || []).map(fromAuditRow) });
   dispatch({ type: "syncCorpEvents", corpEvents: (corpEventRows || []).map(fromCorpEventRow) });
+  if (settingsRow) {
+    dispatch({
+      type: "syncSettings",
+      company: settingsRow.company,
+      rolePermissions: settingsRow.role_permissions,
+      leaveTypeConfig: settingsRow.leave_type_config,
+      tags: settingsRow.tags,
+    });
+  } else if (!settingsErr) {
+    // Todavía no existe la fila de configuración global: la inicializamos con los valores
+    // actuales de este navegador (los de data.ts la primera vez que corre alguien).
+    const { error } = await supabase.from("app_settings").upsert(
+      {
+        id: "global",
+        company: localSettings.company,
+        role_permissions: localSettings.rolePermissions,
+        leave_type_config: localSettings.leaveTypeConfig,
+        tags: localSettings.tags,
+      },
+      { onConflict: "id", ignoreDuplicates: true },
+    );
+    if (error) console.warn("Error al inicializar app_settings:", error);
+  }
 }
 
 /** Reconcilia una tabla completa contra Supabase: inserta lo nuevo, actualiza lo cambiado, borra lo quitado. */
@@ -628,6 +671,18 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
       if (a.patch.corpEvents) {
         const err = await reconcileTable("corp_events", prevState.corpEvents, a.patch.corpEvents, toCorpEventRow);
         if (err) errors.push(err);
+      }
+      if (a.patch.company || a.patch.tags || a.patch.rolePermissions || a.patch.leaveTypeConfig) {
+        const { error } = await supabase
+          .from("app_settings")
+          .update({
+            company: a.patch.company ?? prevState.company,
+            role_permissions: a.patch.rolePermissions ?? prevState.rolePermissions,
+            leave_type_config: a.patch.leaveTypeConfig ?? prevState.leaveTypeConfig,
+            tags: a.patch.tags ?? prevState.tags,
+          })
+          .eq("id", "global");
+        if (error) errors.push(error.message);
       }
       return errors.length > 0 ? errors.join("; ") : null;
     }
@@ -803,8 +858,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!state.authenticated) return;
     let cancelled = false;
+    const localSettings: LocalSettings = {
+      company: state.company,
+      rolePermissions: state.rolePermissions,
+      leaveTypeConfig: state.leaveTypeConfig,
+      tags: state.tags,
+    };
     const refetch = () => {
-      if (!cancelled) fetchEntriesAndAbsences(dispatch);
+      if (!cancelled) fetchEntriesAndAbsences(dispatch, localSettings);
     };
     refetch();
     const channel = supabase
@@ -818,6 +879,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "departments" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "overtime_requests" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "corp_events" }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, refetch)
       // audit_log queda afuera a propósito: casi cualquier acción genera una fila ahí,
       // y traer las 300 de vuelta en cada una sería un refetch constante para poco beneficio.
       .subscribe();

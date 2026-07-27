@@ -205,29 +205,30 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
       online: user?.online ?? false,
     };
 
-    try {
-      // Sincronizar perfil en Supabase
-      const { error: dbErr } = await supabase.from("profiles").upsert({
-        id: next.id,
-        name: next.name,
-        email: next.email,
-        role: next.role,
-        jornada: next.jornada,
-        team_id: next.teamId,
-        department_id: next.departmentId,
-        supervisor_id: next.supervisorId || null,
-        weekly_hours: next.weeklyHours,
-        day_start: next.dayStart,
-        day_end: next.dayEnd,
-        birthday: next.birthday || null,
-        hire_date: next.hireDate || null,
-        must_change_password: next.mustChangePassword ?? false,
-        active: next.active,
-        online: next.online
-      });
-      if (dbErr) throw dbErr;
-    } catch (err) {
-      console.warn("Supabase profile sync failed, falling back to local storage:", err);
+    // Sincronizar perfil en Supabase. Si falla, no aplicamos el cambio localmente ni
+    // cerramos el modal: mostrar "Usuario actualizado" cuando en realidad no se guardó
+    // en el servidor hacía que el cambio pareciera aplicado y desapareciera al recargar.
+    const { error: dbErr } = await supabase.from("profiles").upsert({
+      id: next.id,
+      name: next.name,
+      email: next.email,
+      role: next.role,
+      jornada: next.jornada,
+      team_id: next.teamId,
+      department_id: next.departmentId,
+      supervisor_id: next.supervisorId || null,
+      weekly_hours: next.weeklyHours,
+      day_start: next.dayStart,
+      day_end: next.dayEnd,
+      birthday: next.birthday || null,
+      hire_date: next.hireDate || null,
+      must_change_password: next.mustChangePassword ?? false,
+      active: next.active,
+      online: next.online
+    });
+    if (dbErr) {
+      setError(`No se pudo guardar en el servidor: ${dbErr.message}`);
+      return;
     }
 
     dispatch({

@@ -137,6 +137,11 @@ a { color: var(--accent); text-decoration: none; }
   position: absolute; top: 6px; right: 7px; width: 8px; height: 8px; border-radius: 50%;
   background: var(--danger); border: 2px solid var(--surface);
 }
+.iconbtn .badge-count {
+  position: absolute; top: -2px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 99px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; border: 2px solid var(--surface); line-height: 1;
+}
 
 .content { flex: 1; overflow-y: auto; padding: 22px 24px 60px; }
 .content-inner { max-width: 1240px; margin: 0 auto; }

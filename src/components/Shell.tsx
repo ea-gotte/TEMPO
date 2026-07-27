@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useStore, vacationInfo } from "../store";
-import { dayLabel, fmtDate, today, hashPassword, validatePassword } from "../utils";
+import { dayLabel, fmtDate, today, validatePassword } from "../utils";
 import { Avatar, Modal, useToast } from "./ui";
 import { Icon, type IconName } from "./Icon";
+import { supabase } from "../supabase";
 
 /** Páginas visibles para el rol empleado (vista básica) */
 export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "absences", "corp"];
@@ -161,6 +162,7 @@ export function Shell({
                 <span className="ico"><Icon name={it.ico} size={17} /></span>
                 {it.label}
                 {it.key === "absences" && pending > 0 && <span className="count">{pending}</span>}
+                {it.key === "control" && otPending > 0 && <span className="count">{otPending}</span>}
               </button>
             ))}
           </React.Fragment>
@@ -235,7 +237,7 @@ export function Shell({
           </button>
           <button className="iconbtn" onClick={() => setNotifOpen((o) => !o)} aria-label="Notificaciones">
             <Icon name="bell" />
-            {unread > 0 && <span className="dot" />}
+            {unread > 0 && <span className="badge-count">{unread > 99 ? "99+" : unread}</span>}
           </button>
         </header>
 
@@ -356,6 +358,8 @@ function ProfileModal({ onClose }: { onClose: () => void }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
 
+  const [saving, setSaving] = useState(false);
+
   async function handleSave() {
     setError("");
 
@@ -366,12 +370,6 @@ function ProfileModal({ onClose }: { onClose: () => void }) {
 
     if (!currentPassword || !newPassword || !confirmPassword) {
       setError("Para cambiar la contraseña, debés completar todos los campos.");
-      return;
-    }
-
-    const currentHash = await hashPassword(currentPassword);
-    if (me.password !== currentHash) {
-      setError("La contraseña actual es incorrecta.");
       return;
     }
 
@@ -391,23 +389,28 @@ function ProfileModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    const newHash = await hashPassword(newPassword);
-    const updatedUsers = state.users.map((u) =>
-      u.id === me.id ? { ...u, password: newHash } : u
-    );
+    setSaving(true);
+    try {
+      // Supabase no tiene un endpoint para "verificar" la clave actual sin cambiar la
+      // sesión: la forma soportada es reintentar el login con ella.
+      const { error: verifyErr } = await supabase.auth.signInWithPassword({ email: me.email, password: currentPassword });
+      if (verifyErr) {
+        setError("La contraseña actual es incorrecta.");
+        return;
+      }
 
-    dispatch({
-      type: "patch",
-      patch: { users: updatedUsers },
-    });
-    dispatch({
-      type: "audit",
-      action: "Cambio voluntario de clave",
-      detail: me.email,
-    });
+      const { error: updErr } = await supabase.auth.updateUser({ password: newPassword });
+      if (updErr) {
+        setError(`No se pudo actualizar la contraseña: ${updErr.message}`);
+        return;
+      }
 
-    toast("Contraseña actualizada con éxito.");
-    onClose();
+      dispatch({ type: "audit", action: "Cambio voluntario de clave", detail: me.email });
+      toast("Contraseña actualizada con éxito.");
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -416,8 +419,8 @@ function ProfileModal({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       footer={
         <>
-          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={handleSave}>Guardar cambios</button>
+          <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</button>
         </>
       }
     >
