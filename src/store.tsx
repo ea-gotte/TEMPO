@@ -504,10 +504,26 @@ function fromAuditRow(r: any): AuditLog {
 }
 
 function toCorpEventRow(e: CorpEvent) {
-  return { id: e.id, date: e.date, type: e.type, title: e.title };
+  return {
+    id: e.id,
+    date: e.date,
+    type: e.type,
+    title: e.title,
+    all_day: e.allDay,
+    time_from: e.timeFrom ?? null,
+    time_to: e.timeTo ?? null,
+  };
 }
 function fromCorpEventRow(r: any): CorpEvent {
-  return { id: r.id, date: r.date, type: r.type, title: r.title };
+  return {
+    id: r.id,
+    date: r.date,
+    type: r.type,
+    title: r.title,
+    allDay: r.all_day ?? true,
+    timeFrom: r.time_from ?? undefined,
+    timeTo: r.time_to ?? undefined,
+  };
 }
 
 async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>) {

@@ -71,7 +71,7 @@ function seedEntries(): TimeEntry[] {
 function seedCorpEvents(): CorpEvent[] {
   const y = new Date().getFullYear();
   const t = today();
-  const e = (date: string, type: CorpEvent["type"], title: string): CorpEvent => ({ id: uid(), date, type, title });
+  const e = (date: string, type: CorpEvent["type"], title: string): CorpEvent => ({ id: uid(), date, type, title, allDay: true });
   return [
     e(`${y}-01-01`, "Feriado nacional", "Año Nuevo"),
     e(`${y}-05-01`, "Feriado nacional", "Día del Trabajador"),

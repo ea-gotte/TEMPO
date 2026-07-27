@@ -159,6 +159,9 @@ export interface CorpEvent {
   date: string;
   type: CorpEventType;
   title: string;
+  allDay: boolean;
+  timeFrom?: string;
+  timeTo?: string;
 }
 
 export type HolidayType = "Feriado nacional" | "Feriado provincial" | "Día no laborable";
@@ -181,6 +184,7 @@ export interface Notification {
     | "aprobacion"
     | "feriado"
     | "exceso"
+    | "exceso-pendiente"
     | "falta-carga"
     | "vencimiento"
     | "error";

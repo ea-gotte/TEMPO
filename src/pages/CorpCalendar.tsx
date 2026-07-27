@@ -30,6 +30,8 @@ interface DayItem {
   key: string;
   label: string;
   type: string;
+  /** Solo presente en ítems que vienen de state.corpEvents — son los únicos editables */
+  eventId?: string;
 }
 
 export function CorpCalendar() {
@@ -38,6 +40,8 @@ export function CorpCalendar() {
   const [anchor, setAnchor] = useState(today());
   const [filters, setFilters] = useState<Set<string>>(new Set());
   const [showNew, setShowNew] = useState(false);
+  const [editing, setEditing] = useState<CorpEvent | null>(null);
+  const [deleting, setDeleting] = useState<CorpEvent | null>(null);
   const isAdmin = state.users.find((u) => u.id === state.currentUserId)?.role === "admin";
 
   const monthCells = useMemo(() => {
@@ -55,7 +59,7 @@ export function CorpCalendar() {
     };
     for (const e of state.corpEvents) {
       const type = unifiedType(e.type);
-      if (type) push(e.date, { key: e.id, label: e.title, type });
+      if (type) push(e.date, { key: e.id, label: e.allDay ? e.title : `${e.timeFrom} ${e.title}`, type, eventId: e.id });
     }
     for (const h of state.holidays) {
       push(h.date, { key: h.id, label: h.title, type: "Feriado / No laborable" });
@@ -138,8 +142,22 @@ export function CorpCalendar() {
               <span className={`num ${day === today() ? "today" : ""}`}>{parseISO(day).getDate()}</span>
               {items.slice(0, 3).map((i) => {
                 const st = EVENT_STYLES[i.type] ?? { bg: "#888", icon: "map-pin" as IconName };
+                const editable = isAdmin && i.eventId;
                 return (
-                  <span key={i.key} className="month-evt" style={{ background: st.bg + "26", color: st.bg, display: "inline-flex", alignItems: "center", gap: 4 }} title={`${i.type}: ${i.label}`}>
+                  <span
+                    key={i.key}
+                    className="month-evt"
+                    style={{
+                      background: st.bg + "26",
+                      color: st.bg,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      cursor: editable ? "pointer" : undefined,
+                    }}
+                    title={editable ? `${i.type}: ${i.label} (click para editar)` : `${i.type}: ${i.label}`}
+                    onClick={editable ? () => setEditing(state.corpEvents.find((e) => e.id === i.eventId) ?? null) : undefined}
+                  >
                     {i.label}
                   </span>
                 );
@@ -150,35 +168,95 @@ export function CorpCalendar() {
         })}
       </div>
 
-      {showNew && <NewEvent onClose={() => setShowNew(false)} />}
+      {showNew && <EventModal event={null} onClose={() => setShowNew(false)} />}
+      {editing && (
+        <EventModal
+          event={editing}
+          onClose={() => setEditing(null)}
+          onDelete={() => {
+            setDeleting(editing);
+            setEditing(null);
+          }}
+        />
+      )}
+      {deleting && (
+        <Modal
+          title="Eliminar evento"
+          onClose={() => setDeleting(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setDeleting(null)}>Cancelar</button>
+              <button
+                className="btn btn-danger"
+                onClick={() => {
+                  dispatch({ type: "patch", patch: { corpEvents: state.corpEvents.filter((e) => e.id !== deleting.id) } });
+                  dispatch({ type: "audit", action: "Evento corporativo eliminado", detail: `${deleting.title} (${deleting.date})` });
+                  toast("Evento eliminado.");
+                  setDeleting(null);
+                }}
+              >
+                <Icon name="trash" size={14} /> Sí, eliminar
+              </button>
+            </>
+          }
+        >
+          <p style={{ fontSize: 13.5 }}>
+            ¿Eliminar el evento <strong>{deleting.title}</strong> del {fmtDate(deleting.date)}?
+          </p>
+        </Modal>
+      )}
     </>
   );
 }
 
-function NewEvent({ onClose }: { onClose: () => void }) {
+function EventModal({
+  event,
+  onClose,
+  onDelete,
+}: {
+  event: CorpEvent | null;
+  onClose: () => void;
+  onDelete?: () => void;
+}) {
   const { state, dispatch } = useStore();
   const toast = useToast();
-  const [date, setDate] = useState(today());
-  const [type, setType] = useState<CorpEventType>("Capacitación");
-  const [title, setTitle] = useState("");
+  const [date, setDate] = useState(event?.date ?? today());
+  const [type, setType] = useState<CorpEventType>(event?.type ?? "Capacitación");
+  const [title, setTitle] = useState(event?.title ?? "");
+  const [allDay, setAllDay] = useState(event?.allDay ?? true);
+  const [timeFrom, setTimeFrom] = useState(event?.timeFrom ?? "09:00");
+  const [timeTo, setTimeTo] = useState(event?.timeTo ?? "10:00");
 
   function save() {
     if (!title.trim()) return;
-    const evt: CorpEvent = { id: uid(), date, type, title: title.trim() };
-    dispatch({ type: "patch", patch: { corpEvents: [...state.corpEvents, evt] } });
-    dispatch({ type: "audit", action: "Evento corporativo creado", detail: `${evt.title} (${evt.date})` });
-    toast("Evento agregado al calendario.");
+    const base = { date, type, title: title.trim(), allDay, timeFrom: allDay ? undefined : timeFrom, timeTo: allDay ? undefined : timeTo };
+    if (event) {
+      const updated: CorpEvent = { ...event, ...base };
+      dispatch({ type: "patch", patch: { corpEvents: state.corpEvents.map((e) => (e.id === event.id ? updated : e)) } });
+      dispatch({ type: "audit", action: "Evento corporativo modificado", detail: `${updated.title} (${updated.date})` });
+      toast("Evento actualizado.");
+    } else {
+      const evt: CorpEvent = { id: uid(), ...base };
+      dispatch({ type: "patch", patch: { corpEvents: [...state.corpEvents, evt] } });
+      dispatch({ type: "audit", action: "Evento corporativo creado", detail: `${evt.title} (${evt.date})` });
+      toast("Evento agregado al calendario.");
+    }
     onClose();
   }
 
   return (
     <Modal
-      title="Nuevo evento corporativo"
+      title={event ? "Editar evento corporativo" : "Nuevo evento corporativo"}
       onClose={onClose}
       footer={
         <>
+          {event && onDelete && (
+            <button className="btn btn-danger" style={{ marginRight: "auto" }} onClick={onDelete}>
+              <Icon name="trash" size={14} /> Eliminar
+            </button>
+          )}
           <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={!title.trim()}>Crear</button>
+          <button className="btn btn-primary" onClick={save} disabled={!title.trim()}>{event ? "Guardar" : "Crear"}</button>
         </>
       }
     >
@@ -200,6 +278,24 @@ function NewEvent({ onClose }: { onClose: () => void }) {
           </select>
         </div>
       </div>
+      <div className="field">
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
+          Todo el día
+        </label>
+      </div>
+      {!allDay && (
+        <div className="form-grid">
+          <div className="field">
+            <label>Desde</label>
+            <input type="time" className="input" value={timeFrom} onChange={(e) => setTimeFrom(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Hasta</label>
+            <input type="time" className="input" value={timeTo} onChange={(e) => setTimeTo(e.target.value)} />
+          </div>
+        </div>
+      )}
       <p style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: -4 }}>
         Los feriados se gestionan desde Administración → Feriados, no desde acá.
       </p>

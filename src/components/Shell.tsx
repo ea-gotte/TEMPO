@@ -57,6 +57,7 @@ const KIND_ICON: Record<string, IconName> = {
   aprobacion: "check-circle",
   feriado: "party",
   exceso: "flame",
+  "exceso-pendiente": "flame",
   "falta-carga": "alert",
   vencimiento: "hourglass",
   error: "alert",
@@ -93,8 +94,20 @@ export function Shell({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me.id]);
+
+  // Aviso de horas extra pendientes de aprobación (solo admin/supervisor)
+  const otPending = state.overtime.filter((o) => o.status === "Pendiente" && o.userId !== me.id).length;
+  useEffect(() => {
+    if (me.role === "usuario" || otPending === 0) return;
+    const body = `Tenés ${otPending} solicitud${otPending !== 1 ? "es" : ""} de horas extra pendiente${otPending !== 1 ? "s" : ""} de aprobación.`;
+    if (!state.notifications.some((n) => n.kind === "exceso-pendiente" && n.body === body)) {
+      dispatch({ type: "notify", n: { kind: "exceso-pendiente", title: "Horas extra por aprobar", body } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me.id, me.role, otPending]);
+
   const unread = state.notifications.filter((n) => !n.read).length;
-  const pending = state.absences.filter((a) => a.status === "Pendiente").length;
+  const pending = state.absences.filter((a) => a.status === "Pendiente").length + (me.role !== "usuario" ? otPending : 0);
 
   const title = useMemo(() => {
     for (const s of NAV) for (const i of s.items) if (i.key === page) return i.label;
