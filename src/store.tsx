@@ -1,5 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer } from "react";
-import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord, Holiday, Client, Project, Team, Department } from "./types";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
+import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord, Holiday, Client, Project, Team, Department, AuditLog, CorpEvent } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
@@ -34,7 +34,10 @@ type Action =
   | { type: "syncClients"; clients: Client[] }
   | { type: "syncProjects"; projects: Project[] }
   | { type: "syncTeams"; teams: Team[] }
-  | { type: "syncDepartments"; departments: Department[] };
+  | { type: "syncDepartments"; departments: Department[] }
+  | { type: "syncOvertime"; overtime: OvertimeRequest[] }
+  | { type: "syncAudit"; audit: AuditLog[] }
+  | { type: "syncCorpEvents"; corpEvents: CorpEvent[] };
 
 /** Construye el registro que resulta de detener un cronómetro (compartido con la sincronización a Supabase) */
 function buildStoppedEntry(t: RunningTimer, currentUserId: string): TimeEntry {
@@ -255,6 +258,12 @@ function baseReducer(s: AppState, a: Action): AppState {
       return { ...s, teams: a.teams };
     case "syncDepartments":
       return { ...s, departments: a.departments };
+    case "syncOvertime":
+      return { ...s, overtime: a.overtime };
+    case "syncAudit":
+      return { ...s, audit: a.audit };
+    case "syncCorpEvents":
+      return { ...s, corpEvents: a.corpEvents };
   }
 }
 
@@ -460,6 +469,47 @@ function fromDepartmentRow(r: any): Department {
   return { id: r.id, name: r.name };
 }
 
+function toOvertimeRow(o: OvertimeRequest) {
+  return {
+    id: o.id,
+    user_id: o.userId,
+    week_start: o.weekStart,
+    minutes: o.minutes,
+    status: o.status,
+    created_at: o.createdAt,
+    resolved_by: o.resolvedBy ?? null,
+    resolved_at: o.resolvedAt ?? null,
+    supervisor_comment: o.supervisorComment ?? null,
+  };
+}
+function fromOvertimeRow(r: any): OvertimeRequest {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    weekStart: r.week_start,
+    minutes: r.minutes,
+    status: r.status,
+    createdAt: r.created_at,
+    resolvedBy: r.resolved_by ?? undefined,
+    resolvedAt: r.resolved_at ?? undefined,
+    supervisorComment: r.supervisor_comment ?? undefined,
+  };
+}
+
+function toAuditRow(a: AuditLog) {
+  return { id: a.id, at: a.at, user_id: a.userId, action: a.action, detail: a.detail };
+}
+function fromAuditRow(r: any): AuditLog {
+  return { id: r.id, at: r.at, userId: r.user_id, action: r.action, detail: r.detail ?? "" };
+}
+
+function toCorpEventRow(e: CorpEvent) {
+  return { id: e.id, date: e.date, type: e.type, title: e.title };
+}
+function fromCorpEventRow(r: any): CorpEvent {
+  return { id: r.id, date: r.date, type: r.type, title: r.title };
+}
+
 async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>) {
   const [
     { data: entryRows, error: entriesErr },
@@ -469,6 +519,9 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>) {
     { data: projectRows, error: projectsErr },
     { data: teamRows, error: teamsErr },
     { data: departmentRows, error: departmentsErr },
+    { data: overtimeRows, error: overtimeErr },
+    { data: auditRows, error: auditErr },
+    { data: corpEventRows, error: corpEventsErr },
   ] = await Promise.all([
     supabase.from("time_entries").select("*"),
     supabase.from("absence_requests").select("*"),
@@ -477,6 +530,9 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>) {
     supabase.from("projects").select("*"),
     supabase.from("teams").select("*"),
     supabase.from("departments").select("*"),
+    supabase.from("overtime_requests").select("*"),
+    supabase.from("audit_log").select("*").order("at", { ascending: false }).limit(300),
+    supabase.from("corp_events").select("*"),
   ]);
   if (entriesErr) console.warn("Error al leer time_entries:", entriesErr);
   if (absencesErr) console.warn("Error al leer absence_requests:", absencesErr);
@@ -485,6 +541,9 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>) {
   if (projectsErr) console.warn("Error al leer projects:", projectsErr);
   if (teamsErr) console.warn("Error al leer teams:", teamsErr);
   if (departmentsErr) console.warn("Error al leer departments:", departmentsErr);
+  if (overtimeErr) console.warn("Error al leer overtime_requests:", overtimeErr);
+  if (auditErr) console.warn("Error al leer audit_log:", auditErr);
+  if (corpEventsErr) console.warn("Error al leer corp_events:", corpEventsErr);
   dispatch({ type: "syncEntries", entries: (entryRows || []).map(fromEntryRow) });
   dispatch({ type: "syncAbsences", absences: (absenceRows || []).map(fromAbsenceRow) });
   dispatch({ type: "syncHolidays", holidays: (holidayRows || []).map(fromHolidayRow) });
@@ -492,6 +551,9 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>) {
   dispatch({ type: "syncProjects", projects: (projectRows || []).map(fromProjectRow) });
   dispatch({ type: "syncTeams", teams: (teamRows || []).map(fromTeamRow) });
   dispatch({ type: "syncDepartments", departments: (departmentRows || []).map(fromDepartmentRow) });
+  dispatch({ type: "syncOvertime", overtime: (overtimeRows || []).map(fromOvertimeRow) });
+  dispatch({ type: "syncAudit", audit: (auditRows || []).map(fromAuditRow) });
+  dispatch({ type: "syncCorpEvents", corpEvents: (corpEventRows || []).map(fromCorpEventRow) });
 }
 
 /** Reconcilia una tabla completa contra Supabase: inserta lo nuevo, actualiza lo cambiado, borra lo quitado. */
@@ -547,6 +609,10 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
         const err = await reconcileTable("departments", prevState.departments, a.patch.departments, toDepartmentRow);
         if (err) errors.push(err);
       }
+      if (a.patch.corpEvents) {
+        const err = await reconcileTable("corp_events", prevState.corpEvents, a.patch.corpEvents, toCorpEventRow);
+        if (err) errors.push(err);
+      }
       return errors.length > 0 ? errors.join("; ") : null;
     }
     case "addEntry": {
@@ -593,6 +659,22 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
     }
     case "deleteHoliday": {
       const { error } = await supabase.from("holidays").delete().eq("id", a.id);
+      return error?.message ?? null;
+    }
+    case "addOvertime": {
+      const { error } = await supabase.from("overtime_requests").insert(toOvertimeRow(a.o));
+      return error?.message ?? null;
+    }
+    case "resolveOvertime": {
+      const { error } = await supabase
+        .from("overtime_requests")
+        .update({
+          status: a.status,
+          supervisor_comment: a.comment || null,
+          resolved_by: a.by,
+          resolved_at: isoDate(new Date()),
+        })
+        .eq("id", a.id);
       return error?.message ?? null;
     }
     default:
@@ -718,12 +800,37 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "projects" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "departments" }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "overtime_requests" }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "corp_events" }, refetch)
+      // audit_log queda afuera a propósito: casi cualquier acción genera una fila ahí,
+      // y traer las 300 de vuelta en cada una sería un refetch constante para poco beneficio.
       .subscribe();
     return () => {
       cancelled = true;
       supabase.removeChannel(channel);
     };
   }, [state.authenticated]);
+
+  // Auditoría: cada nueva entrada que aparece al frente de state.audit (siempre se
+  // agrega ahí, ver withAudit) se sube a Supabase. Se compara por id — no por longitud,
+  // porque el array local se recorta a 300 y la longitud puede quedar igual aunque haya
+  // entradas nuevas. Usa upsert para no fallar si ya estaba sincronizada (p.ej. recién
+  // llegada de la carga inicial desde la base).
+  const prevAuditFirstIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!state.authenticated) return;
+    const prevFirstId = prevAuditFirstIdRef.current;
+    prevAuditFirstIdRef.current = state.audit[0]?.id ?? null;
+    const idx = prevFirstId ? state.audit.findIndex((a) => a.id === prevFirstId) : -1;
+    const newEntries = idx === -1 ? state.audit : state.audit.slice(0, idx);
+    if (newEntries.length === 0) return;
+    supabase
+      .from("audit_log")
+      .upsert(newEntries.map(toAuditRow))
+      .then(({ error }) => {
+        if (error) console.warn("Error al sincronizar auditoría:", error);
+      });
+  }, [state.audit, state.authenticated]);
 
   // Envuelve el dispatch: además de actualizar el estado local, refleja en Supabase
   // las acciones sobre registros de horas y ausencias.
