@@ -5,6 +5,7 @@ import { addDays, clamp, dayLabel, fmtDur, isoDate, minToHM, monthLabel, parseIS
 import { EntryModal } from "../components/EntryModal";
 import { ContextMenu, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
+import { supabase } from "../supabase";
 
 const H0 = 0; // primera hora visible (día completo)
 const H1 = 24; // última hora
@@ -71,6 +72,15 @@ export function CalendarPage() {
       type: "patch",
       patch: { users: state.users.map((u) => (u.id === me ? { ...u, [field]: value } : u)) },
     });
+    // Se guarda en el propio perfil (columna calendar_tz / calendar_tz2); antes solo
+    // quedaba en memoria local y se perdía al recargar.
+    supabase
+      .from("profiles")
+      .update({ [field === "calendarTz" ? "calendar_tz" : "calendar_tz2"]: value || null })
+      .eq("id", me)
+      .then(({ error }) => {
+        if (error) console.warn("No se pudo guardar la preferencia de huso horario:", error);
+      });
   }
 
   // Diferencia en minutos entre el huso adicional y el huso base elegido

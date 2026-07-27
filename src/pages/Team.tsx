@@ -218,6 +218,7 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
       department_id: next.departmentId,
       supervisor_id: next.supervisorId || null,
       weekly_hours: next.weeklyHours,
+      work_days: next.workDays,
       day_start: next.dayStart,
       day_end: next.dayEnd,
       birthday: next.birthday || null,

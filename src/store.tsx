@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
 import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord, Holiday, Client, Project, Team, Department, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role } from "./types";
 import { seedState } from "./data";
-import { isoDate, uid, hashPassword } from "./utils";
+import { isoDate, uid, hashPassword, addDays, parseISO } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
 
 const LS_KEY = "tempo-state-v1";
@@ -19,10 +19,14 @@ type Action =
   | { type: "stopTimer"; id: string; discard?: boolean; entry?: TimeEntry }
   | { type: "addAbsence"; absence: AbsenceRequest }
   | { type: "resolveAbsence"; id: string; status: "Aprobado" | "Rechazado"; comment: string; by: string }
+  | { type: "updateAbsence"; absence: AbsenceRequest }
+  | { type: "deleteAbsence"; id: string }
   | { type: "validateWeek"; v: WeekValidation }
   | { type: "unvalidateWeek"; userId: string; weekStart: string }
   | { type: "addOvertime"; o: OvertimeRequest }
   | { type: "resolveOvertime"; id: string; status: "Aprobado" | "Rechazado"; comment: string; by: string }
+  | { type: "updateOvertime"; o: OvertimeRequest }
+  | { type: "deleteOvertime"; id: string }
   | { type: "notify"; n: Omit<Notification, "id" | "read" | "date"> }
   | { type: "markNotifsRead" }
   | { type: "audit"; action: string; detail: string }
@@ -184,6 +188,20 @@ function baseReducer(s: AppState, a: Action): AppState {
         ab.type,
       );
     }
+    case "updateAbsence":
+      return withAudit(
+        { ...s, absences: s.absences.map((x) => (x.id === a.absence.id ? a.absence : x)) },
+        "Solicitud modificada",
+        `${a.absence.type} · ${s.users.find((u) => u.id === a.absence.userId)?.name ?? a.absence.userId}`,
+      );
+    case "deleteAbsence": {
+      const ab = s.absences.find((x) => x.id === a.id);
+      return withAudit(
+        { ...s, absences: s.absences.filter((x) => x.id !== a.id) },
+        "Solicitud eliminada",
+        ab ? `${ab.type} · ${s.users.find((u) => u.id === ab.userId)?.name ?? ab.userId}` : a.id,
+      );
+    }
     case "validateWeek":
       return withAudit(
         { ...s, validations: [...s.validations.filter((x) => !(x.userId === a.v.userId && x.weekStart === a.v.weekStart)), a.v] },
@@ -234,6 +252,20 @@ function baseReducer(s: AppState, a: Action): AppState {
         },
         `Horas extra ${a.status.toLowerCase()}s`,
         `Semana ${o.weekStart}`,
+      );
+    }
+    case "updateOvertime":
+      return withAudit(
+        { ...s, overtime: s.overtime.map((x) => (x.id === a.o.id ? a.o : x)) },
+        "Horas extra modificadas",
+        `Semana ${a.o.weekStart} · ${s.users.find((u) => u.id === a.o.userId)?.name ?? a.o.userId}`,
+      );
+    case "deleteOvertime": {
+      const o = s.overtime.find((x) => x.id === a.id);
+      return withAudit(
+        { ...s, overtime: s.overtime.filter((x) => x.id !== a.id) },
+        "Horas extra eliminadas",
+        o ? `Semana ${o.weekStart} · ${s.users.find((u) => u.id === o.userId)?.name ?? o.userId}` : a.id,
       );
     }
     case "notify":
@@ -724,6 +756,14 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
         .eq("id", a.id);
       return error?.message ?? null;
     }
+    case "updateAbsence": {
+      const { error } = await supabase.from("absence_requests").update(toAbsenceRow(a.absence)).eq("id", a.absence.id);
+      return error?.message ?? null;
+    }
+    case "deleteAbsence": {
+      const { error } = await supabase.from("absence_requests").delete().eq("id", a.id);
+      return error?.message ?? null;
+    }
     case "addHoliday": {
       const { error } = await supabase.from("holidays").insert(toHolidayRow(a.holiday));
       return error?.message ?? null;
@@ -746,6 +786,14 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
           resolved_at: isoDate(new Date()),
         })
         .eq("id", a.id);
+      return error?.message ?? null;
+    }
+    case "updateOvertime": {
+      const { error } = await supabase.from("overtime_requests").update(toOvertimeRow(a.o)).eq("id", a.o.id);
+      return error?.message ?? null;
+    }
+    case "deleteOvertime": {
+      const { error } = await supabase.from("overtime_requests").delete().eq("id", a.id);
       return error?.message ?? null;
     }
     default:
@@ -788,11 +836,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               departmentId: p.department_id || "d1",
               supervisorId: p.supervisor_id || null,
               weeklyHours: p.weekly_hours || 40,
-              workDays: [1, 2, 3, 4, 5],
+              workDays: p.work_days && p.work_days.length > 0 ? p.work_days : [1, 2, 3, 4, 5],
               dayStart: p.day_start || "09:00",
               dayEnd: p.day_end || "18:00",
               birthday: p.birthday || "1990-01-01",
               hireDate: p.hire_date || "2024-01-01",
+              calendarTz: p.calendar_tz || undefined,
+              calendarTz2: p.calendar_tz2 || undefined,
               active: p.active ?? true,
               online: p.online ?? true,
               mustChangePassword: p.must_change_password ?? false
@@ -998,6 +1048,81 @@ function countWorkDays(from: string, to: string, workDays: number[], holidays?: 
 /** Fechas de feriados como set de strings YYYY-MM-DD, para excluirlas del conteo de días hábiles */
 function holidayDateSet(state: AppState): Set<string> {
   return new Set(state.holidays.map((h) => h.date));
+}
+
+/** Todas las fechas (YYYY-MM-DD) de un rango, incluyendo ambos extremos */
+function eachDate(from: string, to: string): string[] {
+  const out: string[] = [];
+  let d = from;
+  let guard = 0;
+  while (d <= to && guard < 400) {
+    out.push(d);
+    d = addDays(d, 1);
+    guard++;
+  }
+  return out;
+}
+
+function isWeekendDate(dateISO: string): boolean {
+  const dow = parseISO(dateISO).getDay(); // 0=Dom, 6=Sáb
+  return dow === 0 || dow === 6;
+}
+
+/**
+ * Advertencias a mostrar al aprobar una solicitud de ausencia: superposición con otra
+ * solicitud ya aprobada del mismo usuario, o que el rango caiga en fin de semana/feriado.
+ * Son avisos, no bloqueos: el supervisor conserva la decisión final.
+ */
+export function absenceWarnings(state: AppState, absence: AbsenceRequest): string[] {
+  const warnings: string[] = [];
+  const overlapping = state.absences.filter(
+    (o) =>
+      o.id !== absence.id &&
+      o.userId === absence.userId &&
+      o.status === "Aprobado" &&
+      o.dateFrom <= absence.dateTo &&
+      absence.dateFrom <= o.dateTo,
+  );
+  for (const o of overlapping) {
+    warnings.push(`Se superpone con otra solicitud aprobada: ${o.type} (${fmtDateShort(o.dateFrom)}${o.dateFrom !== o.dateTo ? ` → ${fmtDateShort(o.dateTo)}` : ""}).`);
+  }
+
+  const days = eachDate(absence.dateFrom, absence.dateTo);
+  const holidays = holidayDateSet(state);
+  const weekendDays = days.filter(isWeekendDate);
+  const holidayDays = days.filter((d) => holidays.has(d));
+
+  if (days.length > 0 && weekendDays.length === days.length) {
+    warnings.push("Todo el rango solicitado cae en fin de semana.");
+  } else if (weekendDays.length > 0) {
+    warnings.push(`Incluye ${weekendDays.length} día${weekendDays.length !== 1 ? "s" : ""} de fin de semana.`);
+  }
+  if (holidayDays.length > 0) {
+    const titles = holidayDays.map((d) => state.holidays.find((h) => h.date === d)?.title ?? d);
+    warnings.push(`Incluye feriado${holidayDays.length !== 1 ? "s" : ""}: ${titles.join(", ")}.`);
+  }
+  return warnings;
+}
+
+/**
+ * Advertencias a mostrar al aprobar horas extra: que esa semana se superponga con una
+ * ausencia ya aprobada del mismo usuario. Aviso, no bloqueo.
+ */
+export function overtimeWarnings(state: AppState, ot: OvertimeRequest): string[] {
+  const warnings: string[] = [];
+  const weekEnd = addDays(ot.weekStart, 6);
+  const overlapping = state.absences.filter(
+    (a) => a.userId === ot.userId && a.status === "Aprobado" && a.dateFrom <= weekEnd && ot.weekStart <= a.dateTo,
+  );
+  for (const a of overlapping) {
+    warnings.push(`Esa semana se superpone con una ausencia aprobada: ${a.type} (${fmtDateShort(a.dateFrom)}${a.dateFrom !== a.dateTo ? ` → ${fmtDateShort(a.dateTo)}` : ""}).`);
+  }
+  return warnings;
+}
+
+function fmtDateShort(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${d}/${m}`;
 }
 
 export interface VacationInfo {

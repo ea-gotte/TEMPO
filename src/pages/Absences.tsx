@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { useStore, validatedOvertimeMin, vacationInfo } from "../store";
-import type { AbsenceRequest, AbsenceType, Attachment } from "../types";
+import { useStore, validatedOvertimeMin, vacationInfo, absenceWarnings, overtimeWarnings } from "../store";
+import type { AbsenceRequest, AbsenceType, Attachment, OvertimeRequest } from "../types";
 import { fmtDate, fmtDur, today, uid } from "../utils";
 import { Avatar, Empty, Modal, useToast } from "../components/ui";
 import { Icon, type IconName } from "../components/Icon";
@@ -92,10 +92,15 @@ export function Absences() {
   const toast = useToast();
   const me = state.users.find((u) => u.id === state.currentUserId)!;
   const canApprove = me.role !== "usuario";
+  const canManage = me.role !== "usuario";
   const [tab, setTab] = useState<"mias" | "aprobar" | "extra" | "registro">("mias");
   const [showNew, setShowNew] = useState(false);
   const [detail, setDetail] = useState<AbsenceRequest | null>(null);
   const [comment, setComment] = useState("");
+  const [editAbsence, setEditAbsence] = useState<AbsenceRequest | null>(null);
+  const [deleteAbsenceReq, setDeleteAbsenceReq] = useState<AbsenceRequest | null>(null);
+  const [editOt, setEditOt] = useState<OvertimeRequest | null>(null);
+  const [deleteOtReq, setDeleteOtReq] = useState<OvertimeRequest | null>(null);
 
   const mine = state.absences.filter((a) => a.userId === me.id);
   const toApprove = state.absences.filter((a) => a.status === "Pendiente" && a.userId !== me.id);
@@ -137,6 +142,20 @@ export function Absences() {
     toast(`Horas extra ${status.toLowerCase()}s.`);
     setResolveOtId(null);
     setComment("");
+  }
+
+  function confirmDeleteAbsence() {
+    if (!deleteAbsenceReq) return;
+    dispatch({ type: "deleteAbsence", id: deleteAbsenceReq.id });
+    toast("Solicitud eliminada.");
+    setDeleteAbsenceReq(null);
+  }
+
+  function confirmDeleteOt() {
+    if (!deleteOtReq) return;
+    dispatch({ type: "deleteOvertime", id: deleteOtReq.id });
+    toast("Horas extra eliminadas.");
+    setDeleteOtReq(null);
   }
 
   return (
@@ -249,6 +268,16 @@ export function Absences() {
                   {canApprove && !isMineOt && o.status === "Pendiente" && (
                     <button className="btn btn-secondary btn-sm" onClick={() => setResolveOtId(o.id)}>Revisar</button>
                   )}
+                  {canManage && (
+                    <>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditOt(o)} aria-label="Editar" title="Editar">
+                        <Icon name="pencil" size={13} />
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setDeleteOtReq(o)} aria-label="Eliminar" title="Eliminar">
+                        <Icon name="trash" size={13} />
+                      </button>
+                    </>
+                  )}
                 </div>
               );
             })}
@@ -300,60 +329,159 @@ export function Absences() {
 
       {showNew && <NewAbsence onClose={() => setShowNew(false)} initialType={tab === "extra" ? "Compensación de horas" : undefined} />}
 
+      {editAbsence && <NewAbsence edit={editAbsence} onClose={() => setEditAbsence(null)} />}
+
       {detail && (
         <RequestDetail
           request={detail}
           canApprove={canApprove && detail.userId !== me.id && detail.status === "Pendiente"}
+          canManage={canManage}
           comment={comment}
           setComment={setComment}
           onResolve={resolve}
+          onEdit={() => { setEditAbsence(detail); setDetail(null); }}
+          onDelete={() => { setDeleteAbsenceReq(detail); setDetail(null); }}
           onClose={() => setDetail(null)}
         />
       )}
 
-      {resolveOtId && (
+      {deleteAbsenceReq && (
         <Modal
-          title="Revisar horas extra"
-          onClose={() => setResolveOtId(null)}
+          title="Eliminar solicitud"
+          onClose={() => setDeleteAbsenceReq(null)}
           footer={
             <>
-              <button className="btn btn-danger" onClick={() => resolveOt("Rechazado")}>Rechazar</button>
-              <button className="btn btn-primary" onClick={() => resolveOt("Aprobado")}>Aprobar</button>
+              <button className="btn btn-secondary" onClick={() => setDeleteAbsenceReq(null)}>Cancelar</button>
+              <button className="btn btn-danger" onClick={confirmDeleteAbsence}><Icon name="trash" size={14} /> Sí, eliminar</button>
             </>
           }
         >
-          <p style={{ fontSize: 13, color: "var(--text-2)" }}>
-            Al aprobar, las horas quedan disponibles para que la persona las recupere mediante una solicitud de <strong>Compensación de horas</strong>.
+          <p style={{ fontSize: 13.5 }}>
+            ¿Eliminar la solicitud de <strong>{deleteAbsenceReq.type}</strong> ({fmtDate(deleteAbsenceReq.dateFrom)}
+            {deleteAbsenceReq.dateFrom !== deleteAbsenceReq.dateTo && ` → ${fmtDate(deleteAbsenceReq.dateTo)}`})?
           </p>
-          <div className="field">
-            <label>Comentario del supervisor</label>
-            <textarea className="textarea" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comentario opcional…" />
-          </div>
+        </Modal>
+      )}
+
+      {resolveOtId && (() => {
+        const ot = state.overtime.find((x) => x.id === resolveOtId);
+        const warnings = ot ? overtimeWarnings(state, ot) : [];
+        return (
+          <Modal
+            title="Revisar horas extra"
+            onClose={() => setResolveOtId(null)}
+            footer={
+              <>
+                <button className="btn btn-danger" onClick={() => resolveOt("Rechazado")}>Rechazar</button>
+                <button className="btn btn-primary" onClick={() => resolveOt("Aprobado")}>Aprobar</button>
+              </>
+            }
+          >
+            <p style={{ fontSize: 13, color: "var(--text-2)" }}>
+              Al aprobar, las horas quedan disponibles para que la persona las recupere mediante una solicitud de <strong>Compensación de horas</strong>.
+            </p>
+            {warnings.length > 0 && (
+              <div style={{ background: "var(--warning-soft)", color: "var(--warning)", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, marginBottom: 10 }}>
+                {warnings.map((w, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start", marginTop: i > 0 ? 4 : 0 }}>
+                    <Icon name="alert" size={13} style={{ marginTop: 2, flexShrink: 0 }} /> <span>{w}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="field">
+              <label>Comentario del supervisor</label>
+              <textarea className="textarea" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comentario opcional…" />
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {editOt && <EditOvertimeModal ot={editOt} onClose={() => setEditOt(null)} />}
+
+      {deleteOtReq && (
+        <Modal
+          title="Eliminar horas extra"
+          onClose={() => setDeleteOtReq(null)}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={() => setDeleteOtReq(null)}>Cancelar</button>
+              <button className="btn btn-danger" onClick={confirmDeleteOt}><Icon name="trash" size={14} /> Sí, eliminar</button>
+            </>
+          }
+        >
+          <p style={{ fontSize: 13.5 }}>
+            ¿Eliminar las horas extra de la semana del <strong>{fmtDate(deleteOtReq.weekStart)}</strong> ({fmtDur(deleteOtReq.minutes)})?
+          </p>
         </Modal>
       )}
     </>
   );
 }
 
-/** Detalle completo de una solicitud, con adjuntos y (para supervisores) acciones de aprobación */
+function EditOvertimeModal({ ot, onClose }: { ot: OvertimeRequest; onClose: () => void }) {
+  const { dispatch } = useStore();
+  const toast = useToast();
+  const [weekStart, setWeekStart] = useState(ot.weekStart);
+  const [minutes, setMinutes] = useState(ot.minutes);
+
+  function save() {
+    dispatch({ type: "updateOvertime", o: { ...ot, weekStart, minutes } });
+    toast("Horas extra actualizadas.");
+    onClose();
+  }
+
+  return (
+    <Modal
+      title="Editar horas extra"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={save} disabled={minutes <= 0}>Guardar</button>
+        </>
+      }
+    >
+      <div className="form-grid">
+        <div className="field">
+          <label>Semana (lunes)</label>
+          <input type="date" className="input" value={weekStart} onChange={(e) => setWeekStart(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Minutos</label>
+          <input type="number" className="input" value={minutes} min={1} onChange={(e) => setMinutes(Number(e.target.value))} />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Detalle completo de una solicitud, con adjuntos y (para supervisores) acciones de aprobación/edición */
 function RequestDetail({
   request: a,
   canApprove,
+  canManage,
   comment,
   setComment,
   onResolve,
+  onEdit,
+  onDelete,
   onClose,
 }: {
   request: AbsenceRequest;
   canApprove: boolean;
+  canManage: boolean;
   comment: string;
   setComment: (s: string) => void;
   onResolve: (s: "Aprobado" | "Rechazado") => void;
+  onEdit: () => void;
+  onDelete: () => void;
   onClose: () => void;
 }) {
   const { state } = useStore();
   const u = state.users.find((x) => x.id === a.userId);
   const resolver = state.users.find((x) => x.id === a.resolvedBy);
+  const warnings = canApprove ? absenceWarnings(state, a) : [];
   const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <div style={{ display: "flex", gap: 10, padding: "7px 0", borderBottom: "1px solid var(--border)" }}>
       <span style={{ width: 130, flexShrink: 0, color: "var(--text-3)", fontSize: 12.5, fontWeight: 600 }}>{label}</span>
@@ -366,14 +494,23 @@ function RequestDetail({
       title="Detalle de la solicitud"
       onClose={onClose}
       footer={
-        canApprove ? (
-          <>
-            <button className="btn btn-danger" onClick={() => onResolve("Rechazado")}>Rechazar</button>
-            <button className="btn btn-primary" onClick={() => onResolve("Aprobado")}>Aprobar</button>
-          </>
-        ) : (
-          <button className="btn btn-secondary" onClick={onClose}>Cerrar</button>
-        )
+        <>
+          {canManage && (
+            <>
+              <button className="btn btn-ghost" onClick={onEdit}><Icon name="pencil" size={13} /> Editar</button>
+              <button className="btn btn-ghost" onClick={onDelete}><Icon name="trash" size={13} /> Eliminar</button>
+            </>
+          )}
+          <span style={{ flex: 1 }} />
+          {canApprove ? (
+            <>
+              <button className="btn btn-danger" onClick={() => onResolve("Rechazado")}>Rechazar</button>
+              <button className="btn btn-primary" onClick={() => onResolve("Aprobado")}>Aprobar</button>
+            </>
+          ) : (
+            <button className="btn btn-secondary" onClick={onClose}>Cerrar</button>
+          )}
+        </>
       }
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
@@ -381,6 +518,15 @@ function RequestDetail({
         <strong style={{ fontSize: 16 }}>{a.type}</strong>
         <StatusBadge s={a.status} />
       </div>
+      {warnings.length > 0 && (
+        <div style={{ background: "var(--warning-soft)", color: "var(--warning)", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, marginBottom: 10 }}>
+          {warnings.map((w, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start", marginTop: i > 0 ? 4 : 0 }}>
+              <Icon name="alert" size={13} style={{ marginTop: 2, flexShrink: 0 }} /> <span>{w}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div>
         <Row label="Solicitante">
           <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
@@ -511,17 +657,17 @@ function RequestLog() {
   );
 }
 
-function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType?: AbsenceType }) {
+function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initialType?: AbsenceType; edit?: AbsenceRequest }) {
   const { state, dispatch } = useStore();
   const toast = useToast();
-  const [type, setType] = useState<AbsenceType>(initialType ?? "Vacaciones");
+  const [type, setType] = useState<AbsenceType>(edit?.type ?? initialType ?? "Vacaciones");
   const otBalance = validatedOvertimeMin(state, state.currentUserId);
-  const [dateFrom, setDateFrom] = useState(today());
-  const [dateTo, setDateTo] = useState(today());
-  const [timeFrom, setTimeFrom] = useState("");
-  const [timeTo, setTimeTo] = useState("");
-  const [reason, setReason] = useState("");
-  const [files, setFiles] = useState<Attachment[]>([]);
+  const [dateFrom, setDateFrom] = useState(edit?.dateFrom ?? today());
+  const [dateTo, setDateTo] = useState(edit?.dateTo ?? today());
+  const [timeFrom, setTimeFrom] = useState(edit?.timeFrom ?? "");
+  const [timeTo, setTimeTo] = useState(edit?.timeTo ?? "");
+  const [reason, setReason] = useState(edit?.reason ?? "");
+  const [files, setFiles] = useState<Attachment[]>(edit?.attachments ?? []);
 
   const partial = ["Salida médica", "Medio día", "Horario reducido", "Compensación de horas", "Horas extra"].includes(type);
   // Cambio 6: solo el tipo y la fecha son obligatorios; el resto es opcional
@@ -529,7 +675,7 @@ function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType
 
   // Solo se listan los tipos habilitados en Administración (el tipo inicial forzado siempre se incluye)
   const enabledTypes = state.leaveTypeConfig.filter((t) => t.enabled).map((t) => t.type);
-  const availableTypes = TYPES.filter((t) => enabledTypes.includes(t) || t === initialType);
+  const availableTypes = TYPES.filter((t) => enabledTypes.includes(t) || t === initialType || t === edit?.type);
 
   const MAX_BYTES = 10 * 1024 * 1024; // 10 MB por archivo
 
@@ -556,6 +702,26 @@ function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType
 
   function submit() {
     if (!valid) return;
+
+    if (edit) {
+      dispatch({
+        type: "updateAbsence",
+        absence: {
+          ...edit,
+          type,
+          dateFrom,
+          dateTo,
+          timeFrom: partial ? timeFrom || undefined : undefined,
+          timeTo: partial ? timeTo || undefined : undefined,
+          reason: reason.trim(),
+          attachments: files,
+        },
+      });
+      toast("Solicitud actualizada.");
+      onClose();
+      return;
+    }
+
     const created = today();
 
     if (type === "Horas extra") {
@@ -609,12 +775,12 @@ function NewAbsence({ onClose, initialType }: { onClose: () => void; initialType
 
   return (
     <Modal
-      title="Nueva solicitud de ausencia"
+      title={edit ? "Editar solicitud" : "Nueva solicitud de ausencia"}
       onClose={onClose}
       footer={
         <>
           <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={submit} disabled={!valid}>Enviar solicitud</button>
+          <button className="btn btn-primary" onClick={submit} disabled={!valid}>{edit ? "Guardar cambios" : "Enviar solicitud"}</button>
         </>
       }
     >
