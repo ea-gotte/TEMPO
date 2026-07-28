@@ -53,8 +53,6 @@ export interface User {
   recoveryExpires?: string | null;
   role: Role;
   jornada: Jornada;
-  teamId: ID | null;
-  departmentId: ID | null;
   supervisorId: ID | null;
   weeklyHours: number; // jornada semanal
   workDays: number[]; // 1=Lun ... 7=Dom
@@ -69,14 +67,6 @@ export interface User {
   online?: boolean;
 }
 
-export interface Team {
-  id: ID;
-  name: string;
-}
-export interface Department {
-  id: ID;
-  name: string;
-}
 
 export interface TimeEntry {
   id: ID;
@@ -280,8 +270,6 @@ export interface AppState {
   projects: Project[];
   tags: Tag[];
   users: User[];
-  teams: Team[];
-  departments: Department[];
   entries: TimeEntry[];
   timers: RunningTimer[];
   absences: AbsenceRequest[];

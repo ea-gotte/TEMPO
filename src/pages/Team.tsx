@@ -34,16 +34,6 @@ export function Team() {
           <span className="label"><Icon name="dot" size={12} style={{ color: "var(--success)" }} /> Conectados ahora</span>
           <div className="value">{state.users.filter((u) => u.online).length}</div>
         </div>
-        <div className="card kpi">
-          <span className="label"><Icon name="tag" size={14} /> Equipos</span>
-          <div className="value">{state.teams.length}</div>
-          <div className="hint">{state.teams.map((t) => t.name).join(" · ")}</div>
-        </div>
-        <div className="card kpi">
-          <span className="label"><Icon name="building-columns" size={14} /> Departamentos</span>
-          <div className="value">{state.departments.length}</div>
-          <div className="hint">{state.departments.map((d) => d.name).join(" · ")}</div>
-        </div>
       </div>
 
       <div className="card" style={{ overflowX: "auto" }}>
@@ -52,7 +42,6 @@ export function Team() {
             <tr>
               <th>Persona</th>
               <th>Rol</th>
-              <th>Equipo / Depto.</th>
               <th>Supervisor</th>
               <th>Jornada</th>
               <th>Ingreso / Vacaciones</th>
@@ -84,10 +73,6 @@ export function Team() {
                     <span className={`badge ${u.role === "admin" ? "acc" : u.role === "supervisor" ? "warn" : ""}`} style={{ textTransform: "capitalize" }}>
                       {u.role}
                     </span>
-                  </td>
-                  <td style={{ fontSize: 12.5 }}>
-                    {state.teams.find((t) => t.id === u.teamId)?.name ?? "—"}
-                    <div style={{ color: "var(--text-3)", fontSize: 11.5 }}>{state.departments.find((d) => d.id === u.departmentId)?.name ?? ""}</div>
                   </td>
                   <td style={{ fontSize: 12.5 }}>{sup?.name ?? "—"}</td>
                   <td style={{ fontSize: 12.5 }}>
@@ -157,8 +142,6 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
   const [mustChangePassword, setMustChangePassword] = useState(user ? (user.mustChangePassword ?? false) : true);
   const [error, setError] = useState("");
   const [role, setRole] = useState<Role>(user?.role ?? "usuario");
-  const [teamId, setTeamId] = useState(user?.teamId ?? state.teams[0]?.id ?? "");
-  const [departmentId, setDepartmentId] = useState(user?.departmentId ?? state.departments[0]?.id ?? "");
   const [supervisorId, setSupervisorId] = useState(user?.supervisorId ?? "");
   const [jornada, setJornada] = useState<Jornada>(user?.jornada ?? "completa");
   const [weeklyHours, setWeeklyHours] = useState(user?.weeklyHours ?? state.company.defaultWeeklyHours);
@@ -192,8 +175,6 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
       mustChangePassword,
       role,
       jornada,
-      teamId: teamId || null,
-      departmentId: departmentId || null,
       supervisorId: supervisorId || null,
       weeklyHours,
       workDays,
@@ -214,8 +195,6 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
       email: next.email,
       role: next.role,
       jornada: next.jornada,
-      team_id: next.teamId,
-      department_id: next.departmentId,
       supervisor_id: next.supervisorId || null,
       weekly_hours: next.weeklyHours,
       work_days: next.workDays,
@@ -300,22 +279,6 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
             <option value="">— Sin supervisor —</option>
             {state.users.filter((u) => u.role !== "usuario" && u.id !== user?.id).map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label>Equipo</label>
-          <select className="select" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
-            {state.teams.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label>Departamento</label>
-          <select className="select" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
-            {state.departments.map((d) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
             ))}
           </select>
         </div>

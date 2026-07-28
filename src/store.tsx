@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
-import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord, Holiday, Client, Project, Team, Department, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role } from "./types";
+import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord, Holiday, Client, Project, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword, addDays, parseISO } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
@@ -38,8 +38,6 @@ type Action =
   | { type: "syncHolidays"; holidays: Holiday[] }
   | { type: "syncClients"; clients: Client[] }
   | { type: "syncProjects"; projects: Project[] }
-  | { type: "syncTeams"; teams: Team[] }
-  | { type: "syncDepartments"; departments: Department[] }
   | { type: "syncOvertime"; overtime: OvertimeRequest[] }
   | { type: "syncAudit"; audit: AuditLog[] }
   | { type: "syncCorpEvents"; corpEvents: CorpEvent[] }
@@ -305,10 +303,6 @@ function baseReducer(s: AppState, a: Action): AppState {
       return { ...s, clients: a.clients };
     case "syncProjects":
       return { ...s, projects: a.projects };
-    case "syncTeams":
-      return { ...s, teams: a.teams };
-    case "syncDepartments":
-      return { ...s, departments: a.departments };
     case "syncOvertime":
       return { ...s, overtime: a.overtime };
     case "syncAudit":
@@ -510,20 +504,6 @@ function fromProjectRow(r: any): Project {
   };
 }
 
-function toTeamRow(t: Team) {
-  return { id: t.id, name: t.name };
-}
-function fromTeamRow(r: any): Team {
-  return { id: r.id, name: r.name };
-}
-
-function toDepartmentRow(d: Department) {
-  return { id: d.id, name: d.name };
-}
-function fromDepartmentRow(r: any): Department {
-  return { id: r.id, name: r.name };
-}
-
 function toOvertimeRow(o: OvertimeRequest) {
   return {
     id: o.id,
@@ -603,8 +583,6 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSe
     { data: holidayRows, error: holidaysErr },
     { data: clientRows, error: clientsErr },
     { data: projectRows, error: projectsErr },
-    { data: teamRows, error: teamsErr },
-    { data: departmentRows, error: departmentsErr },
     { data: overtimeRows, error: overtimeErr },
     { data: auditRows, error: auditErr },
     { data: corpEventRows, error: corpEventsErr },
@@ -616,8 +594,6 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSe
     supabase.from("holidays").select("*"),
     supabase.from("clients").select("*"),
     supabase.from("projects").select("*"),
-    supabase.from("teams").select("*"),
-    supabase.from("departments").select("*"),
     supabase.from("overtime_requests").select("*"),
     supabase.from("audit_log").select("*").order("at", { ascending: false }).limit(300),
     supabase.from("corp_events").select("*"),
@@ -629,8 +605,6 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSe
   if (holidaysErr) console.warn("Error al leer holidays:", holidaysErr);
   if (clientsErr) console.warn("Error al leer clients:", clientsErr);
   if (projectsErr) console.warn("Error al leer projects:", projectsErr);
-  if (teamsErr) console.warn("Error al leer teams:", teamsErr);
-  if (departmentsErr) console.warn("Error al leer departments:", departmentsErr);
   if (overtimeErr) console.warn("Error al leer overtime_requests:", overtimeErr);
   if (auditErr) console.warn("Error al leer audit_log:", auditErr);
   if (corpEventsErr) console.warn("Error al leer corp_events:", corpEventsErr);
@@ -641,8 +615,6 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSe
   dispatch({ type: "syncHolidays", holidays: (holidayRows || []).map(fromHolidayRow) });
   dispatch({ type: "syncClients", clients: (clientRows || []).map(fromClientRow) });
   dispatch({ type: "syncProjects", projects: (projectRows || []).map(fromProjectRow) });
-  dispatch({ type: "syncTeams", teams: (teamRows || []).map(fromTeamRow) });
-  dispatch({ type: "syncDepartments", departments: (departmentRows || []).map(fromDepartmentRow) });
   dispatch({ type: "syncOvertime", overtime: (overtimeRows || []).map(fromOvertimeRow) });
   dispatch({ type: "syncAudit", audit: (auditRows || []).map(fromAuditRow) });
   dispatch({ type: "syncCorpEvents", corpEvents: (corpEventRows || []).map(fromCorpEventRow) });
@@ -724,14 +696,6 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
       }
       if (a.patch.projects) {
         const err = await reconcileTable("projects", prevState.projects, a.patch.projects, toProjectRow);
-        if (err) errors.push(err);
-      }
-      if (a.patch.teams) {
-        const err = await reconcileTable("teams", prevState.teams, a.patch.teams, toTeamRow);
-        if (err) errors.push(err);
-      }
-      if (a.patch.departments) {
-        const err = await reconcileTable("departments", prevState.departments, a.patch.departments, toDepartmentRow);
         if (err) errors.push(err);
       }
       if (a.patch.corpEvents) {
@@ -881,8 +845,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               password: "", // Supabase Auth maneja la clave
               role: p.role || "usuario",
               jornada: p.jornada || "completa",
-              teamId: p.team_id || "t1",
-              departmentId: p.department_id || "d1",
               supervisorId: p.supervisor_id || null,
               weeklyHours: p.weekly_hours || 40,
               workDays: p.work_days && p.work_days.length > 0 ? p.work_days : [1, 2, 3, 4, 5],
@@ -906,8 +868,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
                 password: "",
                 role: (meta.role as any) || "admin",
                 jornada: (meta.jornada as any) || "completa",
-                teamId: "t1",
-                departmentId: "d1",
                 supervisorId: null,
                 weeklyHours: 40,
                 workDays: [1, 2, 3, 4, 5],
@@ -974,8 +934,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "holidays" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "projects" }, refetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, refetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "departments" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "overtime_requests" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "corp_events" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, refetch)

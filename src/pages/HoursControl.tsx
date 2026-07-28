@@ -153,9 +153,6 @@ export function HoursControl() {
                       <Avatar name={u.name} online={u.online} />
                       <div>
                         <div style={{ fontWeight: 650 }}>{u.name}</div>
-                        <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-                          {state.teams.find((t) => t.id === u.teamId)?.name ?? "—"}
-                        </div>
                       </div>
                     </div>
                   </td>

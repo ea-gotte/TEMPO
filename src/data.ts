@@ -209,15 +209,6 @@ export function seedState(): AppState {
       { id: "g4", name: "Revisión", color: P.teal },
     ],
     users: [],
-    teams: [
-      { id: "e1", name: "Estructuras" },
-      { id: "e2", name: "BIM" },
-      { id: "e3", name: "Administración" },
-    ],
-    departments: [
-      { id: "d1", name: "Ingeniería" },
-      { id: "d2", name: "Administración" },
-    ],
     entries: seedEntries(),
     timers: [],
     absences: seedAbsences(),

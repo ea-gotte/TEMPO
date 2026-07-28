@@ -115,9 +115,6 @@ export function Dashboard() {
                 <Avatar name={u.name} online />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 600 }}>{u.name}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-                    {state.teams.find((tm) => tm.id === u.teamId)?.name ?? "—"}
-                  </div>
                 </div>
               </div>
             ))}

@@ -26,8 +26,6 @@ interface AccountRow {
   name: string;
   email: string;
   role: Role;
-  teamName?: string;
-  departmentName?: string;
   weeklyHours: number;
   hireDate: string;
   password?: string;
@@ -46,8 +44,6 @@ function parseAccountsCSV(text: string, state: AppState): { rows: AccountRow[]; 
     return { rows: [], headerError: "El archivo debe tener al menos columnas de Nombre y Email." };
   }
   const iRole = findCol(header, ["rol", "role"]);
-  const iTeam = findCol(header, ["equipo", "team"]);
-  const iDept = findCol(header, ["departamento", "department"]);
   const iHours = findCol(header, ["horas semanales", "horas", "weekly hours", "hours"]);
   const iHire = findCol(header, ["fecha de ingreso", "fecha ingreso", "hire date", "start date", "fecha de inicio"]);
   const iPass = findCol(header, ["clave", "password", "contrasena", "contraseña"]);
@@ -80,8 +76,6 @@ function parseAccountsCSV(text: string, state: AppState): { rows: AccountRow[]; 
       name,
       email,
       role,
-      teamName: iTeam >= 0 ? (cols[iTeam] ?? "").trim() || undefined : undefined,
-      departmentName: iDept >= 0 ? (cols[iDept] ?? "").trim() || undefined : undefined,
       weeklyHours,
       hireDate,
       password: iPass >= 0 ? (cols[iPass] ?? "").trim() || undefined : undefined,
@@ -112,8 +106,8 @@ export function AccountsImportPanel() {
 
   function downloadTemplate() {
     const csv = toCSV([
-      ["Nombre", "Email", "Rol", "Equipo", "Departamento", "Horas semanales", "Fecha de ingreso", "Clave", "Supervisor"],
-      ["Juan Pérez", "juan.perez@empresa.com", "empleado", "Estructuras", "Ingeniería", "40", "01/03/2024", "", "carla@quantia.com"],
+      ["Nombre", "Email", "Rol", "Horas semanales", "Fecha de ingreso", "Clave", "Supervisor"],
+      ["Juan Pérez", "juan.perez@empresa.com", "empleado", "40", "01/03/2024", "", "carla@quantia.com"],
     ]);
     downloadFile("plantilla-cuentas.csv", csv, "text/csv;charset=utf-8");
   }
@@ -122,30 +116,9 @@ export function AccountsImportPanel() {
     const valid = rows.filter((r) => !r.error);
     if (valid.length === 0) return;
 
-    const teams = [...state.teams];
-    const departments = [...state.departments];
     const users = [...state.users];
 
-    const ensureTeam = (name?: string): string | null => {
-      if (!name) return null;
-      const found = teams.find((t) => normText(t.name) === normText(name));
-      if (found) return found.id;
-      const nt = { id: uid(), name };
-      teams.push(nt);
-      return nt.id;
-    };
-    const ensureDept = (name?: string): string | null => {
-      if (!name) return null;
-      const found = departments.find((d) => normText(d.name) === normText(name));
-      if (found) return found.id;
-      const nd = { id: uid(), name };
-      departments.push(nd);
-      return nd.id;
-    };
-
     for (const row of valid) {
-      const teamId = ensureTeam(row.teamName);
-      const departmentId = ensureDept(row.departmentName);
       const jornada: Jornada = row.weeklyHours >= 35 ? "completa" : "media";
       const existingIdx = users.findIndex((u) => normText(u.email) === normText(row.email));
       if (existingIdx >= 0) {
@@ -154,8 +127,6 @@ export function AccountsImportPanel() {
           ...prev,
           name: row.name,
           role: row.role,
-          teamId: teamId ?? prev.teamId,
-          departmentId: departmentId ?? prev.departmentId,
           weeklyHours: row.weeklyHours,
           jornada,
           hireDate: row.hireDate,
@@ -169,8 +140,6 @@ export function AccountsImportPanel() {
           password: row.password || `${row.name.split(" ")[0].toLowerCase()}123`,
           role: row.role,
           jornada,
-          teamId,
-          departmentId,
           supervisorId: null,
           weeklyHours: row.weeklyHours,
           workDays: [1, 2, 3, 4, 5],
@@ -193,7 +162,7 @@ export function AccountsImportPanel() {
       if (idx >= 0) users[idx] = { ...users[idx], supervisorId: sup.id };
     }
 
-    dispatch({ type: "patch", patch: { users, teams, departments } });
+    dispatch({ type: "patch", patch: { users } });
     dispatch({ type: "audit", action: "Importación de cuentas", detail: `${valid.length} cuentas procesadas desde ${fileName}` });
     toast(`${valid.length} cuenta${valid.length !== 1 ? "s" : ""} importada${valid.length !== 1 ? "s" : ""}.`);
     setRows([]);
@@ -208,7 +177,7 @@ export function AccountsImportPanel() {
   return (
     <ImportCard
       title="Cuentas (usuarios)"
-      description="Columnas reconocidas: Nombre, Email, Rol, Equipo, Departamento, Horas semanales, Fecha de ingreso (dd/mm/aaaa), Clave y Supervisor (email). Se matchea por email: si ya existe, se actualiza."
+      description="Columnas reconocidas: Nombre, Email, Rol, Horas semanales, Fecha de ingreso (dd/mm/aaaa), Clave y Supervisor (email). Se matchea por email: si ya existe, se actualiza."
       onDownloadTemplate={downloadTemplate}
       inputRef={inputRef}
       onPick={onPick}
@@ -233,7 +202,6 @@ export function AccountsImportPanel() {
               { label: "Nombre", render: (r) => r.name },
               { label: "Email", render: (r) => r.email },
               { label: "Rol", render: (r) => r.role },
-              { label: "Equipo", render: (r) => r.teamName ?? "—" },
               { label: "Ingreso", render: (r) => r.hireDate },
               {
                 label: "Estado",
