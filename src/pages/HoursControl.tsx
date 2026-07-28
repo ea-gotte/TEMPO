@@ -35,15 +35,19 @@ export function HoursControl() {
       });
   }, [state.users, state.entries, state.validations, state.overtime, weekDays, ws]);
 
-  // Notificación automática: usuarios sin ninguna carga en la semana actual
+  // Notificación automática: usuarios sin ninguna carga en la semana actual.
+  // notifiedRef evita repetirlo en cada render; como cada destinatario es otra
+  // persona, no hay forma de verificar duplicados contra el estado local (solo
+  // contiene las notificaciones propias) — se envía una vez por carga de la página.
   useEffect(() => {
     if (!isCurrentWeek || notifiedRef.current) return;
     notifiedRef.current = true;
     for (const r of rows) {
       if (r.status !== "sin-carga") continue;
-      const body = `${r.u.name} no cargó horas en la semana del ${dayLabel(ws)}.`;
-      if (state.notifications.some((n) => n.body === body)) continue;
-      dispatch({ type: "notify", n: { kind: "falta-carga", title: "Sin carga de horas", body, toEmail: r.u.email } });
+      dispatch({
+        type: "notify",
+        n: { userId: r.u.id, kind: "falta-carga", title: "Sin carga de horas", body: `${r.u.name} no cargó horas en la semana del ${dayLabel(ws)}.` },
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCurrentWeek, ws]);
@@ -77,10 +81,10 @@ export function HoursControl() {
     toast("Horas extra enviadas a supervisión y aprobación.");
   }
 
-  function notifyMissing(name: string, email: string) {
+  function notifyMissing(id: string, name: string) {
     dispatch({
       type: "notify",
-      n: { kind: "falta-carga", title: "Recordatorio de carga", body: `${name}: recordá cargar tus horas de la semana del ${dayLabel(ws)}.`, toEmail: email },
+      n: { userId: id, kind: "falta-carga", title: "Recordatorio de carga", body: `${name}: recordá cargar tus horas de la semana del ${dayLabel(ws)}.` },
     });
     toast(`Recordatorio enviado a ${name}.`);
   }
@@ -190,7 +194,7 @@ export function HoursControl() {
                       <div>
                         <span className="badge bad"><Icon name="ban" size={11} /> Sin carga</span>
                         <div>
-                          <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={() => notifyMissing(u.name, u.email)}>
+                          <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={() => notifyMissing(u.id, u.name)}>
                             <Icon name="bell" size={12} /> Notificar
                           </button>
                         </div>

@@ -65,7 +65,7 @@ export function Tracker() {
       startedAt: Date.now(),
     };
     dispatch({ type: "startTimer", timer: t });
-    dispatch({ type: "notify", n: { kind: "timer-start", title: "Cronómetro iniciado", body: t.description || "Sin descripción" } });
+    dispatch({ type: "notify", n: { userId: state.currentUserId, kind: "timer-start", title: "Cronómetro iniciado", body: t.description || "Sin descripción" } });
     setDesc("");
   }
 
@@ -134,7 +134,7 @@ export function Tracker() {
                   style={{ width: 34, height: 34 }}
                   onClick={() => {
                     dispatch({ type: "stopTimer", id: t.id });
-                    dispatch({ type: "notify", n: { kind: "timer-stop", title: "Cronómetro detenido", body: t.description || "Registro guardado" } });
+                    dispatch({ type: "notify", n: { userId: state.currentUserId, kind: "timer-stop", title: "Cronómetro detenido", body: t.description || "Registro guardado" } });
                   }}
                   aria-label="Detener"
                 >

@@ -29,6 +29,7 @@ type Action =
   | { type: "deleteOvertime"; id: string }
   | { type: "notify"; n: Omit<Notification, "id" | "read" | "date"> }
   | { type: "markNotifsRead" }
+  | { type: "syncNotifications"; notifications: Notification[] }
   | { type: "audit"; action: string; detail: string }
   | { type: "syncEntries"; entries: TimeEntry[] }
   | { type: "syncAbsences"; absences: AbsenceRequest[] }
@@ -83,8 +84,51 @@ function withAudit(s: AppState, action: string, detail: string): AppState {
 }
 
 /**
- * Toda notificación nueva genera automáticamente una copia por correo,
- * dirigida a la persona relacionada (o al usuario actual) — bandeja de salida.
+ * Agrega una notificación al estado LOCAL solo si es para el usuario actual — las
+ * notificaciones para otras personas se insertan directo en el servidor (ver el caso
+ * "notify"/"addAbsence"/etc. en syncActionToSupabase) y esa persona las recibe al
+ * hacer fetch o por Realtime, no a través de este reducer.
+ */
+function withNotification(s: AppState, userId: string, n: Omit<Notification, "id" | "read" | "date" | "userId">): AppState {
+  if (userId !== s.currentUserId) return s;
+  return { ...s, notifications: [{ id: uid(), read: false, date: isoDate(new Date()), userId, ...n }, ...s.notifications] };
+}
+
+/** Contenido de las notificaciones ligadas a solicitudes — compartido entre el reducer
+ * (aplicación local optimista) y syncActionToSupabase (fila real en el servidor), para
+ * que ambos generen exactamente el mismo texto. */
+type NotificationContent = Pick<Notification, "kind" | "title" | "body">;
+
+function absenceSubmittedNotification(absence: AbsenceRequest): NotificationContent {
+  return {
+    kind: "solicitud", title: "Solicitud enviada",
+    body: `${absence.type} del ${absence.dateFrom} al ${absence.dateTo}.`,
+  };
+}
+function absenceResolvedNotification(absence: AbsenceRequest, status: "Aprobado" | "Rechazado"): NotificationContent {
+  return {
+    kind: "aprobacion", title: `Solicitud ${status.toLowerCase()}`,
+    body: `${absence.type} (${absence.dateFrom}) fue ${status.toLowerCase()}.`,
+  };
+}
+function overtimeSubmittedNotification(s: AppState, o: OvertimeRequest): NotificationContent {
+  return {
+    kind: "exceso", title: "Horas extra informadas",
+    body: `${s.users.find((u) => u.id === o.userId)?.name ?? "?"}: ${Math.round(o.minutes / 60 * 10) / 10} h extra (semana ${o.weekStart}) enviadas a supervisión.`,
+  };
+}
+function overtimeResolvedNotification(o: OvertimeRequest, status: "Aprobado" | "Rechazado"): NotificationContent {
+  return {
+    kind: "aprobacion", title: `Horas extra ${status.toLowerCase()}s`,
+    body: `${Math.round(o.minutes / 60 * 10) / 10} h extra de la semana ${o.weekStart} fueron ${status.toLowerCase()}s${status === "Aprobado" ? " y ya se pueden recuperar como compensación" : ""}.`,
+  };
+}
+
+/**
+ * Toda notificación nueva genera automáticamente una copia por correo — bandeja de
+ * salida. state.notifications solo contiene notificaciones dirigidas al usuario
+ * actual (las de otras personas se guardan directo en el servidor, ver "notify" en
+ * syncActionToSupabase), así que el destinatario siempre es el propio usuario.
  */
 function mirrorNotificationsToEmail(prev: AppState, next: AppState): AppState {
   if (next.notifications === prev.notifications || next.notifications.length <= prev.notifications.length) {
@@ -94,7 +138,7 @@ function mirrorNotificationsToEmail(prev: AppState, next: AppState): AppState {
   const currentEmail = next.users.find((u) => u.id === next.currentUserId)?.email ?? "";
   const newEmails: EmailRecord[] = added.map((n) => ({
     id: uid(),
-    to: n.toEmail || currentEmail,
+    to: currentEmail,
     subject: `[TEMPO] ${n.title}`,
     body: n.body,
     at: new Date().toISOString(),
@@ -148,43 +192,23 @@ function baseReducer(s: AppState, a: Action): AppState {
       const entry = a.entry ?? buildStoppedEntry(t, s.currentUserId);
       return withAudit({ ...s, timers: rest, entries: [...s.entries, entry] }, "Cronómetro detenido", t.description || "");
     }
-    case "addAbsence":
-      return withAudit(
-        {
-          ...s,
-          absences: [a.absence, ...s.absences],
-          notifications: [
-            {
-              id: uid(), kind: "solicitud", title: "Solicitud enviada",
-              body: `${a.absence.type} del ${a.absence.dateFrom} al ${a.absence.dateTo}.`,
-              date: isoDate(new Date()), read: false,
-            },
-            ...s.notifications,
-          ],
-        },
-        "Solicitud de ausencia",
-        a.absence.type,
-      );
+    case "addAbsence": {
+      const withAbsence = { ...s, absences: [a.absence, ...s.absences] };
+      const notified = withNotification(withAbsence, a.absence.userId, absenceSubmittedNotification(a.absence));
+      return withAudit(notified, "Solicitud de ausencia", a.absence.type);
+    }
     case "resolveAbsence": {
       const ab = s.absences.find((x) => x.id === a.id);
       if (!ab) return s;
+      const withResolved = {
+        ...s,
+        absences: s.absences.map((x) =>
+          x.id === a.id ? { ...x, status: a.status, supervisorComment: a.comment, resolvedBy: a.by, resolvedAt: isoDate(new Date()) } : x,
+        ),
+      };
+      const notified = withNotification(withResolved, ab.userId, absenceResolvedNotification(ab, a.status));
       return withAudit(
-        {
-          ...s,
-          absences: s.absences.map((x) =>
-            x.id === a.id ? { ...x, status: a.status, supervisorComment: a.comment, resolvedBy: a.by, resolvedAt: isoDate(new Date()) } : x,
-          ),
-          notifications: [
-            {
-              id: uid(), kind: "aprobacion",
-              title: `Solicitud ${a.status.toLowerCase()}`,
-              body: `${ab.type} (${ab.dateFrom}) fue ${a.status.toLowerCase()}.`,
-              date: isoDate(new Date()), read: false,
-              toEmail: s.users.find((u) => u.id === ab.userId)?.email,
-            },
-            ...s.notifications,
-          ],
-        },
+        notified,
         `Ausencia ${a.status.toLowerCase()}`,
         ab.type,
       );
@@ -215,43 +239,27 @@ function baseReducer(s: AppState, a: Action): AppState {
         "Validación deshecha",
         `Usuario ${s.users.find((u) => u.id === a.userId)?.name ?? a.userId} · semana ${a.weekStart}`,
       );
-    case "addOvertime":
+    case "addOvertime": {
+      const withOt = { ...s, overtime: [a.o, ...s.overtime] };
+      const notified = withNotification(withOt, a.o.userId, overtimeSubmittedNotification(s, a.o));
       return withAudit(
-        {
-          ...s,
-          overtime: [a.o, ...s.overtime],
-          notifications: [
-            {
-              id: uid(), kind: "exceso", title: "Horas extra informadas",
-              body: `${s.users.find((u) => u.id === a.o.userId)?.name ?? "?"}: ${Math.round(a.o.minutes / 60 * 10) / 10} h extra (semana ${a.o.weekStart}) enviadas a supervisión.`,
-              date: isoDate(new Date()), read: false,
-            },
-            ...s.notifications,
-          ],
-        },
+        notified,
         "Horas extra informadas",
         `Semana ${a.o.weekStart} · ${a.o.minutes} min`,
       );
+    }
     case "resolveOvertime": {
       const o = s.overtime.find((x) => x.id === a.id);
       if (!o) return s;
+      const withResolved = {
+        ...s,
+        overtime: s.overtime.map((x) =>
+          x.id === a.id ? { ...x, status: a.status, supervisorComment: a.comment, resolvedBy: a.by, resolvedAt: isoDate(new Date()) } : x,
+        ),
+      };
+      const notified = withNotification(withResolved, o.userId, overtimeResolvedNotification(o, a.status));
       return withAudit(
-        {
-          ...s,
-          overtime: s.overtime.map((x) =>
-            x.id === a.id ? { ...x, status: a.status, supervisorComment: a.comment, resolvedBy: a.by, resolvedAt: isoDate(new Date()) } : x,
-          ),
-          notifications: [
-            {
-              id: uid(), kind: "aprobacion",
-              title: `Horas extra ${a.status.toLowerCase()}s`,
-              body: `${Math.round(o.minutes / 60 * 10) / 10} h extra de la semana ${o.weekStart} fueron ${a.status.toLowerCase()}s${a.status === "Aprobado" ? " y ya se pueden recuperar como compensación" : ""}.`,
-              date: isoDate(new Date()), read: false,
-              toEmail: s.users.find((u) => u.id === o.userId)?.email,
-            },
-            ...s.notifications,
-          ],
-        },
+        notified,
         `Horas extra ${a.status.toLowerCase()}s`,
         `Semana ${o.weekStart}`,
       );
@@ -270,11 +278,13 @@ function baseReducer(s: AppState, a: Action): AppState {
         o ? `Semana ${o.weekStart} · ${s.users.find((u) => u.id === o.userId)?.name ?? o.userId}` : a.id,
       );
     }
-    case "notify":
+    case "notify": {
+      if (a.n.userId !== s.currentUserId) return s;
       return {
         ...s,
         notifications: [{ id: uid(), read: false, date: isoDate(new Date()), ...a.n }, ...s.notifications],
       };
+    }
     case "markNotifsRead":
       return { ...s, notifications: s.notifications.map((n) => ({ ...n, read: true })) };
     case "audit":
@@ -307,6 +317,8 @@ function baseReducer(s: AppState, a: Action): AppState {
       return { ...s, corpEvents: a.corpEvents };
     case "syncSettings":
       return { ...s, company: a.company, rolePermissions: a.rolePermissions, leaveTypeConfig: a.leaveTypeConfig, tags: a.tags };
+    case "syncNotifications":
+      return { ...s, notifications: a.notifications };
   }
 }
 
@@ -569,6 +581,13 @@ function fromCorpEventRow(r: any): CorpEvent {
   };
 }
 
+function toNotificationRow(n: Notification) {
+  return { id: n.id, user_id: n.userId, kind: n.kind, title: n.title, body: n.body, date: n.date, read: n.read };
+}
+function fromNotificationRow(r: any): Notification {
+  return { id: r.id, userId: r.user_id, kind: r.kind, title: r.title, body: r.body, date: r.date, read: r.read };
+}
+
 /** Config global de la app (empresa, permisos, tipos de licencia y etiquetas): una sola fila en app_settings. */
 interface LocalSettings {
   company: CompanySettings;
@@ -590,6 +609,7 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSe
     { data: auditRows, error: auditErr },
     { data: corpEventRows, error: corpEventsErr },
     { data: settingsRow, error: settingsErr },
+    { data: notificationRows, error: notificationsErr },
   ] = await Promise.all([
     supabase.from("time_entries").select("*"),
     supabase.from("absence_requests").select("*"),
@@ -602,6 +622,7 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSe
     supabase.from("audit_log").select("*").order("at", { ascending: false }).limit(300),
     supabase.from("corp_events").select("*"),
     supabase.from("app_settings").select("*").eq("id", "global").maybeSingle(),
+    supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(100),
   ]);
   if (entriesErr) console.warn("Error al leer time_entries:", entriesErr);
   if (absencesErr) console.warn("Error al leer absence_requests:", absencesErr);
@@ -614,6 +635,7 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSe
   if (auditErr) console.warn("Error al leer audit_log:", auditErr);
   if (corpEventsErr) console.warn("Error al leer corp_events:", corpEventsErr);
   if (settingsErr) console.warn("Error al leer app_settings:", settingsErr);
+  if (notificationsErr) console.warn("Error al leer notifications:", notificationsErr);
   dispatch({ type: "syncEntries", entries: (entryRows || []).map(fromEntryRow) });
   dispatch({ type: "syncAbsences", absences: (absenceRows || []).map(fromAbsenceRow) });
   dispatch({ type: "syncHolidays", holidays: (holidayRows || []).map(fromHolidayRow) });
@@ -624,6 +646,7 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSe
   dispatch({ type: "syncOvertime", overtime: (overtimeRows || []).map(fromOvertimeRow) });
   dispatch({ type: "syncAudit", audit: (auditRows || []).map(fromAuditRow) });
   dispatch({ type: "syncCorpEvents", corpEvents: (corpEventRows || []).map(fromCorpEventRow) });
+  dispatch({ type: "syncNotifications", notifications: (notificationRows || []).map(fromNotificationRow) });
   if (settingsRow) {
     dispatch({
       type: "syncSettings",
@@ -679,6 +702,15 @@ async function reconcileTable<T extends { id: string }>(
     if (error) errors.push(error.message);
   }
   return errors.length > 0 ? errors.join("; ") : null;
+}
+
+/** Inserta una notificación en el servidor para su destinatario (no en la del emisor). */
+async function insertNotification(userId: string, n: NotificationContent): Promise<string | null> {
+  const { error } = await supabase.from("notifications").insert({
+    id: uid(), user_id: userId, kind: n.kind, title: n.title, body: n.body,
+    date: isoDate(new Date()), read: false,
+  });
+  return error?.message ?? null;
 }
 
 /** Refleja en Supabase las acciones que modifican registros de horas y ausencias. */
@@ -744,7 +776,8 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
     }
     case "addAbsence": {
       const { error } = await supabase.from("absence_requests").insert(toAbsenceRow(a.absence));
-      return error?.message ?? null;
+      const notifErr = await insertNotification(a.absence.userId, absenceSubmittedNotification(a.absence));
+      return error?.message ?? notifErr;
     }
     case "resolveAbsence": {
       const { error } = await supabase
@@ -756,7 +789,9 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
           resolved_at: isoDate(new Date()),
         })
         .eq("id", a.id);
-      return error?.message ?? null;
+      const ab = prevState.absences.find((x) => x.id === a.id);
+      const notifErr = ab ? await insertNotification(ab.userId, absenceResolvedNotification(ab, a.status)) : null;
+      return error?.message ?? notifErr;
     }
     case "updateAbsence": {
       const { error } = await supabase.from("absence_requests").update(toAbsenceRow(a.absence)).eq("id", a.absence.id);
@@ -776,7 +811,8 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
     }
     case "addOvertime": {
       const { error } = await supabase.from("overtime_requests").insert(toOvertimeRow(a.o));
-      return error?.message ?? null;
+      const notifErr = await insertNotification(a.o.userId, overtimeSubmittedNotification(prevState, a.o));
+      return error?.message ?? notifErr;
     }
     case "resolveOvertime": {
       const { error } = await supabase
@@ -788,7 +824,9 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
           resolved_at: isoDate(new Date()),
         })
         .eq("id", a.id);
-      return error?.message ?? null;
+      const o = prevState.overtime.find((x) => x.id === a.id);
+      const notifErr = o ? await insertNotification(o.userId, overtimeResolvedNotification(o, a.status)) : null;
+      return error?.message ?? notifErr;
     }
     case "updateOvertime": {
       const { error } = await supabase.from("overtime_requests").update(toOvertimeRow(a.o)).eq("id", a.o.id);
@@ -796,6 +834,15 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
     }
     case "deleteOvertime": {
       const { error } = await supabase.from("overtime_requests").delete().eq("id", a.id);
+      return error?.message ?? null;
+    }
+    case "notify":
+      // Efímeras: solo un toast informativo del propio dispositivo, no vale la pena
+      // guardarlas — evita escribir una fila por cada inicio/fin de cronómetro.
+      if (a.n.kind === "timer-start" || a.n.kind === "timer-stop") return null;
+      return await insertNotification(a.n.userId, a.n);
+    case "markNotifsRead": {
+      const { error } = await supabase.from("notifications").update({ read: true }).eq("user_id", prevState.currentUserId).eq("read", false);
       return error?.message ?? null;
     }
     default:
@@ -888,7 +935,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           } else {
             dispatch({
               type: "patch",
-              patch: { authenticated: false, currentUserId: "", users: [], passwordRecovery: false, entries: [], absences: [] },
+              patch: { authenticated: false, currentUserId: "", users: [], passwordRecovery: false, entries: [], absences: [], notifications: [] },
             });
           }
         } catch (dbErr) {
@@ -932,6 +979,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "overtime_requests" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "corp_events" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, refetch)
       // audit_log queda afuera a propósito: casi cualquier acción genera una fila ahí,
       // y traer las 300 de vuelta en cada una sería un refetch constante para poco beneficio.
       .subscribe();
@@ -977,7 +1025,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         console.warn("Supabase sync error:", errMsg);
         dispatch({
           type: "notify",
-          n: { kind: "error", title: "Error al guardar", body: `No se pudo sincronizar un cambio con el servidor: ${errMsg}` },
+          n: { userId: state.currentUserId, kind: "error", title: "Error al guardar", body: `No se pudo sincronizar un cambio con el servidor: ${errMsg}` },
         });
       });
     },

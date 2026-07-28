@@ -90,7 +90,7 @@ export function Shell({
     if (info.available > 0 && info.daysToExpire <= 90 && info.daysToExpire > 0) {
       const body = `Tenés ${info.available} día${info.available !== 1 ? "s" : ""} de vacaciones que vencen el ${dayLabel(info.expiration)}.`;
       if (!state.notifications.some((n) => n.body === body)) {
-        dispatch({ type: "notify", n: { kind: "vencimiento", title: "Vacaciones por vencer", body } });
+        dispatch({ type: "notify", n: { userId: me.id, kind: "vencimiento", title: "Vacaciones por vencer", body } });
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -102,7 +102,7 @@ export function Shell({
     if (me.role === "usuario" || otPending === 0) return;
     const body = `Tenés ${otPending} solicitud${otPending !== 1 ? "es" : ""} de horas extra pendiente${otPending !== 1 ? "s" : ""} de aprobación.`;
     if (!state.notifications.some((n) => n.kind === "exceso-pendiente" && n.body === body)) {
-      dispatch({ type: "notify", n: { kind: "exceso-pendiente", title: "Horas extra por aprobar", body } });
+      dispatch({ type: "notify", n: { userId: me.id, kind: "exceso-pendiente", title: "Horas extra por aprobar", body } });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me.id, me.role, otPending]);

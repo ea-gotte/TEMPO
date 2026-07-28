@@ -228,11 +228,11 @@ export function seedState(): AppState {
     holidays: [],
     notifications: [
       {
-        id: uid(), kind: "solicitud", title: "Solicitud pendiente",
+        id: uid(), userId: "u1", kind: "solicitud", title: "Solicitud pendiente",
         body: "EA Gotte solicitó Trabajo remoto.", date: t, read: false,
       },
       {
-        id: uid(), kind: "feriado", title: "Feriado próximo",
+        id: uid(), userId: "u1", kind: "feriado", title: "Feriado próximo",
         body: "Aniversario provincial en 9 días.", date: t, read: false,
       },
     ],
