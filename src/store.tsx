@@ -94,7 +94,7 @@ function mirrorNotificationsToEmail(prev: AppState, next: AppState): AppState {
   const currentEmail = next.users.find((u) => u.id === next.currentUserId)?.email ?? "";
   const newEmails: EmailRecord[] = added.map((n) => ({
     id: uid(),
-    to: currentEmail,
+    to: n.toEmail || currentEmail,
     subject: `[TEMPO] ${n.title}`,
     body: n.body,
     at: new Date().toISOString(),
@@ -180,6 +180,7 @@ function baseReducer(s: AppState, a: Action): AppState {
               title: `Solicitud ${a.status.toLowerCase()}`,
               body: `${ab.type} (${ab.dateFrom}) fue ${a.status.toLowerCase()}.`,
               date: isoDate(new Date()), read: false,
+              toEmail: s.users.find((u) => u.id === ab.userId)?.email,
             },
             ...s.notifications,
           ],
@@ -246,6 +247,7 @@ function baseReducer(s: AppState, a: Action): AppState {
               title: `Horas extra ${a.status.toLowerCase()}s`,
               body: `${Math.round(o.minutes / 60 * 10) / 10} h extra de la semana ${o.weekStart} fueron ${a.status.toLowerCase()}s${a.status === "Aprobado" ? " y ya se pueden recuperar como compensación" : ""}.`,
               date: isoDate(new Date()), read: false,
+              toEmail: s.users.find((u) => u.id === o.userId)?.email,
             },
             ...s.notifications,
           ],

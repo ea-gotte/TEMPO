@@ -43,7 +43,7 @@ export function HoursControl() {
       if (r.status !== "sin-carga") continue;
       const body = `${r.u.name} no cargó horas en la semana del ${dayLabel(ws)}.`;
       if (state.notifications.some((n) => n.body === body)) continue;
-      dispatch({ type: "notify", n: { kind: "falta-carga", title: "Sin carga de horas", body } });
+      dispatch({ type: "notify", n: { kind: "falta-carga", title: "Sin carga de horas", body, toEmail: r.u.email } });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCurrentWeek, ws]);
@@ -77,10 +77,10 @@ export function HoursControl() {
     toast("Horas extra enviadas a supervisión y aprobación.");
   }
 
-  function notifyMissing(name: string) {
+  function notifyMissing(name: string, email: string) {
     dispatch({
       type: "notify",
-      n: { kind: "falta-carga", title: "Recordatorio de carga", body: `${name}: recordá cargar tus horas de la semana del ${dayLabel(ws)}.` },
+      n: { kind: "falta-carga", title: "Recordatorio de carga", body: `${name}: recordá cargar tus horas de la semana del ${dayLabel(ws)}.`, toEmail: email },
     });
     toast(`Recordatorio enviado a ${name}.`);
   }
@@ -190,7 +190,7 @@ export function HoursControl() {
                       <div>
                         <span className="badge bad"><Icon name="ban" size={11} /> Sin carga</span>
                         <div>
-                          <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={() => notifyMissing(u.name)}>
+                          <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={() => notifyMissing(u.name, u.email)}>
                             <Icon name="bell" size={12} /> Notificar
                           </button>
                         </div>

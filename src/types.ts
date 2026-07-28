@@ -192,6 +192,9 @@ export interface Notification {
   body: string;
   date: string;
   read: boolean;
+  /** Email al que se dirige la copia simulada en la bandeja de salida (Correos).
+   * Si no se especifica, se usa el email de quien generó la notificación. */
+  toEmail?: string;
 }
 
 /** Validación semanal de carga de horas por parte del admin/supervisor */
