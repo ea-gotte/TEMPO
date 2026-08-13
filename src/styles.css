@@ -293,7 +293,7 @@ a { color: var(--accent); text-decoration: none; }
 .cal-hour-label {
   height: 44px; font-size: 10.5px; color: var(--text-3);
   display: flex; align-items: flex-end; justify-content: flex-end;
-  padding-right: 6px; padding-bottom: 2px;
+  padding-right: 6px; transform: translateY(6px);
   font-variant-numeric: tabular-nums;
 }
 .cal-tz-head {
