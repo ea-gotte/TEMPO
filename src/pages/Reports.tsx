@@ -19,6 +19,7 @@ export function Reports() {
   // Los usuarios solo ven sus propios datos
   const userFilter = isEmployee ? me.id : userFilterRaw;
   const [projectFilter, setProjectFilter] = useState("");
+  const [subProjectFilter, setSubProjectFilter] = useState("");
   const [clientFilter, setClientFilter] = useState("");
 
   const [rFrom, rTo] = useMemo((): [string, string] => {
@@ -33,13 +34,14 @@ export function Reports() {
         if (e.date < rFrom || e.date > rTo) return false;
         if (userFilter && e.userId !== userFilter) return false;
         if (projectFilter && e.projectId !== projectFilter) return false;
+        if (subProjectFilter && e.subProjectId !== subProjectFilter) return false;
         if (clientFilter) {
           const p = state.projects.find((x) => x.id === e.projectId);
           if (p?.clientId !== clientFilter) return false;
         }
         return true;
       }),
-    [state.entries, state.projects, rFrom, rTo, userFilter, projectFilter, clientFilter],
+    [state.entries, state.projects, rFrom, rTo, userFilter, projectFilter, subProjectFilter, clientFilter],
   );
 
   const sum = (list: typeof filtered) => list.reduce((a, e) => a + (e.end - e.start), 0);
@@ -73,7 +75,7 @@ export function Reports() {
 
   function exportCSV() {
     const rows: (string | number)[][] = [
-      ["Fecha", "Persona", "Cliente", "Proyecto", "Tarea", "Descripción", "Inicio", "Fin", "Horas"],
+      ["Fecha", "Persona", "Cliente", "Proyecto", "Subproyecto", "Tarea", "Descripción", "Inicio", "Fin", "Horas"],
       ...filtered.map((e) => {
         const p = state.projects.find((x) => x.id === e.projectId);
         const c = state.clients.find((x) => x.id === p?.clientId);
@@ -84,6 +86,7 @@ export function Reports() {
           u?.name ?? "",
           c?.name ?? "",
           p?.name ?? "",
+          state.subProjects.find((sp) => sp.id === e.subProjectId)?.name ?? "",
           p?.tasks.find((tk) => tk.id === e.taskId)?.name ?? "",
           e.description,
           `${Math.floor(e.start / 60)}:${String(e.start % 60).padStart(2, "0")}`,
@@ -148,13 +151,24 @@ export function Reports() {
           </div>
           <div className="field">
             <label>Proyecto</label>
-            <select className="select" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
+            <select className="select" value={projectFilter} onChange={(e) => { setProjectFilter(e.target.value); setSubProjectFilter(""); }}>
               <option value="">Todos</option>
               {visibleProjects(state, state.currentUserId).map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
           </div>
+          {projectFilter && state.subProjects.some((sp) => sp.projectId === projectFilter) && (
+            <div className="field">
+              <label>Subproyecto</label>
+              <select className="select" value={subProjectFilter} onChange={(e) => setSubProjectFilter(e.target.value)}>
+                <option value="">Todos</option>
+                {state.subProjects.filter((sp) => sp.projectId === projectFilter).map((sp) => (
+                  <option key={sp.id} value={sp.id}>{sp.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 

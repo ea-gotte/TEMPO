@@ -19,6 +19,7 @@ export function EntryModal({
 
   const [projectId, setProjectId] = useState<string>(initial?.projectId ?? myProjects[0]?.id ?? "");
   const [taskId, setTaskId] = useState<string>(initial?.taskId ?? "");
+  const [subProjectId, setSubProjectId] = useState<string>(initial?.subProjectId ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [date, setDate] = useState(initial?.date ?? today());
   const [start, setStart] = useState(minToHM(initial?.start ?? 9 * 60));
@@ -29,6 +30,7 @@ export function EntryModal({
 
   const project = state.projects.find((p) => p.id === projectId);
   const tasks = project?.tasks ?? [];
+  const subProjects = state.subProjects.filter((sp) => sp.projectId === projectId);
 
   const candidate: TimeEntry = useMemo(
     () => ({
@@ -36,6 +38,7 @@ export function EntryModal({
       userId: initial?.userId ?? state.currentUserId,
       projectId: projectId || null,
       taskId: taskId || null,
+      subProjectId: subProjectId || null,
       description,
       tagIds,
       date,
@@ -46,7 +49,7 @@ export function EntryModal({
       favorite,
       recurring,
     }),
-    [initial, state.currentUserId, projectId, taskId, description, tagIds, date, start, end, project, favorite, recurring],
+    [initial, state.currentUserId, projectId, taskId, subProjectId, description, tagIds, date, start, end, project, favorite, recurring],
   );
 
   const conflict = overlaps(state.entries, candidate);
@@ -97,12 +100,23 @@ export function EntryModal({
       <div className="form-grid">
         <div className="field">
           <label>Proyecto</label>
-          <select className="select" value={projectId} onChange={(e) => { setProjectId(e.target.value); setTaskId(""); }}>
+          <select className="select" value={projectId} onChange={(e) => { setProjectId(e.target.value); setTaskId(""); setSubProjectId(""); }}>
             {myProjects.filter((p) => p.status === "activo" || p.id === projectId).map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
         </div>
+        {subProjects.length > 0 && (
+          <div className="field">
+            <label>Subproyecto</label>
+            <select className="select" value={subProjectId} onChange={(e) => setSubProjectId(e.target.value)}>
+              <option value="">— Sin subproyecto —</option>
+              {subProjects.map((sp) => (
+                <option key={sp.id} value={sp.id}>{sp.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="field">
           <label>Tarea</label>
           <select className="select" value={taskId} onChange={(e) => setTaskId(e.target.value)}>

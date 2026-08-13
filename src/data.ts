@@ -30,6 +30,7 @@ function seedEntries(): TimeEntry[] {
     userId,
     projectId,
     taskId,
+    subProjectId: null,
     description,
     tagIds,
     date: addDays(ws, dayOffset),
@@ -202,6 +203,7 @@ export function seedState(): AppState {
         memberIds: ["u2"],
       },
     ],
+    subProjects: [],
     tags: [
       { id: "g1", name: "Urgente", color: P.rose },
       { id: "g2", name: "Entregable", color: P.indigo },

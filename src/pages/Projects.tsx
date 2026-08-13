@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useStore } from "../store";
-import type { Client, Project, ProjectStatus } from "../types";
+import type { Client, Project, ProjectStatus, SubProject } from "../types";
 import { fmtDur, uid } from "../utils";
 import { Avatar, Dot, Empty, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
@@ -168,6 +168,11 @@ export function Projects() {
                           {p.tasks.length} tareas: {p.tasks.map((t) => t.name).join(", ")}
                         </div>
                       )}
+                      {state.subProjects.some((sp) => sp.projectId === p.id) && (
+                        <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>
+                          {state.subProjects.filter((sp) => sp.projectId === p.id).length} subproyectos: {state.subProjects.filter((sp) => sp.projectId === p.id).map((sp) => sp.name).join(", ")}
+                        </div>
+                      )}
                       <div style={{ display: "flex", gap: 3, marginTop: 5 }}>
                         {p.memberIds.map((id) => {
                           const u = state.users.find((x) => x.id === id);
@@ -329,6 +334,9 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
   const [budgetHours, setBudgetHours] = useState<string>(project?.budgetHours?.toString() ?? "");
   const [notionUrl, setNotionUrl] = useState(project?.notionUrl ?? "");
   const [tasksText, setTasksText] = useState(project?.tasks.map((t) => t.name).join("\n") ?? "");
+  const [subProjects, setSubProjects] = useState<SubProject[]>(
+    project ? state.subProjects.filter((sp) => sp.projectId === project.id) : [],
+  );
   const [memberIds, setMemberIds] = useState<string[]>(project?.memberIds ?? [state.currentUserId]);
   const [memberQuery, setMemberQuery] = useState("");
   const activeUsers = state.users.filter((u) => u.active);
@@ -357,12 +365,15 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
       memberIds,
       notionUrl: notionUrl.trim() || undefined,
     };
+    const finalSubProjects = subProjects.map((sp) => ({ ...sp, projectId: next.id }));
+    const otherSubProjects = state.subProjects.filter((sp) => sp.projectId !== next.id);
     dispatch({
       type: "patch",
       patch: {
         projects: project
           ? state.projects.map((p) => (p.id === project.id ? next : p))
           : [...state.projects, next],
+        subProjects: [...otherSubProjects, ...finalSubProjects],
       },
     });
     dispatch({ type: "audit", action: project ? "Proyecto modificado" : "Proyecto creado", detail: next.name });
@@ -514,7 +525,129 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
         <label>Tareas (una por línea, opcional)</label>
         <textarea className="textarea" rows={3} value={tasksText} onChange={(e) => setTasksText(e.target.value)} />
       </div>
+      <SubProjectsField subProjects={subProjects} onChange={setSubProjects} />
     </Modal>
+  );
+}
+
+function SubProjectsField({
+  subProjects,
+  onChange,
+}: {
+  subProjects: SubProject[];
+  onChange: (next: SubProject[]) => void;
+}) {
+  const [editing, setEditing] = useState<SubProject | "new" | null>(null);
+
+  function upsert(sp: SubProject) {
+    onChange(subProjects.some((x) => x.id === sp.id) ? subProjects.map((x) => (x.id === sp.id ? sp : x)) : [...subProjects, sp]);
+    setEditing(null);
+  }
+
+  function remove(id: string) {
+    onChange(subProjects.filter((x) => x.id !== id));
+  }
+
+  return (
+    <div className="field">
+      <label>Subproyectos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional)</span></label>
+      {subProjects.length === 0 && !editing && (
+        <div style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 6 }}>Sin subproyectos.</div>
+      )}
+      {subProjects.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+          {subProjects.map((sp) => (
+            <div key={sp.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "var(--r-sm)" }}>
+              <span style={{ fontWeight: 600, flex: 1 }}>{sp.name}</span>
+              <span className={`badge ${sp.status === "activo" ? "ok" : ""}`}>{sp.status}</span>
+              {sp.budgetHours != null && <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>{sp.budgetHours} h</span>}
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(sp)} aria-label={`Editar ${sp.name}`}><Icon name="pencil" size={12} /></button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => remove(sp.id)} aria-label={`Eliminar ${sp.name}`}><Icon name="trash" size={12} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+      {editing ? (
+        <SubProjectForm subProject={editing === "new" ? null : editing} onSave={upsert} onCancel={() => setEditing(null)} />
+      ) : (
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing("new")}>
+          <Icon name="plus" size={13} /> Agregar subproyecto
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SubProjectForm({
+  subProject,
+  onSave,
+  onCancel,
+}: {
+  subProject: SubProject | null;
+  onSave: (sp: SubProject) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(subProject?.name ?? "");
+  const [status, setStatus] = useState<ProjectStatus>(subProject?.status ?? "activo");
+  const [billable, setBillable] = useState(subProject?.billable ?? false);
+  const [hourlyRate, setHourlyRate] = useState(subProject?.hourlyRate?.toString() ?? "0");
+  const [costRate, setCostRate] = useState(subProject?.costRate?.toString() ?? "0");
+  const [budgetHours, setBudgetHours] = useState(subProject?.budgetHours?.toString() ?? "");
+
+  function save() {
+    if (!name.trim()) return;
+    onSave({
+      id: subProject?.id ?? uid(),
+      projectId: subProject?.projectId ?? "",
+      name: name.trim(),
+      status,
+      billable,
+      hourlyRate: Number(hourlyRate) || 0,
+      costRate: Number(costRate) || 0,
+      budgetHours: budgetHours ? Number(budgetHours) : null,
+    });
+  }
+
+  return (
+    <div style={{ border: "1px solid var(--border-strong)", borderRadius: "var(--r-md)", padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="form-grid">
+        <div className="field">
+          <label>Nombre</label>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        </div>
+        <div className="field">
+          <label>Estado</label>
+          <select className="select" value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>
+            <option value="activo">Activo</option>
+            <option value="pausado">Pausado</option>
+            <option value="completado">Completado</option>
+            <option value="archivado">Archivado</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>Horas proyectadas</label>
+          <input type="number" className="input" value={budgetHours} onChange={(e) => setBudgetHours(e.target.value)} placeholder="Sin proyección" />
+        </div>
+        <div className="field">
+          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} />
+            Facturable
+          </label>
+        </div>
+        <div className="field">
+          <label>Tarifa (por hora)</label>
+          <input type="number" className="input" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} disabled={!billable} />
+        </div>
+        <div className="field">
+          <label>Costo interno (por hora)</label>
+          <input type="number" className="input" value={costRate} onChange={(e) => setCostRate(e.target.value)} />
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={onCancel}>Cancelar</button>
+        <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={!name.trim()}>Guardar</button>
+      </div>
+    </div>
   );
 }
 

@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
-import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord, Holiday, Client, Project, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role } from "./types";
+import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword, addDays, parseISO } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
@@ -38,6 +38,7 @@ type Action =
   | { type: "syncHolidays"; holidays: Holiday[] }
   | { type: "syncClients"; clients: Client[] }
   | { type: "syncProjects"; projects: Project[] }
+  | { type: "syncSubProjects"; subProjects: SubProject[] }
   | { type: "syncOvertime"; overtime: OvertimeRequest[] }
   | { type: "syncAudit"; audit: AuditLog[] }
   | { type: "syncCorpEvents"; corpEvents: CorpEvent[] }
@@ -62,6 +63,7 @@ function buildStoppedEntry(t: RunningTimer, currentUserId: string): TimeEntry {
     userId: currentUserId,
     projectId: t.projectId,
     taskId: t.taskId,
+    subProjectId: t.subProjectId,
     description: t.description,
     tagIds: t.tagIds,
     date: sameDay,
@@ -303,6 +305,8 @@ function baseReducer(s: AppState, a: Action): AppState {
       return { ...s, clients: a.clients };
     case "syncProjects":
       return { ...s, projects: a.projects };
+    case "syncSubProjects":
+      return { ...s, subProjects: a.subProjects };
     case "syncOvertime":
       return { ...s, overtime: a.overtime };
     case "syncAudit":
@@ -339,6 +343,7 @@ function loadInitial(): AppState {
             ...p,
             memberIds: p.memberIds ?? [],
           })),
+          subProjects: parsed.subProjects ?? [],
           absences: parsed.absences.map((a) => ({
             ...a,
             // Versiones anteriores guardaban adjuntos como string[]
@@ -390,6 +395,7 @@ function toEntryRow(e: TimeEntry) {
     user_id: e.userId,
     project_id: e.projectId,
     task_id: e.taskId,
+    sub_project_id: e.subProjectId,
     description: e.description,
     tag_ids: e.tagIds,
     date: e.date,
@@ -407,6 +413,7 @@ function fromEntryRow(r: any): TimeEntry {
     userId: r.user_id,
     projectId: r.project_id,
     taskId: r.task_id,
+    subProjectId: r.sub_project_id ?? null,
     description: r.description ?? "",
     tagIds: r.tag_ids ?? [],
     date: r.date,
@@ -504,6 +511,31 @@ function fromProjectRow(r: any): Project {
   };
 }
 
+function toSubProjectRow(sp: SubProject) {
+  return {
+    id: sp.id,
+    project_id: sp.projectId,
+    name: sp.name,
+    status: sp.status,
+    billable: sp.billable,
+    hourly_rate: sp.hourlyRate,
+    cost_rate: sp.costRate,
+    budget_hours: sp.budgetHours,
+  };
+}
+function fromSubProjectRow(r: any): SubProject {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    name: r.name,
+    status: r.status,
+    billable: r.billable,
+    hourlyRate: r.hourly_rate,
+    costRate: r.cost_rate,
+    budgetHours: r.budget_hours,
+  };
+}
+
 function toOvertimeRow(o: OvertimeRequest) {
   return {
     id: o.id,
@@ -583,6 +615,7 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSe
     { data: holidayRows, error: holidaysErr },
     { data: clientRows, error: clientsErr },
     { data: projectRows, error: projectsErr },
+    { data: subProjectRows, error: subProjectsErr },
     { data: overtimeRows, error: overtimeErr },
     { data: auditRows, error: auditErr },
     { data: corpEventRows, error: corpEventsErr },
@@ -594,6 +627,7 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSe
     supabase.from("holidays").select("*"),
     supabase.from("clients").select("*"),
     supabase.from("projects").select("*"),
+    supabase.from("sub_projects").select("*"),
     supabase.from("overtime_requests").select("*"),
     supabase.from("audit_log").select("*").order("at", { ascending: false }).limit(300),
     supabase.from("corp_events").select("*"),
@@ -605,6 +639,7 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSe
   if (holidaysErr) console.warn("Error al leer holidays:", holidaysErr);
   if (clientsErr) console.warn("Error al leer clients:", clientsErr);
   if (projectsErr) console.warn("Error al leer projects:", projectsErr);
+  if (subProjectsErr) console.warn("Error al leer sub_projects:", subProjectsErr);
   if (overtimeErr) console.warn("Error al leer overtime_requests:", overtimeErr);
   if (auditErr) console.warn("Error al leer audit_log:", auditErr);
   if (corpEventsErr) console.warn("Error al leer corp_events:", corpEventsErr);
@@ -615,6 +650,7 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSe
   dispatch({ type: "syncHolidays", holidays: (holidayRows || []).map(fromHolidayRow) });
   dispatch({ type: "syncClients", clients: (clientRows || []).map(fromClientRow) });
   dispatch({ type: "syncProjects", projects: (projectRows || []).map(fromProjectRow) });
+  dispatch({ type: "syncSubProjects", subProjects: (subProjectRows || []).map(fromSubProjectRow) });
   dispatch({ type: "syncOvertime", overtime: (overtimeRows || []).map(fromOvertimeRow) });
   dispatch({ type: "syncAudit", audit: (auditRows || []).map(fromAuditRow) });
   dispatch({ type: "syncCorpEvents", corpEvents: (corpEventRows || []).map(fromCorpEventRow) });
@@ -696,6 +732,10 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
       }
       if (a.patch.projects) {
         const err = await reconcileTable("projects", prevState.projects, a.patch.projects, toProjectRow);
+        if (err) errors.push(err);
+      }
+      if (a.patch.subProjects) {
+        const err = await reconcileTable("sub_projects", prevState.subProjects, a.patch.subProjects, toSubProjectRow);
         if (err) errors.push(err);
       }
       if (a.patch.corpEvents) {
@@ -934,6 +974,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "holidays" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "projects" }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "sub_projects" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "overtime_requests" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "corp_events" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, refetch)

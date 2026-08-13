@@ -58,6 +58,7 @@ export function Tracker() {
       id: uid(),
       projectId: pid,
       taskId: preset?.taskId ?? null,
+      subProjectId: preset?.subProjectId ?? null,
       description: preset?.description ?? desc,
       tagIds: preset?.tagIds ?? [],
       // Facturable se hereda de la configuración del proyecto

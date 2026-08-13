@@ -32,6 +32,19 @@ export interface ProjectTask {
   done?: boolean;
 }
 
+/** Subproyecto: entidad propia dentro de un proyecto, con su propio presupuesto y
+ * tarifa — a diferencia de las tareas (que son solo un nombre para agrupar registros). */
+export interface SubProject {
+  id: ID;
+  projectId: ID;
+  name: string;
+  status: ProjectStatus;
+  billable: boolean;
+  hourlyRate: number;
+  costRate: number;
+  budgetHours: number | null;
+}
+
 export interface Tag {
   id: ID;
   name: string;
@@ -73,6 +86,7 @@ export interface TimeEntry {
   userId: ID;
   projectId: ID | null;
   taskId: ID | null;
+  subProjectId: ID | null;
   description: string;
   tagIds: ID[];
   date: string; // YYYY-MM-DD
@@ -87,6 +101,7 @@ export interface RunningTimer {
   id: ID;
   projectId: ID | null;
   taskId: ID | null;
+  subProjectId: ID | null;
   description: string;
   tagIds: ID[];
   billable: boolean;
@@ -268,6 +283,7 @@ export interface AppState {
   currentUserId: ID;
   clients: Client[];
   projects: Project[];
+  subProjects: SubProject[];
   tags: Tag[];
   users: User[];
   entries: TimeEntry[];
