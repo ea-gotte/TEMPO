@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useStore, vacationInfo } from "../store";
 import type { Jornada, Role, User } from "../types";
 import { uid, weekStart, addDays, fmtDate, fmtDur, today, hashPassword, validatePassword } from "../utils";
-import { Avatar, DateField, Modal, Switch, useToast } from "../components/ui";
+import { Avatar, DateField, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { supabase } from "../supabase";
 
@@ -139,7 +139,7 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [password, setPassword] = useState("");
-  const [mustChangePassword, setMustChangePassword] = useState(user ? (user.mustChangePassword ?? false) : true);
+  const mustChangePassword = user ? (user.mustChangePassword ?? false) : true;
   const [error, setError] = useState("");
   const [role, setRole] = useState<Role>(user?.role ?? "usuario");
   const [supervisorId, setSupervisorId] = useState(user?.supervisorId ?? "");
@@ -240,26 +240,19 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
           <label>Email</label>
           <input type="email" className="input" value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }} />
         </div>
-        <div className="field">
-          <label>{user ? "Cambiar clave de acceso" : "Clave de acceso inicial"}</label>
-          <input
-            type="text"
-            className="input"
-            value={password}
-            onChange={(e) => { setPassword(e.target.value); setError(""); }}
-            placeholder={user ? "Dejar vacío para no cambiar" : "Clave temporal"}
-            autoComplete="new-password"
-          />
-        </div>
-        <div className="field">
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, cursor: "pointer", width: "100%" }}>
-            <span style={{ fontSize: 12, color: "var(--text-3)" }}>Cambio obligatorio</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-              <Switch on={mustChangePassword} onToggle={() => setMustChangePassword(!mustChangePassword)} label="Forzar cambio de contraseña" />
-              <span style={{ fontSize: 12.5, fontWeight: 500 }}>Forzar al iniciar</span>
-            </div>
-          </label>
-        </div>
+        {!user && (
+          <div className="field">
+            <label>Clave de acceso inicial</label>
+            <input
+              type="text"
+              className="input"
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); setError(""); }}
+              placeholder="Clave temporal"
+              autoComplete="new-password"
+            />
+          </div>
+        )}
         {error && (
           <div style={{ color: "var(--danger)", fontSize: 12, fontWeight: 650, gridColumn: "span 2", display: "flex", alignItems: "center", gap: 6 }} role="alert">
             <Icon name="alert" size={13} /> {error}

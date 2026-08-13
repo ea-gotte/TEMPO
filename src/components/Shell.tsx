@@ -371,6 +371,7 @@ function ProfileModal({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const me = state.users.find((u) => u.id === state.currentUserId)!;
 
+  const [name, setName] = useState(me.name);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -381,50 +382,73 @@ function ProfileModal({ onClose }: { onClose: () => void }) {
   async function handleSave() {
     setError("");
 
-    if (!currentPassword && !newPassword && !confirmPassword) {
+    if (!name.trim()) {
+      setError("El nombre no puede estar vacío.");
+      return;
+    }
+
+    const nameChanged = name.trim() !== me.name;
+    const wantsPasswordChange = !!(currentPassword || newPassword || confirmPassword);
+
+    if (!nameChanged && !wantsPasswordChange) {
       onClose();
       return;
     }
 
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setError("Para cambiar la contraseña, debés completar todos los campos.");
-      return;
-    }
+    if (wantsPasswordChange) {
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        setError("Para cambiar la contraseña, debés completar todos los campos.");
+        return;
+      }
 
-    if (currentPassword === newPassword) {
-      setError("La nueva contraseña debe ser diferente a la actual.");
-      return;
-    }
+      if (currentPassword === newPassword) {
+        setError("La nueva contraseña debe ser diferente a la actual.");
+        return;
+      }
 
-    const complexityError = validatePassword(newPassword);
-    if (complexityError) {
-      setError(complexityError);
-      return;
-    }
+      const complexityError = validatePassword(newPassword);
+      if (complexityError) {
+        setError(complexityError);
+        return;
+      }
 
-    if (newPassword !== confirmPassword) {
-      setError("Las contraseñas nuevas no coinciden.");
-      return;
+      if (newPassword !== confirmPassword) {
+        setError("Las contraseñas nuevas no coinciden.");
+        return;
+      }
     }
 
     setSaving(true);
     try {
-      // Supabase no tiene un endpoint para "verificar" la clave actual sin cambiar la
-      // sesión: la forma soportada es reintentar el login con ella.
-      const { error: verifyErr } = await supabase.auth.signInWithPassword({ email: me.email, password: currentPassword });
-      if (verifyErr) {
-        setError("La contraseña actual es incorrecta.");
-        return;
+      if (nameChanged) {
+        const { error: nameErr } = await supabase.from("profiles").update({ name: name.trim() }).eq("id", me.id);
+        if (nameErr) {
+          setError(`No se pudo actualizar el nombre: ${nameErr.message}`);
+          return;
+        }
+        dispatch({ type: "patch", patch: { users: state.users.map((u) => (u.id === me.id ? { ...u, name: name.trim() } : u)) } });
+        dispatch({ type: "audit", action: "Cambio de nombre propio", detail: `${me.name} → ${name.trim()}` });
       }
 
-      const { error: updErr } = await supabase.auth.updateUser({ password: newPassword });
-      if (updErr) {
-        setError(`No se pudo actualizar la contraseña: ${updErr.message}`);
-        return;
+      if (wantsPasswordChange) {
+        // Supabase no tiene un endpoint para "verificar" la clave actual sin cambiar la
+        // sesión: la forma soportada es reintentar el login con ella.
+        const { error: verifyErr } = await supabase.auth.signInWithPassword({ email: me.email, password: currentPassword });
+        if (verifyErr) {
+          setError("La contraseña actual es incorrecta.");
+          return;
+        }
+
+        const { error: updErr } = await supabase.auth.updateUser({ password: newPassword });
+        if (updErr) {
+          setError(`No se pudo actualizar la contraseña: ${updErr.message}`);
+          return;
+        }
+
+        dispatch({ type: "audit", action: "Cambio voluntario de clave", detail: me.email });
       }
 
-      dispatch({ type: "audit", action: "Cambio voluntario de clave", detail: me.email });
-      toast("Contraseña actualizada con éxito.");
+      toast(nameChanged && wantsPasswordChange ? "Perfil actualizado con éxito." : wantsPasswordChange ? "Contraseña actualizada con éxito." : "Nombre actualizado.");
       onClose();
     } finally {
       setSaving(false);
@@ -438,7 +462,7 @@ function ProfileModal({ onClose }: { onClose: () => void }) {
       footer={
         <>
           <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving || !name.trim()}>{saving ? "Guardando…" : "Guardar cambios"}</button>
         </>
       }
     >
@@ -446,7 +470,7 @@ function ProfileModal({ onClose }: { onClose: () => void }) {
         <div className="form-grid">
           <div className="field">
             <label>Nombre</label>
-            <input className="input" value={me.name} disabled style={{ opacity: 0.8 }} />
+            <input className="input" value={name} onChange={(e) => { setName(e.target.value); setError(""); }} />
           </div>
           <div className="field">
             <label>Email</label>
