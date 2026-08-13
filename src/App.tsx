@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { StoreProvider, useStore } from "./store";
 import { ToastProvider } from "./components/ui";
-import { Shell, EMPLOYEE_PAGES, type PageKey } from "./components/Shell";
+import { Shell, canSeePage, type PageKey } from "./components/Shell";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
 import { Tracker } from "./pages/Tracker";
@@ -39,9 +39,8 @@ function Root() {
   const me = state.users.find((u) => u.id === state.currentUserId);
   if (!me) return null;
   if (me.mustChangePassword) return <ForceChangePassword />;
-  // Vista básica para empleados: si la página actual no está permitida, volver al tracker
-  const allowed = me?.role === "usuario" ? EMPLOYEE_PAGES : (Object.keys(PAGES) as PageKey[]);
-  const effective = allowed.includes(page) ? page : "tracker";
+  // Si la página actual no está permitida para el rol, volver al tracker
+  const effective = canSeePage(me.role, page) ? page : "tracker";
   const Page = PAGES[effective];
   return (
     <Shell page={effective} setPage={setPage}>

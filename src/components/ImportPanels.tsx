@@ -63,7 +63,8 @@ function parseAccountsCSV(text: string, state: AppState): { rows: AccountRow[]; 
     const roleRaw = iRole >= 0 ? normText(cols[iRole] ?? "") : "";
     let role: Role = "usuario";
     if (roleRaw.includes("admin")) role = "admin";
-    else if (roleRaw.includes("supervis") || roleRaw.includes("manager")) role = "supervisor";
+    else if (roleRaw.includes("gerente") || roleRaw.includes("gerencia") || roleRaw.includes("manager")) role = "gerente";
+    else if (roleRaw.includes("supervis")) role = "supervisor";
 
     const weeklyHours = iHours >= 0 && cols[iHours] ? Number(cols[iHours]) || state.company.defaultWeeklyHours : state.company.defaultWeeklyHours;
     const hireRaw = iHire >= 0 ? (cols[iHire] ?? "").trim() : "";

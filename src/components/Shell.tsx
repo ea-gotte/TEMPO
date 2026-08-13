@@ -1,12 +1,28 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useStore, vacationInfo } from "../store";
+import type { Role } from "../types";
 import { dayLabel, fmtDate, today, validatePassword } from "../utils";
 import { Avatar, Modal, useToast } from "./ui";
 import { Icon, type IconName } from "./Icon";
 import { supabase } from "../supabase";
 
-/** Páginas visibles para el rol empleado (vista básica) */
+/** Páginas visibles para cualquier rol, incluido "usuario" (vista básica) */
 export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "absences", "corp"];
+
+/** Además de las básicas, el supervisor solo ve Control de horas (acotado a su equipo) */
+const SUPERVISOR_EXTRA_PAGES: PageKey[] = ["control"];
+
+/**
+ * Admin: todo. Gerente: todo menos Administración. Supervisor: las básicas más
+ * Control de horas. Usuario: solo las básicas.
+ */
+export function canSeePage(role: Role, key: PageKey): boolean {
+  if (EMPLOYEE_PAGES.includes(key)) return true;
+  if (role === "admin") return true;
+  if (role === "gerente") return key !== "admin";
+  if (role === "supervisor") return SUPERVISOR_EXTRA_PAGES.includes(key);
+  return false;
+}
 
 export type PageKey =
   | "dashboard"
@@ -96,19 +112,21 @@ export function Shell({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me.id]);
 
-  // Aviso de horas extra pendientes de aprobación (solo admin/supervisor)
+  // Aviso de horas extra pendientes de aprobación (solo admin/gerente: el supervisor
+  // ya no aprueba, solo informa horas extra desde Control de horas)
+  const isApprover = me.role === "admin" || me.role === "gerente";
   const otPending = state.overtime.filter((o) => o.status === "Pendiente" && o.userId !== me.id).length;
   useEffect(() => {
-    if (me.role === "usuario" || otPending === 0) return;
+    if (!isApprover || otPending === 0) return;
     const body = `Tenés ${otPending} solicitud${otPending !== 1 ? "es" : ""} de horas extra pendiente${otPending !== 1 ? "s" : ""} de aprobación.`;
     if (!state.notifications.some((n) => n.kind === "exceso-pendiente" && n.body === body)) {
       dispatch({ type: "notify", n: { userId: me.id, kind: "exceso-pendiente", title: "Horas extra por aprobar", body } });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me.id, me.role, otPending]);
+  }, [me.id, isApprover, otPending]);
 
   const unread = state.notifications.filter((n) => !n.read).length;
-  const pending = state.absences.filter((a) => a.status === "Pendiente").length + (me.role !== "usuario" ? otPending : 0);
+  const pending = isApprover ? state.absences.filter((a) => a.status === "Pendiente").length + otPending : 0;
 
   const title = useMemo(() => {
     for (const s of NAV) for (const i of s.items) if (i.key === page) return i.label;
@@ -145,7 +163,7 @@ export function Shell({
           </span>
         </div>
         {NAV.map((sec) => {
-          const items = sec.items.filter((it) => me.role !== "usuario" || EMPLOYEE_PAGES.includes(it.key));
+          const items = sec.items.filter((it) => canSeePage(me.role, it.key));
           if (items.length === 0) return null;
           return (
           <React.Fragment key={sec.section}>
@@ -162,7 +180,7 @@ export function Shell({
                 <span className="ico"><Icon name={it.ico} size={17} /></span>
                 {it.label}
                 {it.key === "absences" && pending > 0 && <span className="count">{pending}</span>}
-                {it.key === "control" && otPending > 0 && <span className="count">{otPending}</span>}
+                {it.key === "control" && isApprover && otPending > 0 && <span className="count">{otPending}</span>}
               </button>
             ))}
           </React.Fragment>
@@ -436,7 +454,7 @@ function ProfileModal({ onClose }: { onClose: () => void }) {
           </div>
           <div className="field">
             <label>Rol</label>
-            <input className="input" value={me.role === "admin" ? "Administrador" : me.role === "supervisor" ? "Supervisor" : "Usuario"} disabled style={{ opacity: 0.8 }} />
+            <input className="input" value={me.role === "admin" ? "Administrador" : me.role === "gerente" ? "Gerente" : me.role === "supervisor" ? "Supervisor" : "Usuario"} disabled style={{ opacity: 0.8 }} />
           </div>
           <div className="field">
             <label>Jornada</label>

@@ -42,7 +42,8 @@ export function CorpCalendar() {
   const [showNew, setShowNew] = useState(false);
   const [editing, setEditing] = useState<CorpEvent | null>(null);
   const [deleting, setDeleting] = useState<CorpEvent | null>(null);
-  const isAdmin = state.users.find((u) => u.id === state.currentUserId)?.role === "admin";
+  const me = state.users.find((u) => u.id === state.currentUserId);
+  const isAdmin = me?.role === "admin" || me?.role === "gerente";
 
   const monthCells = useMemo(() => {
     const d = parseISO(anchor);

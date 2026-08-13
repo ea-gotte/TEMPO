@@ -232,16 +232,22 @@ export function seedState(): AppState {
       admin: [
         { label: "Configuración de empresa", enabled: true },
         { label: "Gestión de usuarios y roles", enabled: true },
-        { label: "Tarifas y presupuestos", enabled: true },
-        { label: "Aprobación de ausencias", enabled: true },
+        { label: "Aprobación de ausencias y horas extra", enabled: true },
         { label: "Reportes globales", enabled: true },
         { label: "Integraciones", enabled: true },
         { label: "Auditoría", enabled: true },
       ],
+      gerente: [
+        { label: "Creación y edición de proyectos y clientes", enabled: true },
+        { label: "Gestión de equipo (altas, bajas, datos de perfil)", enabled: true },
+        { label: "Aprobación de ausencias y horas extra", enabled: true },
+        { label: "Control de horas de todo el equipo", enabled: true },
+        { label: "Reportes globales", enabled: true },
+      ],
       supervisor: [
-        { label: "Aprobación de ausencias de su equipo", enabled: true },
-        { label: "Reportes de su equipo", enabled: true },
-        { label: "Edición de proyectos asignados", enabled: true },
+        { label: "Control de horas de su equipo asignado", enabled: true },
+        { label: "Validación de carga semanal de su equipo", enabled: true },
+        { label: "Informar horas extra de su equipo (sin aprobar)", enabled: true },
       ],
       usuario: [
         { label: "Registro de tiempo propio", enabled: true },

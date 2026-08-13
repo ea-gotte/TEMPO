@@ -11,7 +11,9 @@ export function Reports() {
   const toast = useToast();
   const t = today();
   const me = state.users.find((u) => u.id === state.currentUserId)!;
-  const isEmployee = me.role === "usuario";
+  // El supervisor ve reportes propios como un empleado; su vista de equipo vive
+  // en Control de horas, no acá.
+  const isEmployee = me.role === "usuario" || me.role === "supervisor";
   const [period, setPeriod] = useState<Period>("semana");
   const [from, setFrom] = useState(weekStart(t));
   const [to, setTo] = useState(addDays(weekStart(t), 6));

@@ -1052,10 +1052,11 @@ export function validatedOvertimeMin(state: AppState, userId: string): number {
   return Math.max(0, approvedOvertime - usedCompensation);
 }
 
-/** Proyectos visibles para un usuario: admin/supervisor ven todo; empleados solo donde son miembros */
+/** Proyectos visibles para un usuario: admin/gerente ven todo; usuario y supervisor
+ * (que solo tiene acceso extra a Control de horas, no a proyectos) solo donde son miembros */
 export function visibleProjects(state: AppState, userId: string) {
   const u = state.users.find((x) => x.id === userId);
-  if (!u || u.role !== "usuario") return state.projects;
+  if (!u || (u.role !== "usuario" && u.role !== "supervisor")) return state.projects;
   return state.projects.filter((p) => p.memberIds.includes(userId));
 }
 

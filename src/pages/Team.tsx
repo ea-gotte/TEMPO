@@ -12,7 +12,7 @@ export function Team() {
   const { state } = useStore();
   const [edit, setEdit] = useState<User | "new" | null>(null);
   const me = state.users.find((u) => u.id === state.currentUserId)!;
-  const isAdmin = me.role === "admin" || me.role === "supervisor";
+  const canManage = me.role === "admin" || me.role === "gerente";
 
   const ws = weekStart(today());
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
@@ -22,7 +22,7 @@ export function Team() {
       <div className="page-head">
         <h1>Equipo</h1>
         <span className="spacer" />
-        {isAdmin && <button className="btn btn-primary" onClick={() => setEdit("new")}><Icon name="plus" size={15} /> Agregar usuario</button>}
+        {canManage && <button className="btn btn-primary" onClick={() => setEdit("new")}><Icon name="plus" size={15} /> Agregar usuario</button>}
       </div>
 
       <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
@@ -47,7 +47,7 @@ export function Team() {
               <th>Ingreso / Vacaciones</th>
               <th>Días laborales</th>
               <th>Esta semana</th>
-              {isAdmin && <th></th>}
+              {canManage && <th></th>}
             </tr>
           </thead>
           <tbody>
@@ -70,7 +70,7 @@ export function Team() {
                     </div>
                   </td>
                   <td>
-                    <span className={`badge ${u.role === "admin" ? "acc" : u.role === "supervisor" ? "warn" : ""}`} style={{ textTransform: "capitalize" }}>
+                    <span className={`badge ${u.role === "admin" ? "acc" : u.role === "gerente" ? "ok" : u.role === "supervisor" ? "warn" : ""}`} style={{ textTransform: "capitalize" }}>
                       {u.role}
                     </span>
                   </td>
@@ -116,7 +116,7 @@ export function Team() {
                       <div style={{ width: `${pct}%`, background: pct < 50 ? "var(--warning)" : "var(--accent)" }} />
                     </div>
                   </td>
-                  {isAdmin && (
+                  {canManage && (
                     <td>
                       <button className="btn btn-secondary btn-sm" onClick={() => setEdit(u)}><Icon name="pencil" size={13} /> Editar</button>
                     </td>
@@ -270,6 +270,7 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
           <select className="select" value={role} onChange={(e) => setRole(e.target.value as Role)}>
             <option value="usuario">Usuario</option>
             <option value="supervisor">Supervisor</option>
+            <option value="gerente">Gerente</option>
             <option value="admin">Administrador</option>
           </select>
         </div>

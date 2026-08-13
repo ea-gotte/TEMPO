@@ -8,7 +8,7 @@ import { AccountsImportPanel, ConfigImportExportPanel, ProjectsImportPanel } fro
 
 const TAG_COLORS = ["#5b6cff", "#12b5a5", "#f5a524", "#f0446c", "#8b5cf6", "#0ea5e9", "#84cc16", "#f97316"];
 
-const ROLE_LABELS: Record<Role, string> = { admin: "Administrador", supervisor: "Supervisor", usuario: "Usuario" };
+const ROLE_LABELS: Record<Role, string> = { admin: "Administrador", gerente: "Gerente", supervisor: "Supervisor", usuario: "Usuario" };
 
 const HOLIDAY_TYPES: HolidayType[] = ["Feriado nacional", "Feriado provincial", "Día no laborable"];
 
@@ -19,7 +19,7 @@ export function Admin() {
   const [tab, setTab] = useState<"empresa" | "roles" | "licencias" | "etiquetas" | "feriados" | "importar" | "correos" | "auditoria">("empresa");
   const [newTag, setNewTag] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
-  const [newPerm, setNewPerm] = useState<Record<Role, string>>({ admin: "", supervisor: "", usuario: "" });
+  const [newPerm, setNewPerm] = useState<Record<Role, string>>({ admin: "", gerente: "", supervisor: "", usuario: "" });
   const [newHolidayDate, setNewHolidayDate] = useState(today());
   const [newHolidayType, setNewHolidayType] = useState<HolidayType>("Feriado nacional");
   const [newHolidayTitle, setNewHolidayTitle] = useState("");

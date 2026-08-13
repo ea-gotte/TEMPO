@@ -20,6 +20,9 @@ export function HoursControl() {
   const rows = useMemo(() => {
     return state.users
       .filter((u) => u.active)
+      // El supervisor solo controla a quienes lo tienen asignado como su Supervisor;
+      // admin y gerente ven a todo el mundo.
+      .filter((u) => me.role !== "supervisor" || u.supervisorId === me.id)
       .map((u) => {
         const perDay = weekDays.map((d) =>
           state.entries.filter((e) => e.userId === u.id && e.date === d).reduce((a, e) => a + (e.end - e.start), 0),
@@ -33,7 +36,7 @@ export function HoursControl() {
           loaded === 0 ? "sin-carga" : overtimeMin > 0 ? "extra" : loaded >= expected * 0.95 ? "ok" : "incompleto";
         return { u, perDay, loaded, expected, overtimeMin, validation, otRequest, status };
       });
-  }, [state.users, state.entries, state.validations, state.overtime, weekDays, ws]);
+  }, [state.users, state.entries, state.validations, state.overtime, weekDays, ws, me.id, me.role]);
 
   // Notificación automática: usuarios sin ninguna carga en la semana actual.
   // notifiedRef evita repetirlo en cada render; como cada destinatario es otra
@@ -55,7 +58,15 @@ export function HoursControl() {
   if (me.role === "usuario") {
     return (
       <div className="card">
-        <Empty icon="lock" text="Sección restringida" sub="El control de horas está disponible para administradores y supervisores." />
+        <Empty icon="lock" text="Sección restringida" sub="El control de horas está disponible para administradores, gerentes y supervisores." />
+      </div>
+    );
+  }
+
+  if (me.role === "supervisor" && rows.length === 0) {
+    return (
+      <div className="card">
+        <Empty icon="users" text="Sin equipo asignado" sub="Todavía no tenés a nadie asignado como supervisor. Pedile a un admin o gerente que te asigne personas desde Equipo." />
       </div>
     );
   }
