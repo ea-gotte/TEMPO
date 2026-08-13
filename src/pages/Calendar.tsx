@@ -52,6 +52,10 @@ export function CalendarPage() {
   const [ctx, setCtx] = useState<{ x: number; y: number; entry: TimeEntry } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Al soltar un arrastre (mover/estirar), el navegador dispara un "click" fantasma
+  // justo después del mouseup — como el estado de drag ya se limpió, ese click caía
+  // sobre la celda vacía y abría "Nuevo registro" sin que se pidiera. Este ref lo frena.
+  const justDraggedRef = useRef(false);
 
   // Al abrir la vista de día/semana, posicionar el scroll en la mañana
   React.useEffect(() => {
@@ -136,6 +140,7 @@ export function CalendarPage() {
     if (next.start !== orig.start || next.end !== orig.end || next.date !== orig.date) {
       dispatch({ type: "updateEntry", entry: next });
     }
+    justDraggedRef.current = true;
     setDrag(null);
   }
 
@@ -159,6 +164,10 @@ export function CalendarPage() {
   }
 
   function onEmptyClick(day: string, ev: React.MouseEvent) {
+    if (justDraggedRef.current) {
+      justDraggedRef.current = false;
+      return;
+    }
     const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
     const min = H0 * 60 + Math.floor(((ev.clientY - rect.top) / PX_H) * 60 / 30) * 30;
     setModal({ date: day, start: min, end: min + 60 });
