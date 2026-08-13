@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { useStore } from "../store";
-import type { AppState, Jornada, ProjectStatus, Role, User } from "../types";
+import type { AppState, Jornada, ProjectStatus, Role, TimeEntry, User } from "../types";
 import { downloadFile, normText, parseCSV, parseDMY, toCSV, today, uid } from "../utils";
 import { Icon } from "./Icon";
 import { useToast } from "./ui";
@@ -421,6 +421,269 @@ export function ProjectsImportPanel() {
   );
 }
 
+/* ============================== Registros de horas (Clockify) ============================== */
+
+/** Lee un archivo .csv o .xlsx/.xls y lo devuelve como tabla de celdas.
+ * Las celdas de fecha de un xlsx llegan como Date (gracias a cellDates); todo
+ * lo demás llega como string, igual que el resto de los importadores CSV. */
+async function readTable(file: File): Promise<unknown[][]> {
+  if (/\.csv$/i.test(file.name)) {
+    return parseCSV(await readFileText(file));
+  }
+  // Import diferido: xlsx pesa varios cientos de KB y solo lo necesita este
+  // panel de administración, no vale la pena en el bundle principal.
+  const XLSX = await import("xlsx");
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array", cellDates: true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  return XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: "" });
+}
+
+function cellToText(v: unknown): string {
+  if (v instanceof Date) return v.toISOString();
+  return String(v ?? "").trim();
+}
+
+/** Convierte una celda de fecha (Date de xlsx, o texto ISO/dd-mm-aaaa de un CSV) a YYYY-MM-DD.
+ * Usa los getters UTC para no correr el día por la zona horaria del navegador. */
+function cellToISODate(v: unknown): string | null {
+  if (v instanceof Date) {
+    const y = v.getUTCFullYear();
+    const m = String(v.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(v.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  return parseDMY(s);
+}
+
+function parseHM(v: unknown): number | null {
+  const s = String(v ?? "").trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mnt = Number(m[2]);
+  if (h > 23 || mnt > 59) return null;
+  return h * 60 + mnt;
+}
+
+interface ClockifyRow {
+  rowNum: number;
+  personName: string;
+  userId: string | null;
+  projectRaw: string;
+  projectId: string | null;
+  subProjectId: string | null;
+  projectMatched: boolean;
+  description: string;
+  tagIds: string[];
+  date: string;
+  start: number;
+  end: number;
+  status: "nuevo" | "duplicado" | "error";
+  error?: string;
+}
+
+function parseClockifyTable(table: unknown[][], state: AppState): { rows: ClockifyRow[]; headerError?: string } {
+  if (table.length < 2) return { rows: [], headerError: "El archivo no tiene filas de datos." };
+  const header = table[0].map((h) => normText(cellToText(h)));
+  const iProject = findCol(header, ["proyecto", "project", "project name"]);
+  const iDesc = findCol(header, ["descripcion", "description"]);
+  const iEmail = findCol(header, ["correo electronico", "email", "correo", "e-mail"]);
+  const iUser = findCol(header, ["usuario", "user"]);
+  const iTags = findCol(header, ["etiquetas", "tags"]);
+  const iDateFrom = findCol(header, ["fecha de inicio", "start date"]);
+  const iTimeFrom = findCol(header, ["hora de inicio", "start time"]);
+  const iDateTo = findCol(header, ["fecha de finalizacion", "end date"]);
+  const iTimeTo = findCol(header, ["hora de finalizacion", "end time"]);
+
+  if (iEmail === -1) return { rows: [], headerError: "El archivo debe tener una columna de correo electrónico (Correo electrónico / Email)." };
+  if (iDateFrom === -1 || iTimeFrom === -1 || iTimeTo === -1) {
+    return { rows: [], headerError: "Faltan columnas de fecha/hora (Fecha de inicio, Hora de inicio, Hora de finalización)." };
+  }
+
+  const rows: ClockifyRow[] = [];
+  for (let r = 1; r < table.length; r++) {
+    const cols = table[r];
+    if (!cols || cols.every((c) => cellToText(c) === "")) continue;
+
+    const email = cellToText(cols[iEmail]);
+    const personName = iUser >= 0 ? cellToText(cols[iUser]) : email;
+    const user = state.users.find((u) => normText(u.email) === normText(email)) ?? null;
+
+    const projectRaw = iProject >= 0 ? cellToText(cols[iProject]) : "";
+    const projN = normText(projectRaw);
+    const proj = projN ? state.projects.find((p) => normText(p.name) === projN) : undefined;
+    const sub = !proj && projN ? state.subProjects.find((sp) => normText(sp.name) === projN) : undefined;
+    const projectId = proj?.id ?? sub?.projectId ?? null;
+    const subProjectId = sub?.id ?? null;
+    const projectMatched = !!(proj || sub);
+
+    const tagNames = iTags >= 0 ? cellToText(cols[iTags]).split(",").map((s) => s.trim()).filter(Boolean) : [];
+    const tagIds = tagNames
+      .map((tn) => state.tags.find((t) => normText(t.name) === normText(tn))?.id)
+      .filter((id): id is string => !!id);
+
+    const dateFrom = cellToISODate(cols[iDateFrom]);
+    const dateTo = iDateTo >= 0 ? cellToISODate(cols[iDateTo]) : dateFrom;
+    const start = parseHM(cols[iTimeFrom]);
+    const end = parseHM(cols[iTimeTo]);
+
+    let status: ClockifyRow["status"] = "nuevo";
+    let error: string | undefined;
+
+    if (!user) {
+      status = "error";
+      error = "Usuario no encontrado por email";
+    } else if (!dateFrom || start === null || end === null) {
+      status = "error";
+      error = "Fecha u hora inválida";
+    } else if (dateTo && dateTo !== dateFrom) {
+      status = "error";
+      error = "El registro cruza medianoche (no soportado)";
+    } else if (end <= start) {
+      status = "error";
+      error = "La hora de fin debe ser posterior a la de inicio";
+    } else if (
+      state.entries.some((e) => e.userId === user.id && e.date === dateFrom && e.start === start && e.end === end)
+    ) {
+      status = "duplicado";
+    }
+
+    rows.push({
+      rowNum: r + 1,
+      personName,
+      userId: user?.id ?? null,
+      projectRaw,
+      projectId,
+      subProjectId,
+      projectMatched,
+      description: iDesc >= 0 ? cellToText(cols[iDesc]) : "",
+      tagIds,
+      date: dateFrom ?? "",
+      start: start ?? 0,
+      end: end ?? 0,
+      status,
+      error,
+    });
+  }
+  return { rows };
+}
+
+export function TimeEntriesImportPanel() {
+  const { state, dispatch } = useStore();
+  const toast = useToast();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [rows, setRows] = useState<ClockifyRow[]>([]);
+  const [fileError, setFileError] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [importing, setImporting] = useState(false);
+
+  async function onPick(file: File | undefined) {
+    if (!file) return;
+    setFileName(file.name);
+    try {
+      const table = await readTable(file);
+      const { rows: parsed, headerError } = parseClockifyTable(table, state);
+      setFileError(headerError ?? "");
+      setRows(parsed);
+    } catch {
+      setFileError("No se pudo leer el archivo. Verificá que sea un .xlsx o .csv exportado desde Clockify.");
+      setRows([]);
+    }
+  }
+
+  async function apply() {
+    const valid = rows.filter((r) => r.status === "nuevo" && r.userId);
+    if (valid.length === 0) return;
+    setImporting(true);
+    const entries: TimeEntry[] = valid.map((r) => ({
+      id: uid(),
+      userId: r.userId!,
+      projectId: r.projectId,
+      subProjectId: r.subProjectId,
+      description: r.description,
+      tagIds: r.tagIds,
+      date: r.date,
+      start: r.start,
+      end: r.end,
+      favorite: false,
+      recurring: null,
+    }));
+    dispatch({ type: "addEntries", entries });
+    dispatch({ type: "audit", action: "Importación de registros de horas", detail: `${entries.length} registros procesados desde ${fileName}` });
+    toast(`${entries.length} registro${entries.length !== 1 ? "s" : ""} importado${entries.length !== 1 ? "s" : ""}.`);
+    setImporting(false);
+    setRows([]);
+    setFileName("");
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  const newCount = rows.filter((r) => r.status === "nuevo").length;
+  const dupCount = rows.filter((r) => r.status === "duplicado").length;
+  const errorCount = rows.filter((r) => r.status === "error").length;
+  const noProjectCount = rows.filter((r) => r.status === "nuevo" && r.projectRaw && !r.projectMatched).length;
+
+  return (
+    <ImportCard
+      title="Registros de horas (Clockify)"
+      description="Subí el .xlsx (o .csv) del 'Informe de tiempo detallado' que exporta Clockify. Se matchea por email; el proyecto se busca por nombre de proyecto o subproyecto en TEMPO. Los registros ya cargados (misma persona, fecha y horario) se detectan y no se duplican."
+      inputRef={inputRef}
+      onPick={onPick}
+      fileName={fileName}
+      accept=".xlsx,.xls,.csv"
+      pickLabel="Elegir archivo de Clockify"
+    >
+      {fileError && (
+        <p style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+          <Icon name="alert" size={13} /> {fileError}
+        </p>
+      )}
+      {rows.length > 0 && !fileError && (
+        <>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "8px 0" }}>
+            <span className="badge ok">{newCount} nuevos</span>
+            {dupCount > 0 && <span className="badge acc">{dupCount} ya cargados (se omiten)</span>}
+            {errorCount > 0 && <span className="badge bad">{errorCount} con error</span>}
+            {noProjectCount > 0 && <span className="badge warn">{noProjectCount} sin proyecto reconocido</span>}
+          </div>
+          <PreviewTable
+            rows={rows}
+            columns={[
+              { label: "Fila", render: (r) => r.rowNum },
+              { label: "Persona", render: (r) => r.personName || "—" },
+              { label: "Proyecto", render: (r) => (r.projectRaw ? (r.projectMatched ? r.projectRaw : <span title="No se encontró en TEMPO">{r.projectRaw} ⚠</span>) : "—") },
+              { label: "Fecha", render: (r) => r.date || "—" },
+              {
+                label: "Horario",
+                render: (r) => (r.date ? `${String(Math.floor(r.start / 60)).padStart(2, "0")}:${String(r.start % 60).padStart(2, "0")} – ${String(Math.floor(r.end / 60)).padStart(2, "0")}:${String(r.end % 60).padStart(2, "0")}` : "—"),
+              },
+              {
+                label: "Estado",
+                render: (r) =>
+                  r.status === "error" ? (
+                    <span className="badge bad">{r.error}</span>
+                  ) : r.status === "duplicado" ? (
+                    <span className="badge acc">Ya cargado</span>
+                  ) : (
+                    <span className="badge ok">Nuevo</span>
+                  ),
+              },
+            ]}
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+            <button className="btn btn-primary" onClick={apply} disabled={newCount === 0 || importing}>
+              <Icon name="check" size={14} /> {importing ? "Importando…" : `Confirmar importación (${newCount})`}
+            </button>
+          </div>
+        </>
+      )}
+    </ImportCard>
+  );
+}
+
 /* ============================== Configuración ============================== */
 
 type ConfigPayload = Pick<AppState, "company" | "rolePermissions" | "leaveTypeConfig">;
@@ -515,14 +778,18 @@ function ImportCard({
   inputRef,
   onPick,
   fileName,
+  accept = ".csv,text/csv",
+  pickLabel = "Elegir archivo CSV",
   children,
 }: {
   title: string;
   description: string;
-  onDownloadTemplate: () => void;
+  onDownloadTemplate?: () => void;
   inputRef: React.RefObject<HTMLInputElement>;
   onPick: (file: File | undefined) => void;
   fileName: string;
+  accept?: string;
+  pickLabel?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -530,16 +797,18 @@ function ImportCard({
       <div className="card-title">{title}</div>
       <p style={{ fontSize: 12.5, color: "var(--text-2)", marginBottom: 10 }}>{description}</p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button className="btn btn-secondary" onClick={onDownloadTemplate}>
-          <Icon name="download" size={14} /> Descargar plantilla CSV
-        </button>
+        {onDownloadTemplate && (
+          <button className="btn btn-secondary" onClick={onDownloadTemplate}>
+            <Icon name="download" size={14} /> Descargar plantilla CSV
+          </button>
+        )}
         <button className="btn btn-primary" onClick={() => inputRef.current?.click()}>
-          <Icon name="upload" size={14} /> Elegir archivo CSV
+          <Icon name="upload" size={14} /> {pickLabel}
         </button>
         <input
           ref={inputRef}
           type="file"
-          accept=".csv,text/csv"
+          accept={accept}
           style={{ display: "none" }}
           onChange={(e) => onPick(e.target.files?.[0])}
         />
