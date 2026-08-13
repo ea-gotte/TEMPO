@@ -62,14 +62,12 @@ function buildStoppedEntry(t: RunningTimer, currentUserId: string): TimeEntry {
     id: uid(),
     userId: currentUserId,
     projectId: t.projectId,
-    taskId: t.taskId,
     subProjectId: t.subProjectId,
     description: t.description,
     tagIds: t.tagIds,
     date: sameDay,
     start: startMin,
     end: endMin,
-    billable: t.billable,
   };
 }
 
@@ -394,14 +392,12 @@ function toEntryRow(e: TimeEntry) {
     id: e.id,
     user_id: e.userId,
     project_id: e.projectId,
-    task_id: e.taskId,
     sub_project_id: e.subProjectId,
     description: e.description,
     tag_ids: e.tagIds,
     date: e.date,
     start_min: e.start,
     end_min: e.end,
-    billable: e.billable,
     favorite: e.favorite ?? false,
     recurring: e.recurring ?? null,
   };
@@ -412,14 +408,12 @@ function fromEntryRow(r: any): TimeEntry {
     id: r.id,
     userId: r.user_id,
     projectId: r.project_id,
-    taskId: r.task_id,
     subProjectId: r.sub_project_id ?? null,
     description: r.description ?? "",
     tagIds: r.tag_ids ?? [],
     date: r.date,
     start: r.start_min,
     end: r.end_min,
-    billable: r.billable,
     favorite: r.favorite,
     recurring: r.recurring,
   };
@@ -485,11 +479,7 @@ function toProjectRow(p: Project) {
     name: p.name,
     color: p.color,
     status: p.status,
-    billable: p.billable,
-    hourly_rate: p.hourlyRate,
-    cost_rate: p.costRate,
     budget_hours: p.budgetHours,
-    tasks: p.tasks,
     member_ids: p.memberIds,
     notion_url: p.notionUrl ?? null,
   };
@@ -501,11 +491,7 @@ function fromProjectRow(r: any): Project {
     name: r.name,
     color: r.color,
     status: r.status,
-    billable: r.billable,
-    hourlyRate: r.hourly_rate,
-    costRate: r.cost_rate,
     budgetHours: r.budget_hours,
-    tasks: r.tasks ?? [],
     memberIds: r.member_ids ?? [],
     notionUrl: r.notion_url ?? undefined,
   };
@@ -517,9 +503,6 @@ function toSubProjectRow(sp: SubProject) {
     project_id: sp.projectId,
     name: sp.name,
     status: sp.status,
-    billable: sp.billable,
-    hourly_rate: sp.hourlyRate,
-    cost_rate: sp.costRate,
     budget_hours: sp.budgetHours,
   };
 }
@@ -529,9 +512,6 @@ function fromSubProjectRow(r: any): SubProject {
     projectId: r.project_id,
     name: r.name,
     status: r.status,
-    billable: r.billable,
-    hourlyRate: r.hourly_rate,
-    costRate: r.cost_rate,
     budgetHours: r.budget_hours,
   };
 }

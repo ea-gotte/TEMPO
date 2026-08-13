@@ -18,7 +18,6 @@ export function EntryModal({
   const myProjects = visibleProjects(state, state.currentUserId);
 
   const [projectId, setProjectId] = useState<string>(initial?.projectId ?? myProjects[0]?.id ?? "");
-  const [taskId, setTaskId] = useState<string>(initial?.taskId ?? "");
   const [subProjectId, setSubProjectId] = useState<string>(initial?.subProjectId ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [date, setDate] = useState(initial?.date ?? today());
@@ -28,8 +27,6 @@ export function EntryModal({
   const [favorite, setFavorite] = useState(initial?.favorite ?? false);
   const [recurring, setRecurring] = useState<TimeEntry["recurring"]>(initial?.recurring ?? null);
 
-  const project = state.projects.find((p) => p.id === projectId);
-  const tasks = project?.tasks ?? [];
   const subProjects = state.subProjects.filter((sp) => sp.projectId === projectId);
 
   const candidate: TimeEntry = useMemo(
@@ -37,19 +34,16 @@ export function EntryModal({
       id: initial?.id ?? uid(),
       userId: initial?.userId ?? state.currentUserId,
       projectId: projectId || null,
-      taskId: taskId || null,
       subProjectId: subProjectId || null,
       description,
       tagIds,
       date,
       start: hmToMin(start),
       end: hmToMin(end),
-      // Facturable se hereda de la configuración del proyecto
-      billable: project?.billable ?? false,
       favorite,
       recurring,
     }),
-    [initial, state.currentUserId, projectId, taskId, subProjectId, description, tagIds, date, start, end, project, favorite, recurring],
+    [initial, state.currentUserId, projectId, subProjectId, description, tagIds, date, start, end, favorite, recurring],
   );
 
   const conflict = overlaps(state.entries, candidate);
@@ -100,7 +94,7 @@ export function EntryModal({
       <div className="form-grid">
         <div className="field">
           <label>Proyecto</label>
-          <select className="select" value={projectId} onChange={(e) => { setProjectId(e.target.value); setTaskId(""); setSubProjectId(""); }}>
+          <select className="select" value={projectId} onChange={(e) => { setProjectId(e.target.value); setSubProjectId(""); }}>
             {myProjects.filter((p) => p.status === "activo" || p.id === projectId).map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
@@ -117,15 +111,6 @@ export function EntryModal({
             </select>
           </div>
         )}
-        <div className="field">
-          <label>Tarea</label>
-          <select className="select" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
-            <option value="">— Sin tarea —</option>
-            {tasks.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-        </div>
         <div className="field">
           <label>Fecha</label>
           <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />

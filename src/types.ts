@@ -15,33 +15,19 @@ export interface Project {
   name: string;
   color: string;
   status: ProjectStatus;
-  billable: boolean;
-  hourlyRate: number; // tarifa facturable por hora
-  costRate: number; // costo interno por hora
-  budgetHours: number | null; // presupuesto de horas
-  tasks: ProjectTask[];
+  budgetHours: number | null; // presupuesto de horas; si tiene subproyectos, es la suma de sus horas proyectadas
   /** Personas asignadas: los empleados solo ven los proyectos donde están */
   memberIds: ID[];
   /** Link a la página del proyecto en Notion */
   notionUrl?: string;
 }
 
-export interface ProjectTask {
-  id: ID;
-  name: string;
-  done?: boolean;
-}
-
-/** Subproyecto: entidad propia dentro de un proyecto, con su propio presupuesto y
- * tarifa — a diferencia de las tareas (que son solo un nombre para agrupar registros). */
+/** Subproyecto: entidad propia dentro de un proyecto, con su propio presupuesto de horas. */
 export interface SubProject {
   id: ID;
   projectId: ID;
   name: string;
   status: ProjectStatus;
-  billable: boolean;
-  hourlyRate: number;
-  costRate: number;
   budgetHours: number | null;
 }
 
@@ -85,14 +71,12 @@ export interface TimeEntry {
   id: ID;
   userId: ID;
   projectId: ID | null;
-  taskId: ID | null;
   subProjectId: ID | null;
   description: string;
   tagIds: ID[];
   date: string; // YYYY-MM-DD
   start: number; // minutos desde 00:00
   end: number; // minutos desde 00:00 (>start)
-  billable: boolean;
   favorite?: boolean;
   recurring?: "diario" | "semanal" | null;
 }
@@ -100,11 +84,9 @@ export interface TimeEntry {
 export interface RunningTimer {
   id: ID;
   projectId: ID | null;
-  taskId: ID | null;
   subProjectId: ID | null;
   description: string;
   tagIds: ID[];
-  billable: boolean;
   startedAt: number; // epoch ms
   paused?: boolean;
 }

@@ -75,7 +75,7 @@ export function Reports() {
 
   function exportCSV() {
     const rows: (string | number)[][] = [
-      ["Fecha", "Persona", "Cliente", "Proyecto", "Subproyecto", "Tarea", "Descripción", "Inicio", "Fin", "Horas"],
+      ["Fecha", "Persona", "Cliente", "Proyecto", "Subproyecto", "Descripción", "Inicio", "Fin", "Horas"],
       ...filtered.map((e) => {
         const p = state.projects.find((x) => x.id === e.projectId);
         const c = state.clients.find((x) => x.id === p?.clientId);
@@ -87,7 +87,6 @@ export function Reports() {
           c?.name ?? "",
           p?.name ?? "",
           state.subProjects.find((sp) => sp.id === e.subProjectId)?.name ?? "",
-          p?.tasks.find((tk) => tk.id === e.taskId)?.name ?? "",
           e.description,
           `${Math.floor(e.start / 60)}:${String(e.start % 60).padStart(2, "0")}`,
           `${Math.floor(e.end / 60)}:${String(e.end % 60).padStart(2, "0")}`,

@@ -18,54 +18,50 @@ function seedEntries(): TimeEntry[] {
   const mk = (
     userId: string,
     projectId: string,
-    taskId: string | null,
     description: string,
     dayOffset: number,
     start: number,
     end: number,
-    billable = true,
     tagIds: string[] = [],
   ): TimeEntry => ({
     id: uid(),
     userId,
     projectId,
-    taskId,
     subProjectId: null,
     description,
     tagIds,
     date: addDays(ws, dayOffset),
     start,
     end,
-    billable,
   });
 
   const out: TimeEntry[] = [];
   // Semana actual — usuaria actual (u1)
-  out.push(mk("u1", "p1", "t1", "Modelado estructural nave industrial", 0, 9 * 60, 12 * 60 + 30, true, ["g1"]));
-  out.push(mk("u1", "p2", "t4", "Revisión de planos de instalación", 0, 13 * 60 + 30, 17 * 60, true));
-  out.push(mk("u1", "p1", "t2", "Memoria de cálculo — fundaciones", 1, 9 * 60, 13 * 60, true, ["g2"]));
-  out.push(mk("u1", "p3", null, "Reunión de coordinación BIM", 1, 14 * 60, 15 * 60 + 30, false, ["g3"]));
-  out.push(mk("u1", "p2", "t5", "Cómputo y presupuesto", 2, 9 * 60 + 15, 12 * 60 + 45, true));
-  out.push(mk("u1", "p1", "t1", "Ajustes de modelo por revisión cliente", 2, 14 * 60, 18 * 60, true));
-  out.push(mk("u1", "p3", "t6", "Documentación de obra", 3, 9 * 60, 12 * 60, true));
-  out.push(mk("u1", "p4", null, "Capacitación interna Revit", 3, 15 * 60, 17 * 60, false, ["g3"]));
-  out.push(mk("u1", "p1", "t3", "Planos de detalle — entrega parcial", 4, 9 * 60, 13 * 60 + 15, true, ["g2"]));
+  out.push(mk("u1", "p1", "Modelado estructural nave industrial", 0, 9 * 60, 12 * 60 + 30, ["g1"]));
+  out.push(mk("u1", "p2", "Revisión de planos de instalación", 0, 13 * 60 + 30, 17 * 60));
+  out.push(mk("u1", "p1", "Memoria de cálculo — fundaciones", 1, 9 * 60, 13 * 60, ["g2"]));
+  out.push(mk("u1", "p3", "Reunión de coordinación BIM", 1, 14 * 60, 15 * 60 + 30, ["g3"]));
+  out.push(mk("u1", "p2", "Cómputo y presupuesto", 2, 9 * 60 + 15, 12 * 60 + 45));
+  out.push(mk("u1", "p1", "Ajustes de modelo por revisión cliente", 2, 14 * 60, 18 * 60));
+  out.push(mk("u1", "p3", "Documentación de obra", 3, 9 * 60, 12 * 60));
+  out.push(mk("u1", "p4", "Capacitación interna Revit", 3, 15 * 60, 17 * 60, ["g3"]));
+  out.push(mk("u1", "p1", "Planos de detalle — entrega parcial", 4, 9 * 60, 13 * 60 + 15, ["g2"]));
 
   // Semana pasada u1 (para reportes/balance)
   for (let d = -7; d <= -3; d++) {
-    out.push(mk("u1", d % 2 ? "p1" : "p2", null, "Desarrollo de ingeniería de detalle", d, 9 * 60, 13 * 60, true));
-    out.push(mk("u1", d % 2 ? "p2" : "p3", null, "Coordinación y documentación", d, 14 * 60, 17 * 60 + 30, d % 2 === 0));
+    out.push(mk("u1", d % 2 ? "p1" : "p2", "Desarrollo de ingeniería de detalle", d, 9 * 60, 13 * 60));
+    out.push(mk("u1", d % 2 ? "p2" : "p3", "Coordinación y documentación", d, 14 * 60, 17 * 60 + 30));
   }
 
   // Otros usuarios, esta semana
-  out.push(mk("u2", "p1", "t1", "Cálculo de estructuras metálicas", 0, 8 * 60 + 30, 12 * 60 + 30));
-  out.push(mk("u2", "p1", "t2", "Verificación sísmica", 1, 9 * 60, 13 * 60));
-  out.push(mk("u2", "p2", null, "Soporte a obra", 2, 9 * 60, 12 * 60));
-  out.push(mk("u3", "p3", "t6", "Documentación BIM", 0, 9 * 60, 13 * 60));
-  out.push(mk("u3", "p3", "t6", "Modelado MEP", 1, 9 * 60, 14 * 60));
-  out.push(mk("u3", "p2", "t4", "Planos de instalaciones", 3, 10 * 60, 16 * 60));
-  out.push(mk("u4", "p4", null, "Gestión administrativa", 0, 9 * 60, 12 * 60, false));
-  out.push(mk("u4", "p2", "t5", "Presupuestos y compras", 1, 9 * 60, 13 * 60 + 30, false));
+  out.push(mk("u2", "p1", "Cálculo de estructuras metálicas", 0, 8 * 60 + 30, 12 * 60 + 30));
+  out.push(mk("u2", "p1", "Verificación sísmica", 1, 9 * 60, 13 * 60));
+  out.push(mk("u2", "p2", "Soporte a obra", 2, 9 * 60, 12 * 60));
+  out.push(mk("u3", "p3", "Documentación BIM", 0, 9 * 60, 13 * 60));
+  out.push(mk("u3", "p3", "Modelado MEP", 1, 9 * 60, 14 * 60));
+  out.push(mk("u3", "p2", "Planos de instalaciones", 3, 10 * 60, 16 * 60));
+  out.push(mk("u4", "p4", "Gestión administrativa", 0, 9 * 60, 12 * 60));
+  out.push(mk("u4", "p2", "Presupuestos y compras", 1, 9 * 60, 13 * 60 + 30));
   return out;
 }
 
@@ -169,38 +165,23 @@ export function seedState(): AppState {
     projects: [
       {
         id: "p1", clientId: "c1", name: "Nave industrial — Parque Sur", color: P.indigo, status: "activo",
-        billable: true, hourlyRate: 55, costRate: 30, budgetHours: 320,
-        memberIds: ["u1", "u2"],
-        tasks: [
-          { id: "t1", name: "Modelado estructural" },
-          { id: "t2", name: "Memoria de cálculo" },
-          { id: "t3", name: "Planos de detalle" },
-        ],
+        budgetHours: 320, memberIds: ["u1", "u2"],
       },
       {
         id: "p2", clientId: "c2", name: "Edificio Meridiano 24", color: P.teal, status: "activo",
-        billable: true, hourlyRate: 60, costRate: 32, budgetHours: 480,
-        memberIds: ["u1", "u2", "u3", "u4"],
-        tasks: [
-          { id: "t4", name: "Instalaciones" },
-          { id: "t5", name: "Cómputo y presupuesto" },
-        ],
+        budgetHours: 480, memberIds: ["u1", "u2", "u3", "u4"],
       },
       {
         id: "p3", clientId: "c1", name: "Coordinación BIM — Hospital Norte", color: P.amber, status: "activo",
-        billable: true, hourlyRate: 48, costRate: 28, budgetHours: 200,
-        memberIds: ["u1", "u3"],
-        tasks: [{ id: "t6", name: "Documentación BIM" }],
+        budgetHours: 200, memberIds: ["u1", "u3"],
       },
       {
         id: "p4", clientId: "c3", name: "Gestión interna", color: P.rose, status: "activo",
-        billable: false, hourlyRate: 0, costRate: 25, budgetHours: null, tasks: [],
-        memberIds: ["u1", "u2", "u3", "u4"],
+        budgetHours: null, memberIds: ["u1", "u2", "u3", "u4"],
       },
       {
         id: "p5", clientId: "c2", name: "Auditoría estructural — Depósitos", color: P.lime, status: "completado",
-        billable: true, hourlyRate: 52, costRate: 30, budgetHours: 120, tasks: [],
-        memberIds: ["u2"],
+        budgetHours: 120, memberIds: ["u2"],
       },
     ],
     subProjects: [],

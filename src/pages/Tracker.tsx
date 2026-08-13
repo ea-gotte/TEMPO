@@ -57,12 +57,9 @@ export function Tracker() {
     const t: RunningTimer = {
       id: uid(),
       projectId: pid,
-      taskId: preset?.taskId ?? null,
       subProjectId: preset?.subProjectId ?? null,
       description: preset?.description ?? desc,
       tagIds: preset?.tagIds ?? [],
-      // Facturable se hereda de la configuración del proyecto
-      billable: state.projects.find((p) => p.id === pid)?.billable ?? false,
       startedAt: Date.now(),
     };
     dispatch({ type: "startTimer", timer: t });
@@ -158,7 +155,7 @@ export function Tracker() {
                 <button
                   key={f.id}
                   className="chip"
-                  onClick={() => startTimer({ description: f.description, projectId: f.projectId, taskId: f.taskId, billable: f.billable, tagIds: f.tagIds })}
+                  onClick={() => startTimer({ description: f.description, projectId: f.projectId, subProjectId: f.subProjectId, tagIds: f.tagIds })}
                 >
                   <Icon name="play" size={12} /> {f.description || "Sin descripción"}
                   {p && <span style={{ color: p.color }}>●</span>}
@@ -225,7 +222,7 @@ export function Tracker() {
                     {p && (
                       <span className="proj" style={{ color: p.color }}>
                         ● {p.name}
-                        {e.taskId && `: ${p.tasks.find((t) => t.id === e.taskId)?.name ?? ""}`}
+                        {e.subProjectId && `: ${state.subProjects.find((sp) => sp.id === e.subProjectId)?.name ?? ""}`}
                       </span>
                     )}
                     <span className="time">
@@ -258,7 +255,7 @@ export function Tracker() {
             {
               label: "Iniciar cronómetro igual", ico: "timer",
               onClick: () =>
-                startTimer({ description: ctx.entry.description, projectId: ctx.entry.projectId, taskId: ctx.entry.taskId, tagIds: ctx.entry.tagIds }),
+                startTimer({ description: ctx.entry.description, projectId: ctx.entry.projectId, subProjectId: ctx.entry.subProjectId, tagIds: ctx.entry.tagIds }),
             },
             {
               label: "Eliminar", ico: "trash", danger: true,

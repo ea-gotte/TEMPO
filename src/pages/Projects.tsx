@@ -163,11 +163,6 @@ export function Projects() {
                       <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 600 }}>
                         <Dot color={p.color} /> {p.name}
                       </div>
-                      {p.tasks.length > 0 && (
-                        <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>
-                          {p.tasks.length} tareas: {p.tasks.map((t) => t.name).join(", ")}
-                        </div>
-                      )}
                       {state.subProjects.some((sp) => sp.projectId === p.id) && (
                         <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>
                           {state.subProjects.filter((sp) => sp.projectId === p.id).length} subproyectos: {state.subProjects.filter((sp) => sp.projectId === p.id).map((sp) => sp.name).join(", ")}
@@ -328,40 +323,28 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
   const [clientId, setClientId] = useState(project?.clientId ?? state.clients[0]?.id ?? "");
   const [color, setColor] = useState(project?.color ?? COLORS[0]);
   const [status, setStatus] = useState<ProjectStatus>(project?.status ?? "activo");
-  const [billable, setBillable] = useState(project?.billable ?? false);
-  const [hourlyRate, setHourlyRate] = useState<string>(project?.hourlyRate?.toString() ?? "0");
-  const [costRate, setCostRate] = useState<string>(project?.costRate?.toString() ?? "0");
   const [budgetHours, setBudgetHours] = useState<string>(project?.budgetHours?.toString() ?? "");
   const [notionUrl, setNotionUrl] = useState(project?.notionUrl ?? "");
-  const [tasksText, setTasksText] = useState(project?.tasks.map((t) => t.name).join("\n") ?? "");
   const [subProjects, setSubProjects] = useState<SubProject[]>(
     project ? state.subProjects.filter((sp) => sp.projectId === project.id) : [],
   );
   const [memberIds, setMemberIds] = useState<string[]>(project?.memberIds ?? [state.currentUserId]);
-  const [memberQuery, setMemberQuery] = useState("");
+  const [showMembers, setShowMembers] = useState(false);
   const activeUsers = state.users.filter((u) => u.active);
-  const filteredUsers = activeUsers.filter(
-    (u) => u.name.toLowerCase().includes(memberQuery.toLowerCase()) || u.email.toLowerCase().includes(memberQuery.toLowerCase()),
-  );
+  const selectedMembers = memberIds.map((id) => activeUsers.find((u) => u.id === id)).filter((u): u is (typeof activeUsers)[number] => Boolean(u));
+
+  // Si hay subproyectos, el total del proyecto se ajusta a la suma de lo pactado por etapa
+  const subProjectsBudgetSum = subProjects.reduce((a, sp) => a + (sp.budgetHours ?? 0), 0);
 
   function save() {
     if (!name.trim()) return;
-    const tasks = tasksText
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((n, i) => project?.tasks[i]?.name === n ? project.tasks[i] : { id: uid(), name: n });
     const next: Project = {
       id: project?.id ?? uid(),
       clientId: clientId || null,
       name: name.trim(),
       color,
       status,
-      billable,
-      hourlyRate: Number(hourlyRate) || 0,
-      costRate: Number(costRate) || 0,
-      budgetHours: budgetHours ? Number(budgetHours) : null,
-      tasks,
+      budgetHours: subProjects.length > 0 ? subProjectsBudgetSum : (budgetHours ? Number(budgetHours) : null),
       memberIds,
       notionUrl: notionUrl.trim() || undefined,
     };
@@ -416,21 +399,14 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
         </div>
         <div className="field">
           <label>Horas proyectadas</label>
-          <input type="number" className="input" value={budgetHours} onChange={(e) => setBudgetHours(e.target.value)} placeholder="Sin proyección" />
-        </div>
-        <div className="field">
-          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} />
-            Facturable
-          </label>
-        </div>
-        <div className="field">
-          <label>Tarifa facturable (por hora)</label>
-          <input type="number" className="input" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} disabled={!billable} />
-        </div>
-        <div className="field">
-          <label>Costo interno (por hora)</label>
-          <input type="number" className="input" value={costRate} onChange={(e) => setCostRate(e.target.value)} />
+          {subProjects.length > 0 ? (
+            <>
+              <input className="input" value={`${subProjectsBudgetSum} h`} disabled />
+              <span style={{ fontSize: 11, color: "var(--text-3)" }}>Suma de lo pactado por subproyecto.</span>
+            </>
+          ) : (
+            <input type="number" className="input" value={budgetHours} onChange={(e) => setBudgetHours(e.target.value)} placeholder="Sin proyección" />
+          )}
         </div>
         <div className="field">
           <label>Link a Notion</label>
@@ -460,72 +436,126 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
         </div>
       </div>
       <div className="field">
-        <label>
-          Equipo del proyecto — solo los miembros ven este proyecto
-          <span style={{ color: "var(--text-3)", fontWeight: 400 }}> · {memberIds.length} de {activeUsers.length} seleccionados</span>
-        </label>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-          <div style={{ position: "relative", flex: 1 }}>
-            <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: "var(--text-3)", display: "grid" }}>
-              <Icon name="search" size={14} />
-            </span>
-            <input
-              className="input"
-              style={{ paddingLeft: 30 }}
-              placeholder="Buscar persona…"
-              value={memberQuery}
-              onChange={(e) => setMemberQuery(e.target.value)}
-            />
-          </div>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMemberIds(activeUsers.map((u) => u.id))}>
-            Todos
-          </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMemberIds([])}>
-            Ninguno
-          </button>
-        </div>
-        <div
-          style={{
-            maxHeight: 200, overflowY: "auto", border: "1px solid var(--border-strong)",
-            borderRadius: "var(--r-md)", padding: 4, display: "flex", flexDirection: "column",
-          }}
-        >
-          {filteredUsers.length === 0 && (
-            <div style={{ padding: 10, color: "var(--text-3)", fontSize: 12.5 }}>Sin coincidencias.</div>
-          )}
-          {filteredUsers.map((u) => {
-            const on = memberIds.includes(u.id);
-            return (
-              <label
+        <label>Equipo del proyecto — solo los miembros ven este proyecto</label>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            {selectedMembers.slice(0, 8).map((u, i) => (
+              <span
                 key={u.id}
-                style={{
-                  display: "flex", alignItems: "center", gap: 10, padding: "6px 8px",
-                  borderRadius: "var(--r-sm)", cursor: "pointer", background: on ? "var(--accent-soft)" : "transparent",
-                }}
+                style={{ marginLeft: i > 0 ? -10 : 0, border: "2px solid var(--surface)", borderRadius: "50%", position: "relative", zIndex: 8 - i }}
+                title={u.name}
               >
-                <input
-                  type="checkbox"
-                  checked={on}
-                  onChange={() =>
-                    setMemberIds((ids) => (ids.includes(u.id) ? ids.filter((x) => x !== u.id) : [...ids, u.id]))
-                  }
-                />
-                <Avatar name={u.name} size={24} />
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{u.name}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-3)" }}>{u.email}</div>
-                </div>
-                <span className="badge" style={{ textTransform: "capitalize" }}>{u.role}</span>
-              </label>
-            );
-          })}
+                <Avatar name={u.name} size={30} />
+              </span>
+            ))}
+            {selectedMembers.length > 8 && (
+              <span className="badge" style={{ marginLeft: 4 }}>+{selectedMembers.length - 8}</span>
+            )}
+            {selectedMembers.length === 0 && (
+              <span style={{ fontSize: 12.5, color: "var(--warning)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <Icon name="alert" size={13} /> Sin equipo asignado
+              </span>
+            )}
+          </div>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowMembers(true)}>
+            <Icon name="users" size={13} /> {memberIds.length > 0 ? "Editar miembros" : "Agregar miembros"}
+          </button>
         </div>
-      </div>
-      <div className="field">
-        <label>Tareas (una por línea, opcional)</label>
-        <textarea className="textarea" rows={3} value={tasksText} onChange={(e) => setTasksText(e.target.value)} />
       </div>
       <SubProjectsField subProjects={subProjects} onChange={setSubProjects} />
+      {showMembers && (
+        <MembersPickerModal
+          users={activeUsers}
+          selected={memberIds}
+          onSave={setMemberIds}
+          onClose={() => setShowMembers(false)}
+        />
+      )}
+    </Modal>
+  );
+}
+
+function MembersPickerModal({
+  users,
+  selected,
+  onSave,
+  onClose,
+}: {
+  users: { id: string; name: string; email: string; role: string }[];
+  selected: string[];
+  onSave: (ids: string[]) => void;
+  onClose: () => void;
+}) {
+  const [memberIds, setMemberIds] = useState<string[]>(selected);
+  const [query, setQuery] = useState("");
+  const filtered = users.filter(
+    (u) => u.name.toLowerCase().includes(query.toLowerCase()) || u.email.toLowerCase().includes(query.toLowerCase()),
+  );
+
+  return (
+    <Modal
+      title={`Miembros del proyecto · ${memberIds.length} de ${users.length}`}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={() => { onSave(memberIds); onClose(); }}>Guardar</button>
+        </>
+      }
+    >
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+        <div style={{ position: "relative", flex: 1 }}>
+          <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: "var(--text-3)", display: "grid" }}>
+            <Icon name="search" size={14} />
+          </span>
+          <input
+            className="input"
+            style={{ paddingLeft: 30 }}
+            placeholder="Buscar persona…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            autoFocus
+          />
+        </div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMemberIds(users.map((u) => u.id))}>
+          Todos
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMemberIds([])}>
+          Ninguno
+        </button>
+      </div>
+      <div style={{ maxHeight: 380, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3 }}>
+        {filtered.length === 0 && (
+          <div style={{ padding: 24, textAlign: "center", color: "var(--text-3)", fontSize: 12.5 }}>Sin coincidencias.</div>
+        )}
+        {filtered.map((u) => {
+          const on = memberIds.includes(u.id);
+          return (
+            <label
+              key={u.id}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+                borderRadius: "var(--r-sm)", cursor: "pointer", background: on ? "var(--accent-soft)" : "transparent",
+                transition: "background 0.12s",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={on}
+                onChange={() =>
+                  setMemberIds((ids) => (ids.includes(u.id) ? ids.filter((x) => x !== u.id) : [...ids, u.id]))
+                }
+              />
+              <Avatar name={u.name} size={30} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600 }}>{u.name}</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{u.email}</div>
+              </div>
+              <span className="badge" style={{ textTransform: "capitalize" }}>{u.role}</span>
+            </label>
+          );
+        })}
+      </div>
     </Modal>
   );
 }
@@ -589,9 +619,6 @@ function SubProjectForm({
 }) {
   const [name, setName] = useState(subProject?.name ?? "");
   const [status, setStatus] = useState<ProjectStatus>(subProject?.status ?? "activo");
-  const [billable, setBillable] = useState(subProject?.billable ?? false);
-  const [hourlyRate, setHourlyRate] = useState(subProject?.hourlyRate?.toString() ?? "0");
-  const [costRate, setCostRate] = useState(subProject?.costRate?.toString() ?? "0");
   const [budgetHours, setBudgetHours] = useState(subProject?.budgetHours?.toString() ?? "");
 
   function save() {
@@ -601,9 +628,6 @@ function SubProjectForm({
       projectId: subProject?.projectId ?? "",
       name: name.trim(),
       status,
-      billable,
-      hourlyRate: Number(hourlyRate) || 0,
-      costRate: Number(costRate) || 0,
       budgetHours: budgetHours ? Number(budgetHours) : null,
     });
   }
@@ -627,20 +651,6 @@ function SubProjectForm({
         <div className="field">
           <label>Horas proyectadas</label>
           <input type="number" className="input" value={budgetHours} onChange={(e) => setBudgetHours(e.target.value)} placeholder="Sin proyección" />
-        </div>
-        <div className="field">
-          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} />
-            Facturable
-          </label>
-        </div>
-        <div className="field">
-          <label>Tarifa (por hora)</label>
-          <input type="number" className="input" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} disabled={!billable} />
-        </div>
-        <div className="field">
-          <label>Costo interno (por hora)</label>
-          <input type="number" className="input" value={costRate} onChange={(e) => setCostRate(e.target.value)} />
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>

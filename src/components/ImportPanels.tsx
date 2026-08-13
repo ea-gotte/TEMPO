@@ -357,11 +357,7 @@ export function ProjectsImportPanel() {
           name: row.name,
           color: COLORS[projects.length % COLORS.length],
           status: row.status,
-          billable: false,
-          hourlyRate: 0,
-          costRate: 0,
           budgetHours: row.budgetHours,
-          tasks: [],
           memberIds: row.members,
           notionUrl: row.notionUrl,
         });
