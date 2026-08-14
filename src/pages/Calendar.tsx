@@ -3,7 +3,7 @@ import { useStore, overlaps } from "../store";
 import type { TimeEntry } from "../types";
 import { addDays, clamp, dayLabel, fmtDur, isoDate, minToHM, monthLabel, parseISO, today, uid, weekStart } from "../utils";
 import { EntryModal } from "../components/EntryModal";
-import { ContextMenu, useToast } from "../components/ui";
+import { ContextMenu, DateField, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { supabase } from "../supabase";
 
@@ -240,6 +240,9 @@ export function CalendarPage() {
         <button className="btn btn-secondary btn-sm" onClick={() => shift(-1)} aria-label="Anterior"><Icon name="arrow-left" size={14} /></button>
         <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
         <button className="btn btn-secondary btn-sm" onClick={() => shift(1)} aria-label="Siguiente"><Icon name="arrow-right" size={14} /></button>
+        <div style={{ width: 150 }}>
+          <DateField value={anchor} onChange={setAnchor} />
+        </div>
         {(view === "dia" || view === "semana") && (
           <>
             <select
@@ -252,7 +255,7 @@ export function CalendarPage() {
             >
               {TZ_OPTIONS.map((t) => (
                 <option key={t.id} value={t.id}>
-                  Base: {t.label}{t.id === state.company.timezone ? " (empresa)" : ""}
+                  Base: {t.label}
                 </option>
               ))}
             </select>
