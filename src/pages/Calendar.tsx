@@ -12,6 +12,46 @@ const H1 = 24; // última hora
 const PX_H = 44; // px por hora
 const SCROLL_TO = 7; // hora a la que se posiciona el scroll al abrir
 
+/** Ubica en columnas lado a lado los registros de un día que se superponen en
+ * el tiempo (en vez de dibujarlos todos apilados uno arriba del otro a ancho
+ * completo). Agrupa por solapamiento transitivo y, dentro de cada grupo,
+ * asigna la primera columna libre — el mismo algoritmo que usan los
+ * calendarios tipo Google Calendar. */
+function layoutOverlaps(items: { id: string; start: number; end: number }[]): Map<string, { col: number; cols: number }> {
+  const sorted = [...items].sort((a, b) => a.start - b.start || a.end - b.end);
+  const result = new Map<string, { col: number; cols: number }>();
+  let cluster: typeof sorted = [];
+  let clusterEnd = -Infinity;
+
+  function flushCluster() {
+    if (cluster.length === 0) return;
+    const colEnds: number[] = [];
+    const placed: { id: string; col: number }[] = [];
+    for (const it of cluster) {
+      let col = colEnds.findIndex((end) => end <= it.start);
+      if (col === -1) {
+        col = colEnds.length;
+        colEnds.push(it.end);
+      } else {
+        colEnds[col] = it.end;
+      }
+      placed.push({ id: it.id, col });
+    }
+    const cols = colEnds.length;
+    for (const p of placed) result.set(p.id, { col: p.col, cols });
+    cluster = [];
+  }
+
+  for (const it of sorted) {
+    if (cluster.length > 0 && it.start >= clusterEnd) flushCluster();
+    cluster.push(it);
+    clusterEnd = Math.max(clusterEnd, it.end);
+  }
+  flushCluster();
+
+  return result;
+}
+
 type View = "dia" | "semana" | "mes" | "timeline";
 
 /** Husos horarios adicionales disponibles para la vista de calendario */
@@ -294,6 +334,9 @@ export function CalendarPage() {
             })}
             {visibleDays.map((day) => {
               const dayEntries = entries.filter((e) => e.date === day || (drag && dragged(state.entries.find((x) => x.id === drag.entryId)!).date === day && drag.entryId === e.id));
+              const lanes = layoutOverlaps(
+                dayEntries.map((raw) => dragged(raw)).filter((e) => e.date === day),
+              );
               return (
                 <div key={day} className="cal-col" style={{ gridRow: "2" }} onClick={(ev) => !drag && onEmptyClick(day, ev)}>
                   {Array.from({ length: H1 - H0 }, (_, i) => (
@@ -306,11 +349,14 @@ export function CalendarPage() {
                     const height = Math.max(18, ((e.end - e.start) / 60) * PX_H - 2);
                     const p = state.projects.find((x) => x.id === e.projectId);
                     const conf = overlaps(state.entries, e).length > 0;
+                    const lane = lanes.get(e.id) ?? { col: 0, cols: 1 };
+                    const left = `calc(${(lane.col / lane.cols) * 100}% + 3px)`;
+                    const width = `calc(${(1 / lane.cols) * 100}% - 6px)`;
                     return (
                       <div
                         key={raw.id}
                         className={`cal-block ${conf ? "overlap" : ""}`}
-                        style={{ top, height, background: p?.color ?? "var(--accent)" }}
+                        style={{ top, height, left, width, right: "auto", background: p?.color ?? "var(--accent)" }}
                         onMouseDown={(ev) => onBlockDown(ev, raw, "move")}
                         onDoubleClick={(ev) => {
                           ev.stopPropagation();
