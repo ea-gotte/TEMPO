@@ -291,7 +291,7 @@ a { color: var(--accent); text-decoration: none; }
 .cal-day-head.today .num { color: var(--accent); }
 .cal-hours { border-bottom: 1px solid var(--border); }
 .cal-hour-label {
-  height: 44px; font-size: 10.5px; color: var(--text-3);
+  height: 56px; font-size: 10.5px; color: var(--text-3);
   display: flex; align-items: flex-end; justify-content: flex-end;
   padding-right: 6px; transform: translateY(2px);
   font-variant-numeric: tabular-nums;
@@ -303,7 +303,7 @@ a { color: var(--accent); text-decoration: none; }
   position: sticky; top: 0; z-index: 6; background: var(--surface);
 }
 .cal-col { position: relative; border-left: 1px solid var(--border); }
-.cal-cell { height: 44px; border-bottom: 1px solid var(--border); }
+.cal-cell { height: 56px; border-bottom: 1px solid var(--border); }
 .cal-block {
   position: absolute; left: 3px; right: 3px; border-radius: 6px; padding: 3px 6px;
   font-size: 11px; font-weight: 600; color: #fff; overflow: hidden; cursor: grab;

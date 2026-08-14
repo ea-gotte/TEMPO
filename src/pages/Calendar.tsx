@@ -9,7 +9,7 @@ import { supabase } from "../supabase";
 
 const H0 = 0; // primera hora visible (día completo)
 const H1 = 24; // última hora
-const PX_H = 44; // px por hora
+const PX_H = 56; // px por hora
 const SCROLL_TO = 7; // hora a la que se posiciona el scroll al abrir
 
 /** Ubica en columnas lado a lado los registros de un día que se superponen en
