@@ -508,8 +508,8 @@ function fmtHM(min: number): string {
   return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 }
 
-function parseClockifyTable(table: unknown[][], state: AppState): { rows: ClockifyRow[]; headerError?: string } {
-  if (table.length < 2) return { rows: [], headerError: "El archivo no tiene filas de datos." };
+function parseClockifyTable(table: unknown[][], state: AppState): { rows: ClockifyRow[]; headerError?: string; skippedZero: number } {
+  if (table.length < 2) return { rows: [], skippedZero: 0, headerError: "El archivo no tiene filas de datos." };
   const header = table[0].map((h) => normText(cellToText(h)));
   const iProject = findCol(header, ["proyecto", "project", "project name"]);
   const iDesc = findCol(header, ["descripcion", "description"]);
@@ -521,12 +521,13 @@ function parseClockifyTable(table: unknown[][], state: AppState): { rows: Clocki
   const iDateTo = findCol(header, ["fecha de finalizacion", "end date"]);
   const iTimeTo = findCol(header, ["hora de finalizacion", "end time"]);
 
-  if (iEmail === -1) return { rows: [], headerError: "El archivo debe tener una columna de correo electrónico (Correo electrónico / Email)." };
+  if (iEmail === -1) return { rows: [], skippedZero: 0, headerError: "El archivo debe tener una columna de correo electrónico (Correo electrónico / Email)." };
   if (iDateFrom === -1 || iTimeFrom === -1 || iTimeTo === -1) {
-    return { rows: [], headerError: "Faltan columnas de fecha/hora (Fecha de inicio, Hora de inicio, Hora de finalización)." };
+    return { rows: [], skippedZero: 0, headerError: "Faltan columnas de fecha/hora (Fecha de inicio, Hora de inicio, Hora de finalización)." };
   }
 
   const rows: ClockifyRow[] = [];
+  let skippedZero = 0;
   for (let r = 1; r < table.length; r++) {
     const cols = table[r];
     if (!cols || cols.every((c) => cellToText(c) === "")) continue;
@@ -552,6 +553,13 @@ function parseClockifyTable(table: unknown[][], state: AppState): { rows: Clocki
     const dateTo = iDateTo >= 0 ? cellToISODate(cols[iDateTo]) : dateFrom;
     const start = parseHM(cols[iTimeFrom]);
     const end = parseHM(cols[iTimeTo]);
+
+    // Duración 0:00 (inicio y fin iguales): se omite directamente, no vale la
+    // pena mostrarla como fila con error — no hay nada que corregir a mano.
+    if (start !== null && end !== null && start === end) {
+      skippedZero++;
+      continue;
+    }
 
     const base = {
       rowNum: r + 1,
@@ -584,7 +592,7 @@ function parseClockifyTable(table: unknown[][], state: AppState): { rows: Clocki
       rows.push({ id: `${r}`, ...base, date: dateFrom, start, end });
     }
   }
-  return { rows };
+  return { rows, skippedZero };
 }
 
 type RowFilter = "all" | "nuevo" | "duplicado" | "error" | "sin-proyecto";
@@ -598,6 +606,7 @@ export function TimeEntriesImportPanel() {
   const [fileName, setFileName] = useState("");
   const [importing, setImporting] = useState(false);
   const [filter, setFilter] = useState<RowFilter>("all");
+  const [skippedZero, setSkippedZero] = useState(0);
 
   async function onPick(file: File | undefined) {
     if (!file) return;
@@ -605,12 +614,14 @@ export function TimeEntriesImportPanel() {
     setFilter("all");
     try {
       const table = await readTable(file);
-      const { rows: parsed, headerError } = parseClockifyTable(table, state);
+      const { rows: parsed, headerError, skippedZero: skipped } = parseClockifyTable(table, state);
       setFileError(headerError ?? "");
       setRows(parsed);
+      setSkippedZero(skipped);
     } catch {
       setFileError("No se pudo leer el archivo. Verificá que sea un .xlsx o .csv exportado desde Clockify.");
       setRows([]);
+      setSkippedZero(0);
     }
   }
 
@@ -643,6 +654,7 @@ export function TimeEntriesImportPanel() {
     setImporting(false);
     setRows([]);
     setFileName("");
+    setSkippedZero(0);
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -678,6 +690,11 @@ export function TimeEntriesImportPanel() {
       {fileError && (
         <p style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
           <Icon name="alert" size={13} /> {fileError}
+        </p>
+      )}
+      {skippedZero > 0 && !fileError && (
+        <p style={{ fontSize: 12, color: "var(--text-3)", margin: "8px 0 0" }}>
+          {skippedZero} registro{skippedZero !== 1 ? "s" : ""} con duración 0:00 omitido{skippedZero !== 1 ? "s" : ""} automáticamente.
         </p>
       )}
       {rows.length > 0 && !fileError && (
