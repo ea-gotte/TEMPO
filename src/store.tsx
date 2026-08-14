@@ -946,24 +946,35 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const refetch = () => {
       if (!cancelled) fetchEntriesAndAbsences(dispatch, localSettings);
     };
+    // Realtime dispara un evento POR FILA, no por operación: una importación
+    // masiva (ej. Clockify) que inserta cientos de filas de golpe generaba
+    // cientos de refetch/re-render casi simultáneos y la pantalla parpadeaba.
+    // Con debounce, una ráfaga de eventos termina en un solo refetch cuando
+    // la ráfaga se frena.
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+    const debouncedRefetch = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(refetch, 500);
+    };
     refetch();
     const channel = supabase
       .channel("tempo-entries-absences")
-      .on("postgres_changes", { event: "*", schema: "public", table: "time_entries" }, refetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "absence_requests" }, refetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "holidays" }, refetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, refetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "projects" }, refetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "sub_projects" }, refetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "overtime_requests" }, refetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "corp_events" }, refetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, refetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "time_entries" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "absence_requests" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "holidays" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "projects" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "sub_projects" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "overtime_requests" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "corp_events" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, debouncedRefetch)
       // audit_log queda afuera a propósito: casi cualquier acción genera una fila ahí,
       // y traer las 300 de vuelta en cada una sería un refetch constante para poco beneficio.
       .subscribe();
     return () => {
       cancelled = true;
+      if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
   }, [state.authenticated]);
