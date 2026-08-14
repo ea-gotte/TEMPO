@@ -26,8 +26,10 @@ export function Dashboard() {
 
   const vac = vacationInfo(state, me, t);
 
+  // dateTo >= t (no dateFrom >= t) para no perder ausencias ya en curso: una
+  // licencia que arrancó ayer y sigue esta semana también debe listarse acá.
   const upcoming = state.absences
-    .filter((a) => a.status === "Aprobado" && a.dateFrom >= t)
+    .filter((a) => a.status === "Aprobado" && a.dateTo >= t)
     .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom))
     .slice(0, 4);
 
