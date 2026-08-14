@@ -31,6 +31,27 @@ export function Dashboard() {
     .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom))
     .slice(0, 4);
 
+  // Feriados, cumpleaños y capacitaciones: mismas tres categorías que se ven en
+  // Calendario corporativo, visibles para todos los roles por igual.
+  const upcomingEvents = useMemo(() => {
+    type Item = { key: string; date: string; title: string; ico: IconName };
+    const items: Item[] = [];
+    for (const h of state.holidays) {
+      if (h.date >= t) items.push({ key: `h-${h.id}`, date: h.date, title: h.title, ico: "party" });
+    }
+    for (const u of state.users) {
+      if (!u.active) continue;
+      const mmdd = u.birthday.slice(5);
+      let next = `${t.slice(0, 4)}-${mmdd}`;
+      if (next < t) next = `${Number(t.slice(0, 4)) + 1}-${mmdd}`;
+      items.push({ key: `bd-${u.id}`, date: next, title: `Cumpleaños de ${u.name}`, ico: "cake" });
+    }
+    for (const e of state.corpEvents) {
+      if (e.type === "Capacitación" && e.date >= t) items.push({ key: `ce-${e.id}`, date: e.date, title: e.title, ico: "graduation" });
+    }
+    return items.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
+  }, [state.holidays, state.users, state.corpEvents, t]);
+
   const byProject = state.projects
     .map((p) => ({
       name: p.name,
@@ -141,18 +162,15 @@ export function Dashboard() {
 
           <div className="card card-pad">
             <div className="card-title">Eventos próximos</div>
-            {state.corpEvents
-              .filter((e) => e.date >= t)
-              .sort((a, b) => a.date.localeCompare(b.date))
-              .slice(0, 5)
-              .map((e) => (
-                <div className="list-item" key={e.id}>
+            {upcomingEvents.length === 0 && <div style={{ color: "var(--text-3)", fontSize: 12.5 }}>Nada programado.</div>}
+            {upcomingEvents.map((e) => (
+                <div className="list-item" key={e.key}>
                   <span style={{ color: "var(--accent)" }}>
-                    <Icon name={e.type.startsWith("Feriado") ? "party" : e.type === "Capacitación" ? "graduation" : e.type === "Home office" ? "home" : "map-pin"} size={16} />
+                    <Icon name={e.ico} size={16} />
                   </span>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontWeight: 600 }}>{e.title}</div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{fmtDate(e.date)} · {e.type}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{fmtDate(e.date)}</div>
                   </div>
                 </div>
               ))}

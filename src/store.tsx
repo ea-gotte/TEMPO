@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
 import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role } from "./types";
 import { seedState } from "./data";
-import { isoDate, uid, hashPassword, addDays, parseISO } from "./utils";
+import { isoDate, uid, hashPassword, addDays, addMonths, parseISO, today } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
 
 const LS_KEY = "tempo-state-v1";
@@ -1051,35 +1051,89 @@ export function useStore() {
   return ctx;
 }
 
+/** Después de 3 meses de la semana trabajada, esas horas extra ya no se pueden
+ * reclamar/informar a supervisión. */
+export function overtimeClaimDeadline(weekStartISO: string): string {
+  return addMonths(weekStartISO, 3);
+}
+
+/** Minutos de una ausencia de "Compensación de horas" (por horario si está
+ * cargado, si no por días hábiles a jornada completa/media del usuario). */
+function compensationMinutes(state: AppState, userId: string, a: AbsenceRequest): number {
+  if (a.timeFrom && a.timeTo) {
+    const [h1, m1] = a.timeFrom.split(":").map(Number);
+    const [h2, m2] = a.timeTo.split(":").map(Number);
+    const mins = h2 * 60 + m2 - (h1 * 60 + m1);
+    return mins > 0 ? mins : 0;
+  }
+  const u = state.users.find((x) => x.id === userId);
+  const dailyMin = u ? (u.jornada === "media" ? 4 * 60 : (u.weeklyHours * 60) / Math.max(1, u.workDays.length)) : 8 * 60;
+  const activeWorkDays = u ? (u.jornada === "media" ? [1, 2, 3, 4, 5] : u.workDays) : [1, 2, 3, 4, 5];
+  const workDaysCount = countWorkDays(a.dateFrom, a.dateTo, activeWorkDays, holidayDateSet(state));
+  return Math.round(workDaysCount * dailyMin);
+}
+
+export interface OvertimeBalance {
+  availableMin: number; // saldo disponible ahora (sin vencer)
+  expiredMin: number; // minutos que vencieron sin usarse (más de un año sin recuperar)
+  expiringSoonMin: number; // de lo disponible, cuánto vence en los próximos 90 días
+  nextExpiration: string | null; // fecha del vencimiento más próximo entre lo disponible
+}
+
 /**
- * Horas extra disponibles: horas extra aprobadas menos las ausencias de compensación aprobadas.
+ * Saldo de horas extra con vencimiento: cada semana de horas extra aprobada da
+ * un año de plazo (desde esa semana) para recuperarla vía "Compensación de
+ * horas"; lo que no se usa para entonces se pierde. El consumo se descuenta de
+ * lo más antiguo primero (FIFO), como un saldo de puntos que vence.
  */
-export function validatedOvertimeMin(state: AppState, userId: string): number {
-  const approvedOvertime = state.overtime
+export function overtimeBalance(state: AppState, userId: string, todayISO: string = today()): OvertimeBalance {
+  const lots = state.overtime
     .filter((o) => o.userId === userId && o.status === "Aprobado")
-    .reduce((a, o) => a + o.minutes, 0);
+    .map((o) => ({ weekStart: o.weekStart, remaining: o.minutes }))
+    .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
 
-  const usedCompensation = state.absences
+  const compensations = state.absences
     .filter((a) => a.userId === userId && a.type === "Compensación de horas" && a.status === "Aprobado")
-    .reduce((acc, a) => {
-      if (a.timeFrom && a.timeTo) {
-        const [h1, m1] = a.timeFrom.split(":").map(Number);
-        const [h2, m2] = a.timeTo.split(":").map(Number);
-        const mins = h2 * 60 + m2 - (h1 * 60 + m1);
-        return acc + (mins > 0 ? mins : 0);
-      }
-      const u = state.users.find((x) => x.id === userId);
-      const dailyMin = u
-        ? u.jornada === "media"
-          ? 4 * 60
-          : (u.weeklyHours * 60) / Math.max(1, u.workDays.length)
-        : 8 * 60;
-      const activeWorkDays = u ? (u.jornada === "media" ? [1, 2, 3, 4, 5] : u.workDays) : [1, 2, 3, 4, 5];
-      const workDaysCount = countWorkDays(a.dateFrom, a.dateTo, activeWorkDays, holidayDateSet(state));
-      return acc + Math.round(workDaysCount * dailyMin);
-    }, 0);
+    .map((a) => ({ dateFrom: a.dateFrom, minutes: compensationMinutes(state, userId, a) }))
+    .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom));
 
-  return Math.max(0, approvedOvertime - usedCompensation);
+  for (const c of compensations) {
+    let toConsume = c.minutes;
+    for (const lot of lots) {
+      if (toConsume <= 0) break;
+      const take = Math.min(lot.remaining, toConsume);
+      lot.remaining -= take;
+      toConsume -= take;
+    }
+  }
+
+  let availableMin = 0;
+  let expiredMin = 0;
+  let expiringSoonMin = 0;
+  let nextExpiration: string | null = null;
+  for (const lot of lots) {
+    if (lot.remaining <= 0) continue;
+    const expiresAt = addDays(lot.weekStart, 365);
+    if (expiresAt <= todayISO) {
+      expiredMin += lot.remaining;
+      continue;
+    }
+    availableMin += lot.remaining;
+    const daysLeft = Math.round((parseISO(expiresAt).getTime() - parseISO(todayISO).getTime()) / 86400000);
+    if (daysLeft <= 90) expiringSoonMin += lot.remaining;
+    if (!nextExpiration || expiresAt < nextExpiration) nextExpiration = expiresAt;
+  }
+
+  return { availableMin, expiredMin, expiringSoonMin, nextExpiration };
+}
+
+/**
+ * Horas extra disponibles ahora mismo (aprobadas, menos lo ya recuperado, menos
+ * lo vencido). Atajo sobre overtimeBalance() para los llamadores que solo
+ * necesitan el número.
+ */
+export function validatedOvertimeMin(state: AppState, userId: string, todayISO: string = today()): number {
+  return overtimeBalance(state, userId, todayISO).availableMin;
 }
 
 /** Proyectos visibles para un usuario: admin/gerente ven todo; usuario y supervisor

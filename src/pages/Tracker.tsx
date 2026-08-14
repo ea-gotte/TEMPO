@@ -3,7 +3,7 @@ import { useStore, overlaps, visibleProjects } from "../store";
 import type { TimeEntry, RunningTimer } from "../types";
 import { addDays, fmtDur, fmtHM, minToHM, today, uid, dayLabel } from "../utils";
 import { EntryModal } from "../components/EntryModal";
-import { ContextMenu, Empty, useToast } from "../components/ui";
+import { ContextMenu, Empty, ProjectSelect, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 
 function useNow(active: boolean) {
@@ -98,15 +98,21 @@ export function Tracker() {
           placeholder="¿En qué estás trabajando?"
           value={desc}
           onChange={(e) => setDesc(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && startTimer()}
+          onKeyDown={(e) => e.key === "Enter" && projectId && startTimer()}
           aria-label="Descripción del registro"
         />
-        <select className="select" style={{ width: "auto", minWidth: 170 }} value={projectId} onChange={(e) => setProjectId(e.target.value)} aria-label="Proyecto">
-          {myProjects.filter((p) => p.status === "activo").map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-        <button className="playbtn" onClick={() => startTimer()} aria-label="Iniciar cronómetro" title="Iniciar (Enter)"><Icon name="play" size={15} /></button>
+        <div style={{ width: 220, flexShrink: 0 }}>
+          <ProjectSelect projects={myProjects.filter((p) => p.status === "activo")} value={projectId} onChange={setProjectId} placeholder="Proyecto…" />
+        </div>
+        <button
+          className="playbtn"
+          onClick={() => startTimer()}
+          disabled={!projectId}
+          aria-label="Iniciar cronómetro"
+          title={projectId ? "Iniciar (Enter)" : "Elegí un proyecto para iniciar"}
+        >
+          <Icon name="play" size={15} />
+        </button>
       </div>
 
       {/* Temporizadores múltiples en curso */}

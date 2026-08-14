@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useStore, overlaps, visibleProjects } from "../store";
 import type { TimeEntry } from "../types";
 import { hmToMin, minToHM, today, uid } from "../utils";
-import { Modal, useToast } from "./ui";
+import { Modal, ProjectSelect, useToast } from "./ui";
 import { Icon } from "./Icon";
 
 export function EntryModal({
@@ -47,7 +47,8 @@ export function EntryModal({
   );
 
   const conflict = overlaps(state.entries, candidate);
-  const invalid = candidate.end <= candidate.start;
+  const invalidTime = candidate.end <= candidate.start;
+  const invalid = invalidTime || !projectId;
 
   function save() {
     if (invalid) return;
@@ -89,16 +90,34 @@ export function EntryModal({
     >
       <div className="field">
         <label>Descripción</label>
-        <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="¿En qué trabajaste?" autoFocus />
+        <textarea
+          className="textarea"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="¿En qué trabajaste?"
+          autoFocus
+          rows={1}
+          style={{ resize: "none", overflow: "hidden" }}
+          ref={(el) => {
+            if (!el) return;
+            el.style.height = "auto";
+            el.style.height = `${el.scrollHeight}px`;
+          }}
+          onInput={(e) => {
+            const el = e.currentTarget;
+            el.style.height = "auto";
+            el.style.height = `${el.scrollHeight}px`;
+          }}
+        />
       </div>
       <div className="form-grid">
         <div className="field">
-          <label>Proyecto</label>
-          <select className="select" value={projectId} onChange={(e) => { setProjectId(e.target.value); setSubProjectId(""); }}>
-            {myProjects.filter((p) => p.status === "activo" || p.id === projectId).map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+          <label>Proyecto <span style={{ color: "var(--danger)" }}>*</span></label>
+          <ProjectSelect
+            projects={myProjects.filter((p) => p.status === "activo" || p.id === projectId)}
+            value={projectId}
+            onChange={(id) => { setProjectId(id); setSubProjectId(""); }}
+          />
         </div>
         {subProjects.length > 0 && (
           <div className="field">
@@ -157,7 +176,8 @@ export function EntryModal({
           </select>
         </label>
       </div>
-      {invalid && <div style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600 }}>La hora de fin debe ser posterior a la de inicio.</div>}
+      {invalidTime && <div style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600 }}>La hora de fin debe ser posterior a la de inicio.</div>}
+      {!invalidTime && !projectId && <div style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600 }}>Elegí un proyecto para continuar.</div>}
       {!invalid && conflict.length > 0 && (
         <div style={{ color: "var(--warning)", fontSize: 12.5, fontWeight: 600 }}>
           <Icon name="alert" size={13} /> Se solapa con {conflict.length} registro{conflict.length > 1 ? "s" : ""} existente{conflict.length > 1 ? "s" : ""} (

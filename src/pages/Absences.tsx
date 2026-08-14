@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useStore, validatedOvertimeMin, vacationInfo, absenceWarnings, overtimeWarnings } from "../store";
+import { useStore, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings } from "../store";
 import type { AbsenceRequest, AbsenceType, Attachment, OvertimeRequest } from "../types";
 import { fmtDate, fmtDur, today, uid } from "../utils";
 import { Avatar, Empty, Modal, useToast } from "../components/ui";
@@ -108,7 +108,8 @@ export function Absences() {
   const toApprove = state.absences.filter((a) => a.status === "Pendiente" && a.userId !== me.id);
   const otPending = state.overtime.filter((o) => o.status === "Pendiente" && o.userId !== me.id);
   const myOvertime = state.overtime.filter((o) => o.userId === me.id);
-  const myOtApproved = validatedOvertimeMin(state, me.id);
+  const myOtBalance = overtimeBalance(state, me.id);
+  const myOtApproved = myOtBalance.availableMin;
   const dailyMin = me.jornada === "media" ? 4 * 60 : (me.weeklyHours * 60) / Math.max(1, me.workDays.length);
   const otDaysRaw = myOtApproved / dailyMin;
   const otDays = Math.trunc(otDaysRaw * 100) / 100;
@@ -185,6 +186,11 @@ export function Absences() {
           <span className="label"><Icon name="scale" size={14} /> Días por horas extra</span>
           <div className="value">{otDays} día{otDays !== 1 ? "s" : ""}</div>
           <div className="hint">{fmtDur(myOtApproved)} validadas por el admin y aprobadas</div>
+          {myOtBalance.nextExpiration && (
+            <div className="hint" style={myOtBalance.expiringSoonMin > 0 ? { color: "var(--warning)", fontWeight: 600 } : undefined}>
+              Empiezan a vencer el {fmtDate(myOtBalance.nextExpiration)}
+            </div>
+          )}
         </div>
         <div className="card kpi">
           <span className="label"><Icon name="mail" size={14} /> Mis solicitudes</span>
@@ -225,14 +231,23 @@ export function Absences() {
                 <div style={{ fontSize: 12, color: "var(--text-3)" }}>≈ {otDays} día{otDays !== 1 ? "s" : ""} disponibles para recuperar</div>
               </div>
               <div style={{ fontSize: 12.5, color: "var(--text-2)", flex: 1, minWidth: 240 }}>
-                Las horas extra se detectan por semana en <strong>Control de horas</strong>, se informan y pasan a supervisión.
-                Solo cuentan en el saldo cuando el supervisor las aprueba <strong>y</strong> el admin validó esa semana.
-                Se recuperan solicitando una ausencia del tipo <strong>Compensación de horas</strong>.
+                Las horas extra se detectan por semana en <strong>Control de horas</strong> y hay que informarlas dentro de los <strong>3 meses</strong> siguientes a esa semana, o quedan vencidas.
+                Solo cuentan en el saldo cuando el supervisor las aprueba. Una vez aprobadas, hay <strong>1 año</strong> desde esa semana para recuperarlas solicitando una ausencia del tipo <strong>Compensación de horas</strong>, o se pierden.
               </div>
               {myOtApproved > 0 && (
                 <button className="btn btn-primary" onClick={() => setShowNew(true)}>Recuperar horas</button>
               )}
             </div>
+            {myOtBalance.expiringSoonMin > 0 && myOtBalance.nextExpiration && (
+              <div style={{ marginTop: 10, fontSize: 12.5, background: "var(--warning-soft)", color: "var(--warning)", padding: "8px 12px", borderRadius: 8, fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}>
+                <Icon name="alert" size={14} /> {fmtDur(myOtBalance.expiringSoonMin)} vencen el {fmtDate(myOtBalance.nextExpiration)} si no las recuperás antes.
+              </div>
+            )}
+            {myOtBalance.expiredMin > 0 && (
+              <div style={{ marginTop: 10, fontSize: 12.5, background: "var(--surface-2)", color: "var(--text-3)", padding: "8px 12px", borderRadius: 8, display: "flex", gap: 6, alignItems: "center" }}>
+                <Icon name="ban" size={14} /> {fmtDur(myOtBalance.expiredMin)} vencieron sin recuperarse.
+              </div>
+            )}
           </div>
           <div className="card">
             {[...(canApprove ? otPending : []), ...myOvertime].length === 0 && (

@@ -260,6 +260,7 @@ a { color: var(--accent); text-decoration: none; }
 }
 .playbtn:hover { transform: scale(1.05); background: var(--accent-strong); }
 .playbtn.stop { background: var(--danger); }
+.playbtn:disabled { background: var(--surface-3); color: var(--text-3); box-shadow: none; cursor: not-allowed; transform: none; }
 
 .running-timer {
   display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: var(--r-md);

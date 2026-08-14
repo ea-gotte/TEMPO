@@ -18,6 +18,12 @@ export function addDays(s: string, n: number): string {
   return isoDate(d);
 }
 
+export function addMonths(s: string, n: number): string {
+  const d = parseISO(s);
+  d.setMonth(d.getMonth() + n);
+  return isoDate(d);
+}
+
 export function today(): string {
   return isoDate(new Date());
 }

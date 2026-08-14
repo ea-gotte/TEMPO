@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
-import { hashHue, initials } from "../utils";
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
+import { hashHue, initials, normText } from "../utils";
 import { Icon, type IconName } from "./Icon";
 
 export function Modal({
@@ -134,6 +134,97 @@ export function DateField({
         tabIndex={-1}
         aria-hidden="true"
       />
+    </div>
+  );
+}
+
+/**
+ * Selector de proyecto con buscador: en vez de un <select> nativo (incómodo
+ * con listas largas de proyectos), es un campo de texto que filtra la lista
+ * a medida que se escribe.
+ */
+export function ProjectSelect({
+  projects,
+  value,
+  onChange,
+  placeholder = "Buscar proyecto…",
+}: {
+  projects: { id: string; name: string; color?: string }[];
+  value: string;
+  onChange: (id: string) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const selected = projects.find((p) => p.id === value);
+
+  useEffect(() => {
+    function onDocMouseDown(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, []);
+
+  const filtered = query.trim() ? projects.filter((p) => normText(p.name).includes(normText(query))) : projects;
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <input
+        className="input"
+        value={open ? query : selected?.name ?? ""}
+        placeholder={selected ? undefined : placeholder}
+        onFocus={() => { setOpen(true); setQuery(""); }}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") { setOpen(false); setQuery(""); }
+          if (e.key === "Enter" && filtered.length > 0) {
+            e.preventDefault();
+            onChange(filtered[0].id);
+            setOpen(false);
+            setQuery("");
+          }
+        }}
+        role="combobox"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      />
+      {open && (
+        <div
+          role="listbox"
+          style={{
+            position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 20,
+            maxHeight: 220, overflowY: "auto", background: "var(--surface)",
+            border: "1px solid var(--border-strong)", borderRadius: "var(--r-md)", boxShadow: "var(--shadow-md)",
+          }}
+        >
+          {filtered.length === 0 && <div style={{ padding: "8px 10px", fontSize: 12.5, color: "var(--text-3)" }}>Sin resultados.</div>}
+          {filtered.map((p) => (
+            <div
+              key={p.id}
+              role="option"
+              aria-selected={p.id === value}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onChange(p.id);
+                setOpen(false);
+                setQuery("");
+              }}
+              style={{
+                padding: "7px 10px", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
+                background: p.id === value ? "var(--accent-soft)" : undefined,
+              }}
+            >
+              {p.color && <span className="swatch" style={{ background: p.color, width: 8, height: 8, borderRadius: "50%", flexShrink: 0 }} />}
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

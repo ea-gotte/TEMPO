@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useStore } from "../store";
+import { overtimeClaimDeadline, useStore } from "../store";
 import { addDays, dayLabel, fmtDate, fmtDur, today, uid, weekStart } from "../utils";
 import { Avatar, Empty, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
@@ -16,6 +16,8 @@ export function HoursControl() {
   const ws = weekStart(anchor);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(ws, i)), [ws]);
   const isCurrentWeek = ws === weekStart(today());
+  // Las horas extra de una semana solo se pueden reclamar hasta 3 meses después de esa semana.
+  const claimExpired = today() > overtimeClaimDeadline(ws);
 
   const rows = useMemo(() => {
     return state.users
@@ -218,6 +220,13 @@ export function HoursControl() {
                         <span className={`badge ${otRequest.status === "Aprobado" ? "ok" : otRequest.status === "Rechazado" ? "bad" : "warn"}`}>
                           {fmtDur(otRequest.minutes)} · {otRequest.status}
                         </span>
+                      ) : claimExpired ? (
+                        <div>
+                          <span className="badge bad"><Icon name="flame" size={11} /> {fmtDur(overtimeMin)}</span>
+                          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }} title="Pasaron más de 3 meses de esa semana: ya no se puede reclamar.">
+                            Vencida
+                          </div>
+                        </div>
                       ) : (
                         <div>
                           <span className="badge warn"><Icon name="flame" size={11} /> {fmtDur(overtimeMin)}</span>
