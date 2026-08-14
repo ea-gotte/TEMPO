@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
 import type { AppState, Jornada, ProjectStatus, Role, TimeEntry, User } from "../types";
-import { downloadFile, normText, parseCSV, parseDMY, toCSV, today, uid } from "../utils";
+import { addDays, downloadFile, normText, parseCSV, parseDMY, toCSV, today, uid } from "../utils";
 import { Icon } from "./Icon";
 import { useToast } from "./ui";
 import { COLORS } from "../pages/Projects";
@@ -470,6 +470,10 @@ function parseHM(v: unknown): number | null {
 }
 
 interface ClockifyRow {
+  /** Identificador único de la fila para actualizarla a mano (distinto de
+   * rowNum: un registro que cruza medianoche se parte en dos ClockifyRow con
+   * el mismo rowNum, uno por día). */
+  id: string;
   rowNum: number;
   personName: string;
   userId: string | null;
@@ -549,16 +553,7 @@ function parseClockifyTable(table: unknown[][], state: AppState): { rows: Clocki
     const start = parseHM(cols[iTimeFrom]);
     const end = parseHM(cols[iTimeTo]);
 
-    let dateTimeError: string | undefined;
-    if (!dateFrom || start === null || end === null) {
-      dateTimeError = "Fecha u hora inválida";
-    } else if (dateTo && dateTo !== dateFrom) {
-      dateTimeError = "El registro cruza medianoche (no soportado)";
-    } else if (end <= start) {
-      dateTimeError = "La hora de fin debe ser posterior a la de inicio";
-    }
-
-    rows.push({
+    const base = {
       rowNum: r + 1,
       personName,
       userId: user?.id ?? null,
@@ -568,11 +563,26 @@ function parseClockifyTable(table: unknown[][], state: AppState): { rows: Clocki
       projectMatched,
       description: iDesc >= 0 ? cellToText(cols[iDesc]) : "",
       tagIds,
-      date: dateFrom ?? "",
-      start: start ?? 0,
-      end: end ?? 0,
-      dateTimeError,
-    });
+    };
+
+    if (!dateFrom || start === null || end === null) {
+      rows.push({ id: `${r}`, ...base, date: dateFrom ?? "", start: start ?? 0, end: end ?? 0, dateTimeError: "Fecha u hora inválida" });
+    } else if (dateTo && dateTo !== dateFrom) {
+      if (dateTo === addDays(dateFrom, 1)) {
+        // Cruza medianoche: TEMPO no tiene un campo de "fecha de fin", así que
+        // se divide en dos registros (uno por día) que juntos representan el
+        // mismo horario real: [start, 24:00) el primer día y [00:00, end) el
+        // segundo — en vez de bloquear la fila entera.
+        rows.push({ id: `${r}-a`, ...base, date: dateFrom, start, end: 24 * 60 });
+        rows.push({ id: `${r}-b`, ...base, date: dateTo, start: 0, end });
+      } else {
+        rows.push({ id: `${r}`, ...base, date: dateFrom, start, end, dateTimeError: "El registro cruza más de un día (no soportado)" });
+      }
+    } else if (end <= start) {
+      rows.push({ id: `${r}`, ...base, date: dateFrom, start, end, dateTimeError: "La hora de fin debe ser posterior a la de inicio" });
+    } else {
+      rows.push({ id: `${r}`, ...base, date: dateFrom, start, end });
+    }
   }
   return { rows };
 }
@@ -604,8 +614,8 @@ export function TimeEntriesImportPanel() {
     }
   }
 
-  function updateRow(rowNum: number, patch: Partial<ClockifyRow>) {
-    setRows((prev) => prev.map((r) => (r.rowNum === rowNum ? { ...r, ...patch } : r)));
+  function updateRow(id: string, patch: Partial<ClockifyRow>) {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
 
   const withStatus = useMemo(() => rows.map((row) => ({ row, ...rowStatus(row, state) })), [rows, state.entries]);
@@ -687,7 +697,10 @@ export function TimeEntriesImportPanel() {
           <PreviewTable
             rows={visible}
             columns={[
-              { label: "Fila", render: (v) => v.row.rowNum },
+              {
+                label: "Fila",
+                render: (v) => (v.row.id.endsWith("-a") ? `${v.row.rowNum} (1/2)` : v.row.id.endsWith("-b") ? `${v.row.rowNum} (2/2)` : v.row.rowNum),
+              },
               {
                 label: "Persona",
                 render: (v) =>
@@ -698,7 +711,7 @@ export function TimeEntriesImportPanel() {
                       className="select"
                       style={{ fontSize: 12, minWidth: 160 }}
                       value=""
-                      onChange={(e) => e.target.value && updateRow(v.row.rowNum, { userId: e.target.value })}
+                      onChange={(e) => e.target.value && updateRow(v.row.id, { userId: e.target.value })}
                     >
                       <option value="">{v.row.personName ? `${v.row.personName} (no encontrado)` : "Elegir persona…"}</option>
                       {state.users.map((u) => (
@@ -723,10 +736,10 @@ export function TimeEntriesImportPanel() {
                         const val = e.target.value;
                         if (!val) return;
                         const [kind, id] = val.split(":");
-                        if (kind === "p") updateRow(v.row.rowNum, { projectId: id, subProjectId: null, projectMatched: true });
+                        if (kind === "p") updateRow(v.row.id, { projectId: id, subProjectId: null, projectMatched: true });
                         else {
                           const sp = state.subProjects.find((x) => x.id === id);
-                          updateRow(v.row.rowNum, { projectId: sp?.projectId ?? null, subProjectId: id, projectMatched: true });
+                          updateRow(v.row.id, { projectId: sp?.projectId ?? null, subProjectId: id, projectMatched: true });
                         }
                       }}
                     >
