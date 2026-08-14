@@ -137,9 +137,34 @@ export function CalendarPage() {
   const baseShort = TZ_OPTIONS.find((t) => t.id === baseTz)?.short ?? "LOC";
   const ws = weekStart(anchor);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(ws, i)), [ws]);
-  const visibleDays = view === "dia" ? [anchor] : weekDays;
+  // Memoizado: `[anchor]` es un array nuevo en cada render si no se memoiza, lo
+  // que rompía los useMemo de abajo que dependen de esta lista (se invalidaban
+  // en cada mousemove del arrastre en vez de solo cuando cambian los datos).
+  const visibleDays = useMemo(() => (view === "dia" ? [anchor] : weekDays), [view, anchor, weekDays]);
 
   const entries = useMemo(() => state.entries.filter((e) => e.userId === me), [state.entries, me]);
+
+  // Carriles (superposición) y conflictos: dependen solo de los datos reales,
+  // NUNCA de `drag` — así no se recalculan en cada mousemove del arrastre.
+  // Calcularlos ahí (como antes) era caro (layoutOverlaps + overlaps() escaneando
+  // todo `entries` por cada bloque visible) y con el navegador ocupado en eso la
+  // tarjeta arrastrada se quedaba pegada un instante en la posición vieja antes
+  // de "saltar" a la nueva — el parpadeo/lag que se reportó.
+  const dayLanes = useMemo(() => {
+    const map = new Map<string, Map<string, { col: number; cols: number }>>();
+    for (const day of visibleDays) {
+      map.set(day, layoutOverlaps(entries.filter((e) => e.date === day)));
+    }
+    return map;
+  }, [entries, visibleDays]);
+
+  const conflictIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of entries) {
+      if (overlaps(entries, e).length > 0) set.add(e.id);
+    }
+    return set;
+  }, [entries]);
 
   function shift(n: number) {
     if (view === "mes") {
@@ -337,14 +362,10 @@ export function CalendarPage() {
             })}
             {visibleDays.map((day) => {
               const dayEntries = entries.filter((e) => e.date === day || (drag && dragged(state.entries.find((x) => x.id === drag.entryId)!).date === day && drag.entryId === e.id));
-              // Los carriles se calculan con la posición REAL (sin arrastre) de cada
-              // registro, sin incluir al que se está arrastrando: si se usara la
-              // posición en vivo del drag, cada mousemove reordenaba las columnas de
-              // todo el clúster (el propio bloque y sus vecinos), y eso se veía como
-              // un parpadeo constante. El bloque en arrastre se dibuja aparte, flotando
-              // a ancho completo por encima de los demás, y recién vuelve a competir
-              // por un carril cuando se suelta y su posición final ya es estable.
-              const lanes = layoutOverlaps(dayEntries.filter((raw) => raw.date === day && drag?.entryId !== raw.id));
+              // Carriles precalculados (ver dayLanes más arriba): no dependen de
+              // `drag`, así que arrastrar una tarjeta no dispara ningún recálculo
+              // acá — solo cambia el estilo del bloque que se está moviendo.
+              const lanes = dayLanes.get(day);
               return (
                 <div key={day} className="cal-col" style={{ gridRow: "2" }} onClick={(ev) => !drag && onEmptyClick(day, ev)}>
                   {Array.from({ length: H1 - H0 }, (_, i) => (
@@ -357,8 +378,8 @@ export function CalendarPage() {
                     const top = ((e.start - H0 * 60) / 60) * PX_H;
                     const height = Math.max(18, ((e.end - e.start) / 60) * PX_H - 2);
                     const p = state.projects.find((x) => x.id === e.projectId);
-                    const conf = overlaps(state.entries, e).length > 0;
-                    const lane = isDragging ? { col: 0, cols: 1 } : lanes.get(raw.id) ?? { col: 0, cols: 1 };
+                    const conf = conflictIds.has(raw.id);
+                    const lane = isDragging ? { col: 0, cols: 1 } : lanes?.get(raw.id) ?? { col: 0, cols: 1 };
                     const left = `calc(${(lane.col / lane.cols) * 100}% + 3px)`;
                     const width = `calc(${(1 / lane.cols) * 100}% - 6px)`;
                     return (
