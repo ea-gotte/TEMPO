@@ -337,9 +337,14 @@ export function CalendarPage() {
             })}
             {visibleDays.map((day) => {
               const dayEntries = entries.filter((e) => e.date === day || (drag && dragged(state.entries.find((x) => x.id === drag.entryId)!).date === day && drag.entryId === e.id));
-              const lanes = layoutOverlaps(
-                dayEntries.map((raw) => dragged(raw)).filter((e) => e.date === day),
-              );
+              // Los carriles se calculan con la posición REAL (sin arrastre) de cada
+              // registro, sin incluir al que se está arrastrando: si se usara la
+              // posición en vivo del drag, cada mousemove reordenaba las columnas de
+              // todo el clúster (el propio bloque y sus vecinos), y eso se veía como
+              // un parpadeo constante. El bloque en arrastre se dibuja aparte, flotando
+              // a ancho completo por encima de los demás, y recién vuelve a competir
+              // por un carril cuando se suelta y su posición final ya es estable.
+              const lanes = layoutOverlaps(dayEntries.filter((raw) => raw.date === day && drag?.entryId !== raw.id));
               return (
                 <div key={day} className="cal-col" style={{ gridRow: "2" }} onClick={(ev) => !drag && onEmptyClick(day, ev)}>
                   {Array.from({ length: H1 - H0 }, (_, i) => (
@@ -348,18 +353,22 @@ export function CalendarPage() {
                   {dayEntries.map((raw) => {
                     const e = dragged(raw);
                     if (e.date !== day) return null;
+                    const isDragging = drag?.entryId === raw.id;
                     const top = ((e.start - H0 * 60) / 60) * PX_H;
                     const height = Math.max(18, ((e.end - e.start) / 60) * PX_H - 2);
                     const p = state.projects.find((x) => x.id === e.projectId);
                     const conf = overlaps(state.entries, e).length > 0;
-                    const lane = lanes.get(e.id) ?? { col: 0, cols: 1 };
+                    const lane = isDragging ? { col: 0, cols: 1 } : lanes.get(raw.id) ?? { col: 0, cols: 1 };
                     const left = `calc(${(lane.col / lane.cols) * 100}% + 3px)`;
                     const width = `calc(${(1 / lane.cols) * 100}% - 6px)`;
                     return (
                       <div
                         key={raw.id}
                         className={`cal-block ${conf ? "overlap" : ""}`}
-                        style={{ top, height, left, width, right: "auto", background: p?.color ?? "var(--accent)" }}
+                        style={{
+                          top, height, left, width, right: "auto", background: p?.color ?? "var(--accent)",
+                          ...(isDragging ? { zIndex: 30, boxShadow: "var(--shadow-md)" } : null),
+                        }}
                         onMouseDown={(ev) => onBlockDown(ev, raw, "move")}
                         onDoubleClick={(ev) => {
                           ev.stopPropagation();
