@@ -588,6 +588,25 @@ interface LocalSettings {
   tags: Tag[];
 }
 
+/** PostgREST corta cualquier select() en el "Max Rows" configurado en el
+ * proyecto de Supabase (1000 por defecto), en silencio y sin error — con el
+ * equipo cargando horas todos los días, time_entries lo cruza fácil y la app
+ * se queda cargando solo una parte sin que nadie se entere. Se pagina con
+ * .range() hasta recibir una página vacía, sin asumir cuál es el límite real
+ * del servidor (podría no ser 1000). */
+async function fetchAllRows<T = any>(table: string, pageSize = 1000): Promise<{ data: T[]; error: any }> {
+  const rows: T[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await supabase.from(table).select("*").range(from, from + pageSize - 1);
+    if (error) return { data: rows, error };
+    if (!data || data.length === 0) break;
+    rows.push(...(data as T[]));
+    from += data.length;
+  }
+  return { data: rows, error: null };
+}
+
 async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSettings: LocalSettings) {
   const [
     { data: entryRows, error: entriesErr },
@@ -602,15 +621,15 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSe
     { data: settingsRow, error: settingsErr },
     { data: notificationRows, error: notificationsErr },
   ] = await Promise.all([
-    supabase.from("time_entries").select("*"),
-    supabase.from("absence_requests").select("*"),
-    supabase.from("holidays").select("*"),
-    supabase.from("clients").select("*"),
-    supabase.from("projects").select("*"),
-    supabase.from("sub_projects").select("*"),
-    supabase.from("overtime_requests").select("*"),
+    fetchAllRows("time_entries"),
+    fetchAllRows("absence_requests"),
+    fetchAllRows("holidays"),
+    fetchAllRows("clients"),
+    fetchAllRows("projects"),
+    fetchAllRows("sub_projects"),
+    fetchAllRows("overtime_requests"),
     supabase.from("audit_log").select("*").order("at", { ascending: false }).limit(300),
-    supabase.from("corp_events").select("*"),
+    fetchAllRows("corp_events"),
     supabase.from("app_settings").select("*").eq("id", "global").maybeSingle(),
     supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(100),
   ]);
