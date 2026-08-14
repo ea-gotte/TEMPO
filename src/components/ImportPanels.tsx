@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
 import type { AppState, Jornada, ProjectStatus, Role, TimeEntry, User } from "../types";
 import { downloadFile, normText, parseCSV, parseDMY, toCSV, today, uid } from "../utils";
@@ -482,8 +482,26 @@ interface ClockifyRow {
   date: string;
   start: number;
   end: number;
-  status: "nuevo" | "duplicado" | "error";
-  error?: string;
+  /** Fecha/hora inválida detectada al parsear — no se puede resolver a mano, a
+   * diferencia de usuario/proyecto que sí se pueden asignar manualmente. */
+  dateTimeError?: string;
+}
+
+type RowStatus = "nuevo" | "duplicado" | "error";
+
+/** Estado derivado de una fila: se recalcula en cada render (no se guarda en
+ * el propio row) para que asignar usuario/proyecto a mano lo actualice solo. */
+function rowStatus(r: ClockifyRow, state: AppState): { status: RowStatus; error?: string } {
+  if (r.dateTimeError) return { status: "error", error: r.dateTimeError };
+  if (!r.userId) return { status: "error", error: "Usuario no encontrado por email" };
+  if (state.entries.some((e) => e.userId === r.userId && e.date === r.date && e.start === r.start && e.end === r.end)) {
+    return { status: "duplicado" };
+  }
+  return { status: "nuevo" };
+}
+
+function fmtHM(min: number): string {
+  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 }
 
 function parseClockifyTable(table: unknown[][], state: AppState): { rows: ClockifyRow[]; headerError?: string } {
@@ -531,25 +549,13 @@ function parseClockifyTable(table: unknown[][], state: AppState): { rows: Clocki
     const start = parseHM(cols[iTimeFrom]);
     const end = parseHM(cols[iTimeTo]);
 
-    let status: ClockifyRow["status"] = "nuevo";
-    let error: string | undefined;
-
-    if (!user) {
-      status = "error";
-      error = "Usuario no encontrado por email";
-    } else if (!dateFrom || start === null || end === null) {
-      status = "error";
-      error = "Fecha u hora inválida";
+    let dateTimeError: string | undefined;
+    if (!dateFrom || start === null || end === null) {
+      dateTimeError = "Fecha u hora inválida";
     } else if (dateTo && dateTo !== dateFrom) {
-      status = "error";
-      error = "El registro cruza medianoche (no soportado)";
+      dateTimeError = "El registro cruza medianoche (no soportado)";
     } else if (end <= start) {
-      status = "error";
-      error = "La hora de fin debe ser posterior a la de inicio";
-    } else if (
-      state.entries.some((e) => e.userId === user.id && e.date === dateFrom && e.start === start && e.end === end)
-    ) {
-      status = "duplicado";
+      dateTimeError = "La hora de fin debe ser posterior a la de inicio";
     }
 
     rows.push({
@@ -565,12 +571,13 @@ function parseClockifyTable(table: unknown[][], state: AppState): { rows: Clocki
       date: dateFrom ?? "",
       start: start ?? 0,
       end: end ?? 0,
-      status,
-      error,
+      dateTimeError,
     });
   }
   return { rows };
 }
+
+type RowFilter = "all" | "nuevo" | "duplicado" | "error" | "sin-proyecto";
 
 export function TimeEntriesImportPanel() {
   const { state, dispatch } = useStore();
@@ -580,10 +587,12 @@ export function TimeEntriesImportPanel() {
   const [fileError, setFileError] = useState("");
   const [fileName, setFileName] = useState("");
   const [importing, setImporting] = useState(false);
+  const [filter, setFilter] = useState<RowFilter>("all");
 
   async function onPick(file: File | undefined) {
     if (!file) return;
     setFileName(file.name);
+    setFilter("all");
     try {
       const table = await readTable(file);
       const { rows: parsed, headerError } = parseClockifyTable(table, state);
@@ -595,8 +604,14 @@ export function TimeEntriesImportPanel() {
     }
   }
 
+  function updateRow(rowNum: number, patch: Partial<ClockifyRow>) {
+    setRows((prev) => prev.map((r) => (r.rowNum === rowNum ? { ...r, ...patch } : r)));
+  }
+
+  const withStatus = useMemo(() => rows.map((row) => ({ row, ...rowStatus(row, state) })), [rows, state.entries]);
+
   async function apply() {
-    const valid = rows.filter((r) => r.status === "nuevo" && r.userId);
+    const valid = withStatus.filter((v) => v.status === "nuevo").map((v) => v.row);
     if (valid.length === 0) return;
     setImporting(true);
     const entries: TimeEntry[] = valid.map((r) => ({
@@ -621,15 +636,29 @@ export function TimeEntriesImportPanel() {
     if (inputRef.current) inputRef.current.value = "";
   }
 
-  const newCount = rows.filter((r) => r.status === "nuevo").length;
-  const dupCount = rows.filter((r) => r.status === "duplicado").length;
-  const errorCount = rows.filter((r) => r.status === "error").length;
-  const noProjectCount = rows.filter((r) => r.status === "nuevo" && r.projectRaw && !r.projectMatched).length;
+  const newCount = withStatus.filter((v) => v.status === "nuevo").length;
+  const dupCount = withStatus.filter((v) => v.status === "duplicado").length;
+  const errorCount = withStatus.filter((v) => v.status === "error").length;
+  const noProjectCount = withStatus.filter((v) => v.status !== "error" && v.row.projectRaw && !v.row.projectMatched).length;
+
+  const visible = withStatus.filter((v) => {
+    if (filter === "all") return true;
+    if (filter === "sin-proyecto") return v.status !== "error" && v.row.projectRaw && !v.row.projectMatched;
+    return v.status === filter;
+  });
+
+  const filters: { key: RowFilter; label: string; count: number }[] = [
+    { key: "all", label: "Todos", count: rows.length },
+    { key: "nuevo", label: "Nuevos", count: newCount },
+    { key: "duplicado", label: "Ya cargados", count: dupCount },
+    { key: "error", label: "Con error", count: errorCount },
+    { key: "sin-proyecto", label: "Sin proyecto", count: noProjectCount },
+  ];
 
   return (
     <ImportCard
       title="Registros de horas (Clockify)"
-      description="Subí el .xlsx (o .csv) del 'Informe de tiempo detallado' que exporta Clockify. Se matchea por email; el proyecto se busca por nombre de proyecto o subproyecto en TEMPO. Los registros ya cargados (misma persona, fecha y horario) se detectan y no se duplican."
+      description="Subí el .xlsx (o .csv) del 'Informe de tiempo detallado' que exporta Clockify. Se matchea por email; el proyecto se busca por nombre de proyecto o subproyecto en TEMPO. Si no encuentra a la persona o el proyecto, se lo podés asignar a mano en la tabla. Los registros ya cargados (misma persona, fecha y horario) se detectan y no se duplican."
       inputRef={inputRef}
       onPick={onPick}
       fileName={fileName}
@@ -643,30 +672,87 @@ export function TimeEntriesImportPanel() {
       )}
       {rows.length > 0 && !fileError && (
         <>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "8px 0" }}>
-            <span className="badge ok">{newCount} nuevos</span>
-            {dupCount > 0 && <span className="badge acc">{dupCount} ya cargados (se omiten)</span>}
-            {errorCount > 0 && <span className="badge bad">{errorCount} con error</span>}
-            {noProjectCount > 0 && <span className="badge warn">{noProjectCount} sin proyecto reconocido</span>}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "8px 0" }}>
+            {filters.map((f) => (
+              <button
+                key={f.key}
+                className={`chip ${filter === f.key ? "on" : ""}`}
+                onClick={() => setFilter(f.key)}
+                disabled={f.count === 0 && f.key !== "all"}
+              >
+                {f.label} ({f.count})
+              </button>
+            ))}
           </div>
           <PreviewTable
-            rows={rows}
+            rows={visible}
             columns={[
-              { label: "Fila", render: (r) => r.rowNum },
-              { label: "Persona", render: (r) => r.personName || "—" },
-              { label: "Proyecto", render: (r) => (r.projectRaw ? (r.projectMatched ? r.projectRaw : <span title="No se encontró en TEMPO">{r.projectRaw} ⚠</span>) : "—") },
-              { label: "Fecha", render: (r) => r.date || "—" },
+              { label: "Fila", render: (v) => v.row.rowNum },
               {
-                label: "Horario",
-                render: (r) => (r.date ? `${String(Math.floor(r.start / 60)).padStart(2, "0")}:${String(r.start % 60).padStart(2, "0")} – ${String(Math.floor(r.end / 60)).padStart(2, "0")}:${String(r.end % 60).padStart(2, "0")}` : "—"),
+                label: "Persona",
+                render: (v) =>
+                  v.row.userId ? (
+                    state.users.find((u) => u.id === v.row.userId)?.name ?? v.row.personName
+                  ) : (
+                    <select
+                      className="select"
+                      style={{ fontSize: 12, minWidth: 160 }}
+                      value=""
+                      onChange={(e) => e.target.value && updateRow(v.row.rowNum, { userId: e.target.value })}
+                    >
+                      <option value="">{v.row.personName ? `${v.row.personName} (no encontrado)` : "Elegir persona…"}</option>
+                      {state.users.map((u) => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                  ),
               },
               {
+                label: "Proyecto",
+                render: (v) =>
+                  v.row.projectMatched ? (
+                    state.projects.find((p) => p.id === v.row.projectId)?.name ??
+                    state.subProjects.find((sp) => sp.id === v.row.subProjectId)?.name ??
+                    "—"
+                  ) : (
+                    <select
+                      className="select"
+                      style={{ fontSize: 12, minWidth: 180 }}
+                      value=""
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) return;
+                        const [kind, id] = val.split(":");
+                        if (kind === "p") updateRow(v.row.rowNum, { projectId: id, subProjectId: null, projectMatched: true });
+                        else {
+                          const sp = state.subProjects.find((x) => x.id === id);
+                          updateRow(v.row.rowNum, { projectId: sp?.projectId ?? null, subProjectId: id, projectMatched: true });
+                        }
+                      }}
+                    >
+                      <option value="">{v.row.projectRaw ? `${v.row.projectRaw} (sin match)` : "Sin proyecto — elegir…"}</option>
+                      {state.projects.map((p) => (
+                        <option key={p.id} value={`p:${p.id}`}>{p.name}</option>
+                      ))}
+                      {state.subProjects.map((sp) => (
+                        <option key={sp.id} value={`s:${sp.id}`}>
+                          {state.projects.find((p) => p.id === sp.projectId)?.name} / {sp.name}
+                        </option>
+                      ))}
+                    </select>
+                  ),
+              },
+              { label: "Fecha", render: (v) => v.row.date || "—" },
+              { label: "Horario", render: (v) => (v.row.date ? `${fmtHM(v.row.start)} – ${fmtHM(v.row.end)}` : "—") },
+              {
                 label: "Estado",
-                render: (r) =>
-                  r.status === "error" ? (
-                    <span className="badge bad">{r.error}</span>
-                  ) : r.status === "duplicado" ? (
+                render: (v) =>
+                  v.status === "error" ? (
+                    <span className="badge bad">{v.error}</span>
+                  ) : v.status === "duplicado" ? (
                     <span className="badge acc">Ya cargado</span>
+                  ) : v.row.projectRaw && !v.row.projectMatched ? (
+                    <span className="badge warn">Nuevo (sin proyecto)</span>
                   ) : (
                     <span className="badge ok">Nuevo</span>
                   ),
