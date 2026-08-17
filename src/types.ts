@@ -183,16 +183,6 @@ export interface Notification {
   read: boolean;
 }
 
-/** Validación semanal de carga de horas por parte del admin/supervisor */
-export interface WeekValidation {
-  id: ID;
-  userId: ID;
-  weekStart: string; // YYYY-MM-DD (lunes)
-  validatedBy: ID;
-  at: string; // ISO
-  comment?: string;
-}
-
 export type OvertimeStatus = "Pendiente" | "Aprobado" | "Rechazado";
 
 /** Horas extra de una semana, informadas y enviadas a supervisión */
@@ -271,7 +261,6 @@ export interface AppState {
   entries: TimeEntry[];
   timers: RunningTimer[];
   absences: AbsenceRequest[];
-  validations: WeekValidation[];
   overtime: OvertimeRequest[];
   corpEvents: CorpEvent[];
   holidays: Holiday[];

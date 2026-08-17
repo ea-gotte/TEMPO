@@ -195,7 +195,6 @@ export function seedState(): AppState {
     entries: seedEntries(),
     timers: [],
     absences: seedAbsences(),
-    validations: [],
     overtime: [],
     emails: [],
     corpEvents: seedCorpEvents(),
@@ -246,7 +245,6 @@ export function seedState(): AppState {
       ],
       supervisor: [
         { label: "Control de horas de su equipo asignado", enabled: true },
-        { label: "Validación de carga semanal de su equipo", enabled: true },
         { label: "Informar horas extra de su equipo (sin aprobar)", enabled: true },
       ],
       usuario: [

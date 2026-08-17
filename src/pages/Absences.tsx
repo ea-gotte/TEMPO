@@ -627,19 +627,11 @@ function RequestLog() {
       });
     }
   }
-  for (const v of state.validations) {
-    if (!canSeeAll && v.userId !== me.id) continue;
-    events.push({
-      at: v.at.slice(0, 10), icon: "check-circle", color: "var(--success)",
-      what: `Carga de horas validada: ${name(v.userId)} (semana del ${fmtDate(v.weekStart)})`,
-      who: name(v.validatedBy), status: "Validado",
-    });
-  }
   events.sort((a, b) => b.at.localeCompare(a.at));
 
   return (
     <div className="card" style={{ overflowX: "auto" }}>
-      {events.length === 0 && <Empty icon="history" text="Sin movimientos registrados" sub="Acá vas a ver el historial de solicitudes, aprobaciones y validaciones." />}
+      {events.length === 0 && <Empty icon="history" text="Sin movimientos registrados" sub="Acá vas a ver el historial de solicitudes y aprobaciones." />}
       {events.length > 0 && (
         <table className="table">
           <thead>
@@ -661,7 +653,7 @@ function RequestLog() {
                 </td>
                 <td style={{ fontWeight: 600 }}>{e.who}</td>
                 <td>
-                  <span className={`badge ${e.status === "Aprobado" || e.status === "Validado" ? "ok" : e.status === "Rechazado" ? "bad" : "acc"}`}>
+                  <span className={`badge ${e.status === "Aprobado" ? "ok" : e.status === "Rechazado" ? "bad" : "acc"}`}>
                     {e.status}
                   </span>
                 </td>

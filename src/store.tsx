@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
-import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, WeekValidation, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role } from "./types";
+import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword, addDays, addMonths, parseISO, today } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
@@ -21,8 +21,6 @@ type Action =
   | { type: "resolveAbsence"; id: string; status: "Aprobado" | "Rechazado"; comment: string; by: string }
   | { type: "updateAbsence"; absence: AbsenceRequest }
   | { type: "deleteAbsence"; id: string }
-  | { type: "validateWeek"; v: WeekValidation }
-  | { type: "unvalidateWeek"; userId: string; weekStart: string }
   | { type: "addOvertime"; o: OvertimeRequest }
   | { type: "resolveOvertime"; id: string; status: "Aprobado" | "Rechazado"; comment: string; by: string }
   | { type: "updateOvertime"; o: OvertimeRequest }
@@ -225,18 +223,6 @@ function baseReducer(s: AppState, a: Action): AppState {
         ab ? `${ab.type} · ${s.users.find((u) => u.id === ab.userId)?.name ?? ab.userId}` : a.id,
       );
     }
-    case "validateWeek":
-      return withAudit(
-        { ...s, validations: [...s.validations.filter((x) => !(x.userId === a.v.userId && x.weekStart === a.v.weekStart)), a.v] },
-        "Semana validada",
-        `Usuario ${s.users.find((u) => u.id === a.v.userId)?.name ?? a.v.userId} · semana ${a.v.weekStart}`,
-      );
-    case "unvalidateWeek":
-      return withAudit(
-        { ...s, validations: s.validations.filter((x) => !(x.userId === a.userId && x.weekStart === a.weekStart)) },
-        "Validación deshecha",
-        `Usuario ${s.users.find((u) => u.id === a.userId)?.name ?? a.userId} · semana ${a.weekStart}`,
-      );
     case "addOvertime": {
       const withOt = { ...s, overtime: [a.o, ...s.overtime] };
       const notified = withNotification(withOt, a.o.userId, overtimeSubmittedNotification(s, a.o));
@@ -328,7 +314,6 @@ function loadInitial(): AppState {
         const defaults = seedState();
         return {
           ...parsed,
-          validations: parsed.validations ?? [],
           overtime: parsed.overtime ?? [],
           emails: parsed.emails ?? [],
           holidays: [],

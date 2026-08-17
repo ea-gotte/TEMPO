@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { overtimeClaimDeadline, useStore } from "../store";
-import { addDays, dayLabel, fmtDate, fmtDur, today, uid, weekStart } from "../utils";
+import { addDays, dayLabel, fmtDur, today, uid, weekStart } from "../utils";
 import { Avatar, Empty, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 
@@ -32,13 +32,13 @@ export function HoursControl() {
         const loaded = perDay.reduce((a, b) => a + b, 0);
         const expected = u.weeklyHours * 60;
         const overtimeMin = Math.max(0, loaded - expected);
-        const validation = state.validations.find((v) => v.userId === u.id && v.weekStart === ws);
+        const supervisor = state.users.find((x) => x.id === u.supervisorId);
         const otRequest = state.overtime.find((o) => o.userId === u.id && o.weekStart === ws);
         const status: "sin-carga" | "incompleto" | "ok" | "extra" =
           loaded === 0 ? "sin-carga" : overtimeMin > 0 ? "extra" : loaded >= expected * 0.95 ? "ok" : "incompleto";
-        return { u, perDay, loaded, expected, overtimeMin, validation, otRequest, status };
+        return { u, perDay, loaded, expected, overtimeMin, supervisor, otRequest, status };
       });
-  }, [state.users, state.entries, state.validations, state.overtime, weekDays, ws, me.id, me.role]);
+  }, [state.users, state.entries, state.overtime, weekDays, ws, me.id, me.role]);
 
   // Notificación automática: usuarios sin ninguna carga en la semana actual.
   // notifiedRef evita repetirlo en cada render; como cada destinatario es otra
@@ -73,19 +73,6 @@ export function HoursControl() {
     );
   }
 
-  function validate(userId: string) {
-    dispatch({
-      type: "validateWeek",
-      v: { id: uid(), userId, weekStart: ws, validatedBy: me.id, at: new Date().toISOString() },
-    });
-    toast("Semana validada.");
-  }
-
-  function unvalidate(userId: string) {
-    dispatch({ type: "unvalidateWeek", userId, weekStart: ws });
-    toast("Validación deshecha.");
-  }
-
   function sendOvertime(userId: string, minutes: number) {
     dispatch({
       type: "addOvertime",
@@ -106,7 +93,6 @@ export function HoursControl() {
     ok: rows.filter((r) => r.status === "ok" || r.status === "extra").length,
     incompleto: rows.filter((r) => r.status === "incompleto").length,
     sinCarga: rows.filter((r) => r.status === "sin-carga").length,
-    validadas: rows.filter((r) => r.validation).length,
   };
 
   return (
@@ -136,10 +122,6 @@ export function HoursControl() {
           <div className="value">{summary.sinCarga}</div>
           <div className="hint">Se les notifica automáticamente</div>
         </div>
-        <div className="card kpi">
-          <span className="label"><Icon name="check" size={14} /> Validadas</span>
-          <div className="value">{summary.validadas} / {rows.length}</div>
-        </div>
       </div>
 
       <div className="card" style={{ overflowX: "auto" }}>
@@ -147,16 +129,16 @@ export function HoursControl() {
           <thead>
             <tr>
               <th>Persona</th>
+              <th>Supervisor</th>
               <th>Jornada</th>
               <th>Carga diaria</th>
               <th>Cargado / esperado</th>
               <th>Estado</th>
               <th>Horas extra</th>
-              <th>Validación</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ u, perDay, loaded, expected, overtimeMin, validation, otRequest, status }) => {
+            {rows.map(({ u, perDay, loaded, expected, overtimeMin, supervisor, otRequest, status }) => {
               const pct = Math.min(100, (loaded / Math.max(1, expected)) * 100);
               const maxDay = Math.max(60, ...perDay);
               return (
@@ -168,6 +150,15 @@ export function HoursControl() {
                         <div style={{ fontWeight: 650 }}>{u.name}</div>
                       </div>
                     </div>
+                  </td>
+                  <td style={{ color: supervisor ? undefined : "var(--text-3)" }}>
+                    {supervisor ? (
+                      <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                        <Avatar name={supervisor.name} size={22} /> {supervisor.name}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td>
                     <span className={`badge ${u.jornada === "completa" ? "acc" : "warn"}`}>
@@ -239,29 +230,6 @@ export function HoursControl() {
                       )
                     ) : (
                       <span style={{ color: "var(--text-3)" }}>—</span>
-                    )}
-                  </td>
-                  <td>
-                    {validation ? (
-                      <div>
-                        <span className="badge ok"><Icon name="check" size={11} /> Validado</span>
-                        <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>
-                          {state.users.find((x) => x.id === validation.validatedBy)?.name.split(" ")[0]} ·{" "}
-                          {fmtDate(validation.at.slice(0, 10))}
-                        </div>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          style={{ marginTop: 4 }}
-                          onClick={() => unvalidate(u.id)}
-                          title="Deshacer la validación de esta semana"
-                        >
-                          <Icon name="repeat" size={12} /> Deshacer
-                        </button>
-                      </div>
-                    ) : (
-                      <button className="btn btn-secondary btn-sm" disabled={loaded === 0} onClick={() => validate(u.id)} title={loaded === 0 ? "No hay horas cargadas para validar" : "Validar la carga de la semana"}>
-                        <Icon name="check" size={13} /> Validar
-                      </button>
                     )}
                   </td>
                 </tr>
