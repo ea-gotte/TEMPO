@@ -33,14 +33,14 @@ const PAGES: Record<PageKey, React.ComponentType> = {
 
 function Root() {
   const { state } = useStore();
-  const [page, setPage] = useState<PageKey>("tracker");
+  const [page, setPage] = useState<PageKey>("calendar");
   if (state.passwordRecovery) return <ResetPassword />;
   if (!state.authenticated) return <Login />;
   const me = state.users.find((u) => u.id === state.currentUserId);
   if (!me) return null;
   if (me.mustChangePassword) return <ForceChangePassword />;
-  // Si la página actual no está permitida para el rol, volver al tracker
-  const effective = canSeePage(me.role, page) ? page : "tracker";
+  // Si la página actual no está permitida para el rol, volver al calendario
+  const effective = canSeePage(me.role, page) ? page : "calendar";
   const Page = PAGES[effective];
   return (
     <Shell page={effective} setPage={setPage}>

@@ -304,19 +304,28 @@ a { color: var(--accent); text-decoration: none; }
   position: sticky; top: 0; z-index: 6; background: var(--surface);
 }
 .cal-col { position: relative; border-left: 1px solid var(--border); }
-.cal-cell { height: 56px; border-bottom: 1px solid var(--border); }
+.cal-cell { height: 56px; border-bottom: 1px solid var(--border); transition: background 0.1s ease; }
+.cal-cell:hover { background: var(--surface-2); }
 .cal-block {
   position: absolute; left: 3px; right: 3px; border-radius: 6px; padding: 3px 6px;
   font-size: 11px; font-weight: 600; color: #fff; overflow: hidden; cursor: grab;
   box-shadow: var(--shadow-sm); user-select: none; line-height: 1.25;
+  /* top/height (fecha/horario, dato preciso) nunca se animan, para que el
+     arrastre en vivo siga el mouse sin retraso; left/width sí, para que un
+     carril vecino que se reacomoda (al soltar o al recibir datos nuevos) se
+     deslice suave en vez de saltar de golpe. */
+  transition: left 0.14s ease, width 0.14s ease, box-shadow 0.12s ease, filter 0.1s ease;
 }
+.cal-block:hover { filter: brightness(1.08); box-shadow: var(--shadow-md); }
+.cal-block:active { cursor: grabbing; }
 .cal-block .t { opacity: 0.85; font-weight: 500; font-size: 10px; }
 .cal-block.overlap { outline: 2px solid var(--danger); }
 .cal-block .rsz { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
 
 /* Month grid */
 .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; background: var(--border); gap: 1px; }
-.month-cell { background: var(--surface); min-height: 96px; padding: 6px 8px; font-size: 12px; }
+.month-cell { background: var(--surface); min-height: 96px; padding: 6px 8px; font-size: 12px; transition: background 0.1s ease; }
+.month-cell:hover { background: var(--surface-2); }
 .month-cell.dim { background: var(--surface-2); color: var(--text-3); }
 .month-cell .num { font-weight: 650; font-size: 12.5px; }
 .month-cell .num.today { background: var(--accent); color: #fff; border-radius: 50%; width: 22px; height: 22px; display: inline-grid; place-items: center; }

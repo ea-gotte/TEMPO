@@ -188,6 +188,17 @@ export function CalendarPage() {
     const dMin = Math.round(((e.clientY - drag.startY) / PX_H) * 60 / 15) * 15;
     const dDay = view === "dia" ? 0 : Math.round((e.clientX - drag.startX) / drag.colWidth);
     setDrag({ ...drag, dMin, dDay });
+
+    // Auto-scroll cerca del borde superior/inferior del contenedor: sin esto,
+    // arrastrar una entrada hacia una hora fuera de lo visible obligaba a
+    // soltar, desplazarse a mano y volver a arrastrar para seguir moviéndola.
+    const el = scrollRef.current;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const edge = 40;
+      if (e.clientY < rect.top + edge) el.scrollTop -= 14;
+      else if (e.clientY > rect.bottom - edge) el.scrollTop += 14;
+    }
   }
 
   function onUp() {
