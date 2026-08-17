@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { overtimeClaimDeadline, useStore } from "../store";
 import { addDays, dayLabel, fmtDur, today, uid, weekStart } from "../utils";
 import { Avatar, Empty, useToast } from "../components/ui";
@@ -11,11 +11,9 @@ export function HoursControl() {
   const toast = useToast();
   const me = state.users.find((u) => u.id === state.currentUserId)!;
   const [anchor, setAnchor] = useState(today());
-  const notifiedRef = useRef(false);
 
   const ws = weekStart(anchor);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(ws, i)), [ws]);
-  const isCurrentWeek = ws === weekStart(today());
   // Las horas extra de una semana solo se pueden reclamar hasta 3 meses después de esa semana.
   const claimExpired = today() > overtimeClaimDeadline(ws);
 
@@ -39,23 +37,6 @@ export function HoursControl() {
         return { u, perDay, loaded, expected, overtimeMin, supervisor, otRequest, status };
       });
   }, [state.users, state.entries, state.overtime, weekDays, ws, me.id, me.role]);
-
-  // Notificación automática: usuarios sin ninguna carga en la semana actual.
-  // notifiedRef evita repetirlo en cada render; como cada destinatario es otra
-  // persona, no hay forma de verificar duplicados contra el estado local (solo
-  // contiene las notificaciones propias) — se envía una vez por carga de la página.
-  useEffect(() => {
-    if (!isCurrentWeek || notifiedRef.current) return;
-    notifiedRef.current = true;
-    for (const r of rows) {
-      if (r.status !== "sin-carga") continue;
-      dispatch({
-        type: "notify",
-        n: { userId: r.u.id, kind: "falta-carga", title: "Sin carga de horas", body: `${r.u.name} no cargó horas en la semana del ${dayLabel(ws)}.` },
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCurrentWeek, ws]);
 
   if (me.role === "usuario") {
     return (
@@ -120,7 +101,7 @@ export function HoursControl() {
         <div className="card kpi">
           <span className="label"><Icon name="ban" size={14} /> Sin carga</span>
           <div className="value">{summary.sinCarga}</div>
-          <div className="hint">Se les notifica automáticamente</div>
+          <div className="hint">Notificalos con el botón "Notificar"</div>
         </div>
       </div>
 
