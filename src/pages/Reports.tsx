@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useStore, visibleProjects } from "../store";
-import { addDays, fmtDate, downloadFile, fmtDur, toCSV, today, weekStart } from "../utils";
+import { addDays, addMonths, fmtDate, downloadFile, fmtDur, toCSV, today, weekStart } from "../utils";
 import { HBarChart, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 
@@ -15,6 +15,9 @@ export function Reports() {
   // en Control de horas, no acá.
   const isEmployee = me.role === "usuario" || me.role === "supervisor";
   const [period, setPeriod] = useState<Period>("semana");
+  // Ancla de navegación para semana/mes (las flechitas la mueven); "personalizado"
+  // usa sus propios campos Desde/Hasta y no depende de esto.
+  const [anchor, setAnchor] = useState(t);
   const [from, setFrom] = useState(weekStart(t));
   const [to, setTo] = useState(addDays(weekStart(t), 6));
   const [userFilterRaw, setUserFilter] = useState("");
@@ -25,10 +28,17 @@ export function Reports() {
   const [clientFilter, setClientFilter] = useState("");
 
   const [rFrom, rTo] = useMemo((): [string, string] => {
-    if (period === "semana") return [weekStart(t), addDays(weekStart(t), 6)];
-    if (period === "mes") return [t.slice(0, 8) + "01", t];
+    if (period === "semana") return [weekStart(anchor), addDays(weekStart(anchor), 6)];
+    if (period === "mes") {
+      const monthStart = anchor.slice(0, 8) + "01";
+      return [monthStart, addDays(addMonths(monthStart, 1), -1)];
+    }
     return [from, to];
-  }, [period, from, to, t]);
+  }, [period, from, to, anchor]);
+
+  function shiftAnchor(n: number) {
+    setAnchor((a) => (period === "mes" ? addMonths(a, n) : addDays(a, n * 7)));
+  }
 
   const filtered = useMemo(
     () =>
@@ -118,6 +128,17 @@ export function Reports() {
               </button>
             ))}
           </div>
+          {(period === "semana" || period === "mes") && (
+            <div style={{ display: "flex", gap: 6 }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => shiftAnchor(-1)} aria-label={period === "mes" ? "Mes anterior" : "Semana anterior"}>
+                <Icon name="arrow-left" size={14} />
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(t)}>Hoy</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => shiftAnchor(1)} aria-label={period === "mes" ? "Mes siguiente" : "Semana siguiente"}>
+                <Icon name="arrow-right" size={14} />
+              </button>
+            </div>
+          )}
           {period === "personalizado" && (
             <>
               <div className="field">
