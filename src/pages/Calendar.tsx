@@ -185,7 +185,11 @@ export function CalendarPage() {
 
   function onMove(e: React.MouseEvent) {
     if (!drag) return;
-    const dMin = Math.round(((e.clientY - drag.startY) / PX_H) * 60 / 15) * 15;
+    // Sin redondear a cuartos de hora acá: la tarjeta sigue al mouse píxel a
+    // píxel mientras se arrastra (fluido de verdad), y recién se ajusta a la
+    // grilla de 15 min al soltar, en onUp — el mismo comportamiento que
+    // Google Calendar/Outlook.
+    const dMin = ((e.clientY - drag.startY) / PX_H) * 60;
     const dDay = view === "dia" ? 0 : Math.round((e.clientX - drag.startX) / drag.colWidth);
     setDrag({ ...drag, dMin, dDay });
 
@@ -203,7 +207,10 @@ export function CalendarPage() {
 
   function onUp() {
     if (!drag) return;
-    const { orig, dMin, dDay, mode } = drag;
+    const { orig, dDay, mode } = drag;
+    // Acá sí se ajusta a cuartos de hora: el arrastre en vivo fue continuo,
+    // pero el horario que se guarda siempre cae en la grilla de 15 min.
+    const dMin = Math.round(drag.dMin / 15) * 15;
     let next: TimeEntry;
     if (mode === "move") {
       const dur = orig.end - orig.start;
