@@ -61,6 +61,8 @@ const TZ_OPTIONS = [
   { id: "America/Santiago", label: "Chile (Santiago)", short: "CHI" },
   { id: "America/Mexico_City", label: "México (CDMX)", short: "MEX" },
   { id: "America/Bogota", label: "Colombia (Bogotá)", short: "COL" },
+  { id: "America/Caracas", label: "Venezuela (Caracas)", short: "VEN" },
+  { id: "America/Lima", label: "Perú (Lima)", short: "PER" },
   { id: "America/New_York", label: "EE. UU. (Nueva York)", short: "NY" },
   { id: "UTC", label: "UTC", short: "UTC" },
 ];
@@ -185,11 +187,7 @@ export function CalendarPage() {
 
   function onMove(e: React.MouseEvent) {
     if (!drag) return;
-    // Sin redondear a cuartos de hora acá: la tarjeta sigue al mouse píxel a
-    // píxel mientras se arrastra (fluido de verdad), y recién se ajusta a la
-    // grilla de 15 min al soltar, en onUp — el mismo comportamiento que
-    // Google Calendar/Outlook.
-    const dMin = ((e.clientY - drag.startY) / PX_H) * 60;
+    const dMin = Math.round(((e.clientY - drag.startY) / PX_H) * 60 / 15) * 15;
     const dDay = view === "dia" ? 0 : Math.round((e.clientX - drag.startX) / drag.colWidth);
     setDrag({ ...drag, dMin, dDay });
 
@@ -207,10 +205,7 @@ export function CalendarPage() {
 
   function onUp() {
     if (!drag) return;
-    const { orig, dDay, mode } = drag;
-    // Acá sí se ajusta a cuartos de hora: el arrastre en vivo fue continuo,
-    // pero el horario que se guarda siempre cae en la grilla de 15 min.
-    const dMin = Math.round(drag.dMin / 15) * 15;
+    const { orig, dMin, dDay, mode } = drag;
     let next: TimeEntry;
     if (mode === "move") {
       const dur = orig.end - orig.start;
@@ -283,6 +278,7 @@ export function CalendarPage() {
         <button className="btn btn-secondary btn-sm" onClick={() => shift(-1)} aria-label="Anterior"><Icon name="arrow-left" size={14} /></button>
         <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
         <button className="btn btn-secondary btn-sm" onClick={() => shift(1)} aria-label="Siguiente"><Icon name="arrow-right" size={14} /></button>
+        <strong style={{ textTransform: "capitalize", minWidth: 140 }}>{monthLabel(anchor)}</strong>
         <div style={{ width: 150 }}>
           <DateField value={anchor} onChange={setAnchor} />
         </div>
