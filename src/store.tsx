@@ -1001,14 +1001,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (toSync.length === 0) return;
     for (const a of toSync) syncedAuditIdsRef.current.add(a.id);
     // Log temporal de diagnóstico (42501 en audit_log que no se explica leyendo
-    // el código): esto muestra en la consola del navegador exactamente qué se
-    // intenta subir y con qué currentUserId, para comparar contra el error real.
-    console.log("[audit-sync] currentUserId:", state.currentUserId, "filas:", toSync.map((a) => ({ id: a.id, userId: a.userId, action: a.action })));
+    // el código): todo como texto plano (JSON.stringify) en vez de objetos
+    // colapsables, para poder copiar la línea entera sin tener que expandir nada.
+    const rowsForLog = toSync.map(toAuditRow);
+    const me = state.users.find((u) => u.id === state.currentUserId);
+    console.log(
+      "[audit-sync] intento de upsert:",
+      JSON.stringify({ currentUserId: state.currentUserId, meEmail: me?.email, meRole: me?.role, rows: rowsForLog }),
+    );
     supabase
       .from("audit_log")
-      .upsert(toSync.map(toAuditRow))
+      .upsert(rowsForLog)
       .then(({ error, status, statusText }) => {
-        if (error) console.warn("[audit-sync] Error al sincronizar auditoría:", { error, status, statusText, rows: toSync });
+        if (error) {
+          console.warn(
+            "[audit-sync] ERROR:",
+            JSON.stringify({ code: error.code, message: error.message, details: error.details, hint: error.hint, status, statusText, rows: rowsForLog }),
+          );
+        }
       });
   }, [state.audit, state.authenticated, state.currentUserId]);
 

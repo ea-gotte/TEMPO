@@ -301,6 +301,9 @@ export function Shell({
                 className="btn btn-danger"
                 onClick={() => {
                   setConfirmLogout(false);
+                  // Antes solo se limpiaba el estado local: la sesión real de Supabase
+                  // (token en localStorage) seguía viva aunque la app mostrara el login.
+                  supabase.auth.signOut().catch((err) => console.warn("No se pudo cerrar sesión en Supabase:", err));
                   dispatch({ type: "logout" });
                 }}
               >
