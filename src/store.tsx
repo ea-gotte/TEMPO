@@ -859,15 +859,36 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // manda en cada request ya venció. Eso hacía que auth.uid() no matcheara del
   // lado del servidor y cualquier escritura (registros de horas, auditoría...)
   // rebotara con 42501, aunque en la app pareciera que todo seguía andando.
-  // getSession() revisa la expiración y refresca sola si hace falta — se llama
-  // apenas la pestaña vuelve a estar visible, antes de que el usuario alcance
-  // a interactuar con un token ya vencido.
+  //
+  // getSession() (probado antes) revisa la sesión guardada pero no siempre
+  // fuerza una renovación real cuando el token YA venció del todo — está
+  // pensado para el caso "está por vencer", no "ya venció hace rato".
+  // refreshSession() sí fuerza el intercambio del refresh token por uno nuevo,
+  // sin importar el estado del access token actual. Si ni así se puede renovar
+  // (el refresh token también quedó inválido — puede pasar con varias pestañas
+  // compitiendo por el mismo refresh, que en Supabase es de un solo uso), lo
+  // correcto es cerrar esa sesión rota en vez de dejarla fallando en silencio:
+  // signOut() dispara el listener de abajo, que limpia el estado y muestra
+  // el login de nuevo para volver a entrar con una sesión sana.
   useEffect(() => {
-    function revalidate() {
-      if (document.visibilityState === "visible") {
-        supabase.auth.getSession().catch((err) => console.warn("No se pudo revalidar la sesión de Supabase:", err));
+    async function revalidate() {
+      if (document.visibilityState !== "visible") return;
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+      if (!session) return; // sin sesión (no logueado): nada que renovar acá
+      const expiresAt = (session.expires_at ?? 0) * 1000;
+      // Solo forzar el refresh si el token ya venció o está por vencer (margen
+      // de 60s) — si todavía es válido no hace falta tocarlo, para no pisarle
+      // el refresh token (de un solo uso en Supabase) a otra pestaña abierta
+      // con la misma cuenta.
+      if (expiresAt - Date.now() > 60_000) return;
+      const { error } = await supabase.auth.refreshSession();
+      if (error) {
+        console.warn("No se pudo renovar la sesión de Supabase, cerrando sesión para volver a un login limpio:", error);
+        await supabase.auth.signOut().catch(() => {});
       }
     }
+    revalidate(); // también al montar, por si el token ya llegó vencido en la carga inicial
     document.addEventListener("visibilitychange", revalidate);
     window.addEventListener("focus", revalidate);
     return () => {
