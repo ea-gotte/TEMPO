@@ -94,6 +94,14 @@ export function CalendarPage() {
   const [ctx, setCtx] = useState<{ x: number; y: number; entry: TimeEntry } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Espejo de `drag` en un ref: los listeners de mousemove/mouseup se cuelgan
+  // de `window` (no del contenedor de la grilla) para que el arrastre no se
+  // corte si el mouse se mueve rápido y sale un instante de esos límites —
+  // eso era lo que hacía que a veces el arrastre se sintiera trabado o dejara
+  // de seguir al mouse. Al vivir en `window`, el listener necesita leer el
+  // valor más reciente de `drag` sin depender del cierre de React (que
+  // quedaría desactualizado si el efecto no se re-suscribe en cada mousemove).
+  const dragRef = useRef<Drag | null>(null);
   // Al soltar un arrastre (mover/estirar), el navegador dispara un "click" fantasma
   // justo después del mouseup — como el estado de drag ya se limpió, ese click caía
   // sobre la celda vacía y abría "Nuevo registro" sin que se pidiera. Este ref lo frena.
@@ -182,14 +190,19 @@ export function CalendarPage() {
     e.preventDefault();
     e.stopPropagation();
     const colWidth = (gridRef.current?.querySelector(".cal-col") as HTMLElement)?.offsetWidth ?? 120;
-    setDrag({ entryId: entry.id, mode, startY: e.clientY, startX: e.clientX, colWidth, orig: entry, dMin: 0, dDay: 0 });
+    const next: Drag = { entryId: entry.id, mode, startY: e.clientY, startX: e.clientX, colWidth, orig: entry, dMin: 0, dDay: 0 };
+    dragRef.current = next;
+    setDrag(next);
   }
 
-  function onMove(e: React.MouseEvent) {
+  function onMove(e: MouseEvent) {
+    const drag = dragRef.current;
     if (!drag) return;
     const dMin = Math.round(((e.clientY - drag.startY) / PX_H) * 60 / 15) * 15;
     const dDay = view === "dia" ? 0 : Math.round((e.clientX - drag.startX) / drag.colWidth);
-    setDrag({ ...drag, dMin, dDay });
+    const next = { ...drag, dMin, dDay };
+    dragRef.current = next;
+    setDrag(next);
 
     // Auto-scroll cerca del borde superior/inferior del contenedor: sin esto,
     // arrastrar una entrada hacia una hora fuera de lo visible obligaba a
@@ -204,6 +217,7 @@ export function CalendarPage() {
   }
 
   function onUp() {
+    const drag = dragRef.current;
     if (!drag) return;
     const { orig, dMin, dDay, mode } = drag;
     let next: TimeEntry;
@@ -219,8 +233,22 @@ export function CalendarPage() {
       dispatch({ type: "updateEntry", entry: next });
     }
     justDraggedRef.current = true;
+    dragRef.current = null;
     setDrag(null);
   }
+
+  // Escuchar en window (no en el contenedor de la grilla): así el arrastre
+  // sigue funcionando aunque el mouse salga un instante de esos límites al
+  // moverse rápido, en vez de cortarse a mitad de camino.
+  React.useEffect(() => {
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, weekDays]);
 
   function dragged(e: TimeEntry): TimeEntry {
     if (!drag || drag.entryId !== e.id) return e;
@@ -328,9 +356,6 @@ export function CalendarPage() {
         <div
           className="cal-wrap"
           ref={gridRef}
-          onMouseMove={onMove}
-          onMouseUp={onUp}
-          onMouseLeave={onUp}
           style={{
             cursor: drag ? (drag.mode === "move" ? "grabbing" : "ns-resize") : undefined,
             gridTemplateColumns: tz2 ? "52px 52px 1fr" : "52px 1fr",
