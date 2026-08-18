@@ -1000,11 +1000,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const toSync = state.audit.filter((a) => a.userId === state.currentUserId && !syncedAuditIdsRef.current.has(a.id));
     if (toSync.length === 0) return;
     for (const a of toSync) syncedAuditIdsRef.current.add(a.id);
+    // Log temporal de diagnóstico (42501 en audit_log que no se explica leyendo
+    // el código): esto muestra en la consola del navegador exactamente qué se
+    // intenta subir y con qué currentUserId, para comparar contra el error real.
+    console.log("[audit-sync] currentUserId:", state.currentUserId, "filas:", toSync.map((a) => ({ id: a.id, userId: a.userId, action: a.action })));
     supabase
       .from("audit_log")
       .upsert(toSync.map(toAuditRow))
-      .then(({ error }) => {
-        if (error) console.warn("Error al sincronizar auditoría:", error);
+      .then(({ error, status, statusText }) => {
+        if (error) console.warn("[audit-sync] Error al sincronizar auditoría:", { error, status, statusText, rows: toSync });
       });
   }, [state.audit, state.authenticated, state.currentUserId]);
 
