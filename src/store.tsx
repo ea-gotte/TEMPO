@@ -1056,7 +1056,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     );
     supabase
       .from("audit_log")
-      .upsert(rowsForLog)
+      .upsert(rowsForLog, { onConflict: "id", ignoreDuplicates: true })
       .then(({ error, status, statusText }) => {
         if (error) {
           console.warn(
