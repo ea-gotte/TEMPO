@@ -983,34 +983,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [state.authenticated]);
 
-  // Auditoría: cada nueva entrada que aparece al frente de state.audit (siempre se
-  // agrega ahí, ver withAudit) se sube a Supabase. Se compara por id — no por longitud,
-  // porque el array local se recorta a 300 y la longitud puede quedar igual aunque haya
-  // entradas nuevas. Usa upsert para no fallar si ya estaba sincronizada (p.ej. recién
-  // llegada de la carga inicial desde la base).
-  const prevAuditFirstIdRef = useRef<string | null>(null);
+  // Auditoría: cada entrada NUEVA (no vista todavía en este navegador) que sea
+  // propia se sube a Supabase. Se rastrea por id en un Set en vez de comparar
+  // posiciones en el array — comparar "contra el primer id de la vez anterior"
+  // se rompía apenas ese id dejaba de estar primero (p.ej. tras un refetch de
+  // Realtime que reordena o reemplaza state.audit), tratando de vuelta filas ya
+  // sincronizadas o ajenas como "nuevas" e intentando insertarlas — RLS
+  // solo permite insertar auditoría propia (user_id = auth.uid()), así que eso
+  // rebotaba con 42501 en el log de Supabase (ruidoso, pero sin romper nada).
+  // No hace falta persistir el Set entre recargas: en la carga inicial ya se
+  // trae todo lo propio existente desde la base, así que no hay nada legítimo
+  // para volver a insertar hasta que ocurra una acción nueva.
+  const syncedAuditIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!state.authenticated) return;
-    const prevFirstId = prevAuditFirstIdRef.current;
-    prevAuditFirstIdRef.current = state.audit[0]?.id ?? null;
-    const idx = prevFirstId ? state.audit.findIndex((a) => a.id === prevFirstId) : -1;
-    const newEntries = idx === -1 ? state.audit : state.audit.slice(0, idx);
-    // RLS solo permite insertar auditoría propia (user_id = auth.uid()). Cuando
-    // este efecto corre después de un refetch de Realtime (p.ej. admin/gerente,
-    // que trae las últimas 300 filas de TODOS los usuarios), "prevFirstId" no
-    // aparece en el array nuevo y sin este filtro se intentaba resubir el lote
-    // entero — la auditoría ajena rebotaba con 42501 en el log de Supabase, sin
-    // romper nada pero generando ruido. La propia, aunque ya estuviera
-    // guardada, upsertea sin problema (política de UPDATE aparte).
-    const own = newEntries.filter((a) => a.userId === state.currentUserId);
-    if (own.length === 0) return;
+    const toSync = state.audit.filter((a) => a.userId === state.currentUserId && !syncedAuditIdsRef.current.has(a.id));
+    if (toSync.length === 0) return;
+    for (const a of toSync) syncedAuditIdsRef.current.add(a.id);
     supabase
       .from("audit_log")
-      .upsert(own.map(toAuditRow))
+      .upsert(toSync.map(toAuditRow))
       .then(({ error }) => {
         if (error) console.warn("Error al sincronizar auditoría:", error);
       });
-  }, [state.audit, state.authenticated]);
+  }, [state.audit, state.authenticated, state.currentUserId]);
 
   // Envuelve el dispatch: además de actualizar el estado local, refleja en Supabase
   // las acciones sobre registros de horas y ausencias.
