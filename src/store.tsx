@@ -995,10 +995,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     prevAuditFirstIdRef.current = state.audit[0]?.id ?? null;
     const idx = prevFirstId ? state.audit.findIndex((a) => a.id === prevFirstId) : -1;
     const newEntries = idx === -1 ? state.audit : state.audit.slice(0, idx);
-    if (newEntries.length === 0) return;
+    // RLS solo permite insertar auditoría propia (user_id = auth.uid()). Cuando
+    // este efecto corre después de un refetch de Realtime (p.ej. admin/gerente,
+    // que trae las últimas 300 filas de TODOS los usuarios), "prevFirstId" no
+    // aparece en el array nuevo y sin este filtro se intentaba resubir el lote
+    // entero — la auditoría ajena rebotaba con 42501 en el log de Supabase, sin
+    // romper nada pero generando ruido. La propia, aunque ya estuviera
+    // guardada, upsertea sin problema (política de UPDATE aparte).
+    const own = newEntries.filter((a) => a.userId === state.currentUserId);
+    if (own.length === 0) return;
     supabase
       .from("audit_log")
-      .upsert(newEntries.map(toAuditRow))
+      .upsert(own.map(toAuditRow))
       .then(({ error }) => {
         if (error) console.warn("Error al sincronizar auditoría:", error);
       });
