@@ -84,6 +84,68 @@ interface Drag {
   dDay: number;
 }
 
+/** Una tarjeta del calendario. Memoizada: mientras se arrastra otra tarjeta,
+ * esta recibe exactamente los mismos props (mismo valor, no solo mismo tipo)
+ * en cada mousemove, así que React.memo la salta por completo — antes, TODAS
+ * las tarjetas visibles se volvían a renderizar en cada tick del arrastre
+ * aunque solo una se estuviera moviendo, lo que en días con varias tarjetas
+ * se sentía como que costaba actualizar. */
+const CalBlock = React.memo(function CalBlock({
+  entry,
+  top,
+  height,
+  left,
+  width,
+  background,
+  conf,
+  isDragging,
+  label,
+  timeLabel,
+  title,
+  onMoveDown,
+  onResizeDown,
+  onEdit,
+  onContext,
+}: {
+  entry: TimeEntry;
+  top: number;
+  height: number;
+  left: string;
+  width: string;
+  background: string;
+  conf: boolean;
+  isDragging: boolean;
+  label: string;
+  timeLabel: string;
+  title: string;
+  onMoveDown: (e: React.MouseEvent, entry: TimeEntry) => void;
+  onResizeDown: (e: React.MouseEvent, entry: TimeEntry) => void;
+  onEdit: (entry: TimeEntry) => void;
+  onContext: (e: React.MouseEvent, entry: TimeEntry) => void;
+}) {
+  return (
+    <div
+      className={`cal-block ${conf ? "overlap" : ""}`}
+      style={{
+        top, height, left, width, right: "auto", background,
+        ...(isDragging ? { zIndex: 30, boxShadow: "var(--shadow-md)" } : null),
+      }}
+      onMouseDown={(ev) => onMoveDown(ev, entry)}
+      onDoubleClick={(ev) => {
+        ev.stopPropagation();
+        onEdit(entry);
+      }}
+      onClick={(ev) => ev.stopPropagation()}
+      onContextMenu={(ev) => onContext(ev, entry)}
+      title={title}
+    >
+      {label}
+      <span className="t"> {timeLabel}</span>
+      <span className="rsz" onMouseDown={(ev) => onResizeDown(ev, entry)} />
+    </div>
+  );
+});
+
 export function CalendarPage() {
   const { state, dispatch } = useStore();
   const toast = useToast();
@@ -186,14 +248,24 @@ export function CalendarPage() {
   }
 
   /* ---------- drag & drop ---------- */
-  function onBlockDown(e: React.MouseEvent, entry: TimeEntry, mode: "move" | "resize") {
+  // Estables (useCallback) para que los props de CalBlock no cambien de
+  // referencia en cada render — es lo que le permite a React.memo saltarse
+  // por completo el re-render de las tarjetas que NO se están arrastrando.
+  const onBlockDown = React.useCallback((e: React.MouseEvent, entry: TimeEntry, mode: "move" | "resize") => {
     e.preventDefault();
     e.stopPropagation();
     const colWidth = (gridRef.current?.querySelector(".cal-col") as HTMLElement)?.offsetWidth ?? 120;
     const next: Drag = { entryId: entry.id, mode, startY: e.clientY, startX: e.clientX, colWidth, orig: entry, dMin: 0, dDay: 0 };
     dragRef.current = next;
     setDrag(next);
-  }
+  }, []);
+  const onBlockMoveDown = React.useCallback((e: React.MouseEvent, entry: TimeEntry) => onBlockDown(e, entry, "move"), [onBlockDown]);
+  const onBlockResizeDown = React.useCallback((e: React.MouseEvent, entry: TimeEntry) => onBlockDown(e, entry, "resize"), [onBlockDown]);
+  const onBlockContext = React.useCallback((e: React.MouseEvent, entry: TimeEntry) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtx({ x: e.clientX, y: e.clientY, entry });
+  }, []);
 
   function onMove(e: MouseEvent) {
     const drag = dragRef.current;
@@ -263,9 +335,9 @@ export function CalendarPage() {
   }
 
   function duplicateEntry(e: TimeEntry) {
-    const dur = e.end - e.start;
-    const start = Math.min(e.end, 24 * 60 - dur);
-    dispatch({ type: "addEntry", entry: { ...e, id: uid(), start, end: start + dur } });
+    // Mismo horario que el original (no se corre a continuación): al superponerse
+    // en el tiempo, el layout de carriles la ubica sola al lado, hacia la derecha.
+    dispatch({ type: "addEntry", entry: { ...e, id: uid() } });
     toast("Registro duplicado.");
   }
 
@@ -421,31 +493,27 @@ export function CalendarPage() {
                     const lane = isDragging ? { col: 0, cols: 1 } : lanes?.get(raw.id) ?? { col: 0, cols: 1 };
                     const left = `calc(${(lane.col / lane.cols) * 100}% + 3px)`;
                     const width = `calc(${(1 / lane.cols) * 100}% - 6px)`;
+                    const timeLabel = `${minToHM(e.start)}–${minToHM(e.end)}`;
+                    const title = `${e.description} · ${timeLabel}${tz2 ? ` (${tz2Short}: ${minToHM((((e.start + tzDiff) % 1440) + 1440) % 1440)}–${minToHM((((e.end + tzDiff) % 1440) + 1440) % 1440)})` : ""}`;
                     return (
-                      <div
+                      <CalBlock
                         key={raw.id}
-                        className={`cal-block ${conf ? "overlap" : ""}`}
-                        style={{
-                          top, height, left, width, right: "auto", background: p?.color ?? "var(--accent)",
-                          ...(isDragging ? { zIndex: 30, boxShadow: "var(--shadow-md)" } : null),
-                        }}
-                        onMouseDown={(ev) => onBlockDown(ev, raw, "move")}
-                        onDoubleClick={(ev) => {
-                          ev.stopPropagation();
-                          setModal(raw);
-                        }}
-                        onClick={(ev) => ev.stopPropagation()}
-                        onContextMenu={(ev) => {
-                          ev.preventDefault();
-                          ev.stopPropagation();
-                          setCtx({ x: ev.clientX, y: ev.clientY, entry: raw });
-                        }}
-                        title={`${e.description} · ${minToHM(e.start)}–${minToHM(e.end)}${tz2 ? ` (${tz2Short}: ${minToHM((((e.start + tzDiff) % 1440) + 1440) % 1440)}–${minToHM((((e.end + tzDiff) % 1440) + 1440) % 1440)})` : ""}`}
-                      >
-                        {e.description || p?.name || "Registro"}
-                        <span className="t"> {minToHM(e.start)}–{minToHM(e.end)}</span>
-                        <span className="rsz" onMouseDown={(ev) => onBlockDown(ev, raw, "resize")} />
-                      </div>
+                        entry={raw}
+                        top={top}
+                        height={height}
+                        left={left}
+                        width={width}
+                        background={p?.color ?? "var(--accent)"}
+                        conf={conf}
+                        isDragging={isDragging}
+                        label={e.description || p?.name || "Registro"}
+                        timeLabel={timeLabel}
+                        title={title}
+                        onMoveDown={onBlockMoveDown}
+                        onResizeDown={onBlockResizeDown}
+                        onEdit={setModal}
+                        onContext={onBlockContext}
+                      />
                     );
                   })}
                 </div>
