@@ -852,6 +852,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.dataset.theme = state.theme;
   }, [state.theme]);
 
+  // Si la pestaña queda en segundo plano/minimizada un buen rato, el navegador
+  // pausa los temporizadores y el refresco automático del token de Supabase
+  // (autoRefreshToken) puede no dispararse a tiempo — la app sigue mostrando
+  // "con sesión" porque nunca revalida contra el reloj, pero el token que se
+  // manda en cada request ya venció. Eso hacía que auth.uid() no matcheara del
+  // lado del servidor y cualquier escritura (registros de horas, auditoría...)
+  // rebotara con 42501, aunque en la app pareciera que todo seguía andando.
+  // getSession() revisa la expiración y refresca sola si hace falta — se llama
+  // apenas la pestaña vuelve a estar visible, antes de que el usuario alcance
+  // a interactuar con un token ya vencido.
+  useEffect(() => {
+    function revalidate() {
+      if (document.visibilityState === "visible") {
+        supabase.auth.getSession().catch((err) => console.warn("No se pudo revalidar la sesión de Supabase:", err));
+      }
+    }
+    document.addEventListener("visibilitychange", revalidate);
+    window.addEventListener("focus", revalidate);
+    return () => {
+      document.removeEventListener("visibilitychange", revalidate);
+      window.removeEventListener("focus", revalidate);
+    };
+  }, []);
+
   // Sincronizar sesión y perfiles desde Supabase
   useEffect(() => {
     let authListener: any = null;
