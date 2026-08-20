@@ -111,8 +111,14 @@ function buildGraph(centerUser: User, entries: TimeEntry[], projects: Project[],
   return { nodes, edges, totalMinutes };
 }
 
-function tick(nodes: SimNode[], edges: GraphEdge[], byId: Map<string, SimNode>, alpha: number) {
-  const REPEL = 2600;
+interface ForceParams {
+  /** Fuerza de dispersión: qué tanto se empujan los nodos entre sí para no amontonarse */
+  repel: number;
+  /** Fuerza de atracción: qué tanto tiran los enlaces de los nodos conectados para acercarlos */
+  attract: number;
+}
+
+function tick(nodes: SimNode[], edges: GraphEdge[], byId: Map<string, SimNode>, alpha: number, params: ForceParams) {
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
       const a = nodes[i], b = nodes[j];
@@ -121,7 +127,7 @@ function tick(nodes: SimNode[], edges: GraphEdge[], byId: Map<string, SimNode>, 
       if (d2 > 160000) continue; // > 400px: ignorar (ahorra CPU, no aporta al layout)
       if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
       const d = Math.sqrt(d2);
-      const force = (REPEL / d2) * alpha;
+      const force = (params.repel / d2) * alpha;
       const ux = dx / d, uy = dy / d;
       if (a.fx == null) { a.vx += ux * force; a.vy += uy * force; }
       if (b.fx == null) { b.vx -= ux * force; b.vy -= uy * force; }
@@ -134,14 +140,13 @@ function tick(nodes: SimNode[], edges: GraphEdge[], byId: Map<string, SimNode>, 
     }
   }
 
-  const LINK_K = 0.06;
   for (const e of edges) {
     const a = byId.get(e.source), b = byId.get(e.target);
     if (!a || !b) continue;
     const rest = a.r + b.r + 58;
     const dx = b.x - a.x, dy = b.y - a.y;
     const d = Math.sqrt(dx * dx + dy * dy) || 0.001;
-    const force = (d - rest) * LINK_K * alpha;
+    const force = (d - rest) * params.attract * alpha;
     const ux = dx / d, uy = dy / d;
     if (a.fx == null) { a.vx += ux * force; a.vy += uy * force; }
     if (b.fx == null) { b.vx -= ux * force; b.vy -= uy * force; }
@@ -194,11 +199,25 @@ export function MindMap({ userId }: { userId: string }) {
   const panInfo = useRef<{ startClientX: number; startClientY: number; startViewX: number; startViewY: number } | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
 
+  // Parámetros de la simulación, ajustables desde la UI: dispersión (qué tanto
+  // se repelen los nodos) y atracción (qué tanto tiran los enlaces para juntar
+  // los nodos conectados). Viven en un ref para que el loop de animación los
+  // lea siempre al día sin tener que reiniciarse.
+  const [repel, setRepel] = useState(2600);
+  const [attract, setAttract] = useState(0.06);
+  const paramsRef = useRef<ForceParams>({ repel, attract });
+  paramsRef.current = { repel, attract };
+
   // Ref siempre al día con las aristas actuales: si el loop de animación ya
   // estaba corriendo cuando cambian los datos, no debe quedarse leyendo una
   // lista de conexiones vieja (por closure) hasta que decaiga y se reinicie.
   const edgesRef = useRef(graphEdges);
   edgesRef.current = graphEdges;
+
+  function reheat() {
+    alphaRef.current = Math.max(alphaRef.current, 0.6);
+    startLoop();
+  }
 
   function applyViewTransform() {
     const g = viewGroupRef.current;
@@ -223,7 +242,7 @@ export function MindMap({ userId }: { userId: string }) {
       const byId = new Map(nodes.map((n) => [n.id, n]));
       alphaRef.current *= 0.985;
       const alpha = Math.max(alphaRef.current, dragInfo.current ? 0.4 : 0);
-      tick(nodes, edges, byId, Math.max(alpha, 0.02));
+      tick(nodes, edges, byId, Math.max(alpha, 0.02), paramsRef.current);
       for (const n of nodes) {
         const el = nodeElRefs.current.get(n.id);
         if (el) el.setAttribute("transform", `translate(${n.x.toFixed(1)},${n.y.toFixed(1)})`);
@@ -363,13 +382,32 @@ export function MindMap({ userId }: { userId: string }) {
 
   return (
     <div className="card" style={{ overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 18px 0" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 18px 0", flexWrap: "wrap" }}>
         <div className="card-title" style={{ marginBottom: 0 }}>Mapa mental — dedicación por proyecto</div>
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: 12, color: "var(--text-3)" }}>{fmtDur(totalMinutes)} en total</span>
         <button className="btn btn-ghost btn-sm" onClick={resetView}>
           <Icon name="scale" size={14} /> Centrar
         </button>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 18, padding: "10px 18px 0", flexWrap: "wrap" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-3)" }}>
+          Dispersión
+          <input
+            type="range" min={800} max={6000} step={100} value={repel}
+            onChange={(e) => { setRepel(Number(e.target.value)); reheat(); }}
+            style={{ width: 110 }}
+          />
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-3)" }}>
+          Atracción
+          <input
+            type="range" min={0.01} max={0.2} step={0.005} value={attract}
+            onChange={(e) => { setAttract(Number(e.target.value)); reheat(); }}
+            style={{ width: 110 }}
+          />
+        </label>
       </div>
 
       {graphNodes.length <= 1 ? (

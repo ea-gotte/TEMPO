@@ -354,6 +354,17 @@ a { color: var(--accent); text-decoration: none; }
   box-shadow: var(--shadow-md); padding: 12px 14px;
 }
 
+/* ---------- Organigrama ---------- */
+.org-card {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-sizing: border-box; transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.org-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.org-card.me { border-color: var(--accent); background: var(--accent-soft); }
+.org-name { font-size: 12px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.org-role { font-size: 10.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 /* ---------- Dashboard ---------- */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 18px; }
 .kpi { padding: 14px 16px; }
