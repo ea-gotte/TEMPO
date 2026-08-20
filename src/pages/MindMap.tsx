@@ -111,6 +111,44 @@ function buildGraph(centerUser: User, entries: TimeEntry[], projects: Project[],
   return { nodes, edges, totalMinutes };
 }
 
+/**
+ * Posiciones iniciales para nodos nuevos: agrupa a cada subproyecto cerca del
+ * ángulo de su proyecto padre (en vez de repartir todo en un círculo sin tener
+ * en cuenta el parentesco) para que la simulación no tenga que "desenredar"
+ * cruces de enlaces al asentarse — eso es lo que se veía como desorden inicial.
+ * El radio también se ajusta a la fuerza de dispersión actual, así el primer
+ * cuadro ya arranca cerca de la posición final en vez de tener que expandirse.
+ */
+function initialPositions(nodes: GraphNode[], edges: GraphEdge[], repelUser: number, repelSiblings: number) {
+  const childrenOf = new Map<string, string[]>();
+  for (const e of edges) {
+    if (!childrenOf.has(e.source)) childrenOf.set(e.source, []);
+    childrenOf.get(e.source)!.push(e.target);
+  }
+  const pos = new Map<string, { x: number; y: number }>();
+  pos.set("me", { x: 0, y: 0 });
+
+  const r1 = 90 + Math.sqrt(repelUser) * 0.9;
+  const r2 = r1 + 60 + Math.sqrt(repelSiblings) * 0.9;
+
+  const firstRing = childrenOf.get("me") ?? [];
+  const n1 = Math.max(firstRing.length, 1);
+  firstRing.forEach((pid, i) => {
+    const angle = (i / n1) * Math.PI * 2;
+    pos.set(pid, { x: Math.cos(angle) * r1, y: Math.sin(angle) * r1 });
+
+    const kids = childrenOf.get(pid) ?? [];
+    const nk = kids.length;
+    const spread = Math.min(Math.PI * 0.9, (Math.PI * 2) / n1);
+    kids.forEach((sid, j) => {
+      const subAngle = nk > 1 ? angle - spread / 2 + (j / (nk - 1)) * spread : angle;
+      pos.set(sid, { x: Math.cos(subAngle) * r2, y: Math.sin(subAngle) * r2 });
+    });
+  });
+
+  return pos;
+}
+
 interface ForceParams {
   /** Dispersión del usuario: qué tanto empuja el nodo central a los demás (separa los anillos del centro) */
   repelUser: number;
@@ -126,7 +164,7 @@ function tick(nodes: SimNode[], edges: GraphEdge[], byId: Map<string, SimNode>, 
       const a = nodes[i], b = nodes[j];
       let dx = a.x - b.x, dy = a.y - b.y;
       let d2 = dx * dx + dy * dy;
-      if (d2 > 490000) continue; // > 700px: ignorar (ahorra CPU, no aporta al layout)
+      if (d2 > 1440000) continue; // > 1200px: ignorar (ahorra CPU, no aporta al layout)
       if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
       const d = Math.sqrt(d2);
       const repel = a.kind === "user" || b.kind === "user" ? params.repelUser : params.repelSiblings;
@@ -206,9 +244,9 @@ export function MindMap({ userId }: { userId: string }) {
   // usuario, dispersión entre proyectos/subproyectos entre sí, y atracción de
   // los enlaces. Viven en un ref para que el loop de animación los lea siempre
   // al día sin tener que reiniciarse.
-  const [repelUser, setRepelUser] = useState(6000);
-  const [repelSiblings, setRepelSiblings] = useState(2600);
-  const [attract, setAttract] = useState(0.06);
+  const [repelUser, setRepelUser] = useState(24000);
+  const [repelSiblings, setRepelSiblings] = useState(10400);
+  const [attract, setAttract] = useState(0.12);
   const paramsRef = useRef<ForceParams>({ repelUser, repelSiblings, attract });
   paramsRef.current = { repelUser, repelSiblings, attract };
 
@@ -273,14 +311,13 @@ export function MindMap({ userId }: { userId: string }) {
   // el grafo de golpe si solo cambió un registro).
   useEffect(() => {
     const prev = new Map(simRef.current.nodes.map((n) => [n.id, n]));
-    const nodes: SimNode[] = graphNodes.map((g, i) => {
+    const initPos = initialPositions(graphNodes, graphEdges, repelUser, repelSiblings);
+    const nodes: SimNode[] = graphNodes.map((g) => {
       const old = prev.get(g.id);
       if (old) return { ...old, label: g.label, color: g.color, minutes: g.minutes, entries: g.entries, r: g.r };
-      const angle = (i / Math.max(graphNodes.length - 1, 1)) * Math.PI * 2;
-      const startRadius = g.kind === "user" ? 0 : g.kind === "project" ? 150 : 260;
+      const p = initPos.get(g.id) ?? { x: 0, y: 0 };
       return {
-        ...g,
-        x: Math.cos(angle) * startRadius, y: Math.sin(angle) * startRadius, vx: 0, vy: 0,
+        ...g, x: p.x, y: p.y, vx: 0, vy: 0,
         fx: g.kind === "user" ? 0 : null, fy: g.kind === "user" ? 0 : null,
       };
     });
@@ -399,7 +436,7 @@ export function MindMap({ userId }: { userId: string }) {
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-3)" }}>
           Dispersión desde el usuario
           <input
-            type="range" min={1000} max={30000} step={500} value={repelUser}
+            type="range" min={4000} max={120000} step={2000} value={repelUser}
             onChange={(e) => { setRepelUser(Number(e.target.value)); reheat(); }}
             style={{ width: 110 }}
           />
@@ -407,7 +444,7 @@ export function MindMap({ userId }: { userId: string }) {
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-3)" }}>
           Dispersión entre elementos
           <input
-            type="range" min={500} max={20000} step={250} value={repelSiblings}
+            type="range" min={2000} max={80000} step={1000} value={repelSiblings}
             onChange={(e) => { setRepelSiblings(Number(e.target.value)); reheat(); }}
             style={{ width: 110 }}
           />
@@ -415,7 +452,7 @@ export function MindMap({ userId }: { userId: string }) {
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-3)" }}>
           Atracción
           <input
-            type="range" min={0.01} max={0.2} step={0.005} value={attract}
+            type="range" min={0.02} max={0.4} step={0.01} value={attract}
             onChange={(e) => { setAttract(Number(e.target.value)); reheat(); }}
             style={{ width: 110 }}
           />
