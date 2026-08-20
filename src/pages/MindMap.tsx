@@ -261,9 +261,42 @@ export function MindMap({ userId }: { userId: string }) {
     startLoop();
   }
 
+  // Marca que, cuando la simulación termine de asentarse, hay que reencuadrar
+  // la vista (usado tras cambiar los sliders o cargar datos nuevos) — así el
+  // encuadre final refleja el tamaño real ya asentado, no la posición a mitad
+  // de camino.
+  const autoFitOnSettleRef = useRef(false);
+
+  function reheatAndFit() {
+    autoFitOnSettleRef.current = true;
+    reheat();
+    fitToView();
+  }
+
   function applyViewTransform() {
     const g = viewGroupRef.current;
     if (g) g.setAttribute("transform", `translate(${W / 2 + viewRef.current.x},${H / 2 + viewRef.current.y}) scale(${viewRef.current.k})`);
+  }
+
+  /** Reencuadra la vista (zoom + paneo) para que todos los nodos entren en el lienzo. */
+  function fitToView() {
+    const nodes = simRef.current.nodes;
+    if (nodes.length === 0) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of nodes) {
+      minX = Math.min(minX, n.x - n.r);
+      maxX = Math.max(maxX, n.x + n.r);
+      minY = Math.min(minY, n.y - n.r);
+      maxY = Math.max(maxY, n.y + n.r);
+    }
+    const padding = 60;
+    const boxW = Math.max(maxX - minX, 1);
+    const boxH = Math.max(maxY - minY, 1);
+    const k = Math.max(0.1, Math.min(2.5, Math.min((W - padding * 2) / boxW, (H - padding * 2) / boxH)));
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    viewRef.current = { k, x: -centerX * k, y: -centerY * k };
+    applyViewTransform();
   }
 
   function clientToWorld(clientX: number, clientY: number) {
@@ -301,6 +334,7 @@ export function MindMap({ userId }: { userId: string }) {
         rafRef.current = requestAnimationFrame(step);
       } else {
         rafRef.current = null;
+        if (autoFitOnSettleRef.current) { autoFitOnSettleRef.current = false; fitToView(); }
       }
     };
     rafRef.current = requestAnimationFrame(step);
@@ -323,6 +357,8 @@ export function MindMap({ userId }: { userId: string }) {
     });
     simRef.current = { nodes };
     alphaRef.current = 1;
+    fitToView();
+    autoFitOnSettleRef.current = true;
     startLoop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphNodes]);
@@ -356,7 +392,7 @@ export function MindMap({ userId }: { userId: string }) {
     ev.preventDefault();
     const factor = ev.deltaY < 0 ? 1.08 : 1 / 1.08;
     const before = clientToWorld(ev.clientX, ev.clientY);
-    viewRef.current.k = Math.max(0.35, Math.min(2.5, viewRef.current.k * factor));
+    viewRef.current.k = Math.max(0.1, Math.min(2.5, viewRef.current.k * factor));
     const svg = svgRef.current;
     if (svg) {
       const rect = svg.getBoundingClientRect();
@@ -369,8 +405,8 @@ export function MindMap({ userId }: { userId: string }) {
   }
 
   function resetView() {
-    viewRef.current = { x: 0, y: 0, k: 1 };
-    applyViewTransform();
+    fitToView();
+    autoFitOnSettleRef.current = true;
     alphaRef.current = Math.max(alphaRef.current, 0.5);
     startLoop();
   }
@@ -437,7 +473,7 @@ export function MindMap({ userId }: { userId: string }) {
           Dispersión desde el usuario
           <input
             type="range" min={4000} max={120000} step={2000} value={repelUser}
-            onChange={(e) => { setRepelUser(Number(e.target.value)); reheat(); }}
+            onChange={(e) => { setRepelUser(Number(e.target.value)); reheatAndFit(); }}
             style={{ width: 110 }}
           />
         </label>
@@ -445,7 +481,7 @@ export function MindMap({ userId }: { userId: string }) {
           Dispersión entre elementos
           <input
             type="range" min={2000} max={80000} step={1000} value={repelSiblings}
-            onChange={(e) => { setRepelSiblings(Number(e.target.value)); reheat(); }}
+            onChange={(e) => { setRepelSiblings(Number(e.target.value)); reheatAndFit(); }}
             style={{ width: 110 }}
           />
         </label>
@@ -453,7 +489,7 @@ export function MindMap({ userId }: { userId: string }) {
           Atracción
           <input
             type="range" min={0.02} max={0.4} step={0.01} value={attract}
-            onChange={(e) => { setAttract(Number(e.target.value)); reheat(); }}
+            onChange={(e) => { setAttract(Number(e.target.value)); reheatAndFit(); }}
             style={{ width: 110 }}
           />
         </label>
