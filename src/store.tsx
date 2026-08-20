@@ -1032,38 +1032,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // propia se sube a Supabase. Se rastrea por id en un Set en vez de comparar
   // posiciones en el array — comparar "contra el primer id de la vez anterior"
   // se rompía apenas ese id dejaba de estar primero (p.ej. tras un refetch de
-  // Realtime que reordena o reemplaza state.audit), tratando de vuelta filas ya
-  // sincronizadas o ajenas como "nuevas" e intentando insertarlas — RLS
-  // solo permite insertar auditoría propia (user_id = auth.uid()), así que eso
-  // rebotaba con 42501 en el log de Supabase (ruidoso, pero sin romper nada).
-  // No hace falta persistir el Set entre recargas: en la carga inicial ya se
-  // trae todo lo propio existente desde la base, así que no hay nada legítimo
-  // para volver a insertar hasta que ocurra una acción nueva.
+  // Realtime que reordena o reemplaza state.audit). ignoreDuplicates evita que
+  // las filas ya existentes (p.ej. las 300 más recientes traídas al cargar la
+  // página) pasen por ON CONFLICT DO UPDATE, que exige la política de UPDATE.
   const syncedAuditIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!state.authenticated) return;
     const toSync = state.audit.filter((a) => a.userId === state.currentUserId && !syncedAuditIdsRef.current.has(a.id));
     if (toSync.length === 0) return;
     for (const a of toSync) syncedAuditIdsRef.current.add(a.id);
-    // Log temporal de diagnóstico (42501 en audit_log que no se explica leyendo
-    // el código): todo como texto plano (JSON.stringify) en vez de objetos
-    // colapsables, para poder copiar la línea entera sin tener que expandir nada.
     const rowsForLog = toSync.map(toAuditRow);
-    const me = state.users.find((u) => u.id === state.currentUserId);
-    console.log(
-      "[audit-sync] intento de upsert:",
-      JSON.stringify({ currentUserId: state.currentUserId, meEmail: me?.email, meRole: me?.role, rows: rowsForLog }),
-    );
     supabase
       .from("audit_log")
       .upsert(rowsForLog, { onConflict: "id", ignoreDuplicates: true })
-      .then(({ error, status, statusText }) => {
-        if (error) {
-          console.warn(
-            "[audit-sync] ERROR:",
-            JSON.stringify({ code: error.code, message: error.message, details: error.details, hint: error.hint, status, statusText, rows: rowsForLog }),
-          );
-        }
+      .then(({ error }) => {
+        if (error) console.warn("Error al sincronizar auditoría:", error);
       });
   }, [state.audit, state.authenticated, state.currentUserId]);
 

@@ -336,6 +336,24 @@ a { color: var(--accent); text-decoration: none; }
 .tl-track { position: relative; height: 26px; background: var(--surface-2); border-radius: 6px; }
 .tl-seg { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; min-width: 3px; }
 
+/* ---------- Mapa mental ---------- */
+.mm-svg { width: 100%; height: 460px; display: block; background: var(--surface); cursor: grab; touch-action: none; }
+.mm-svg:active { cursor: grabbing; }
+.mm-node { cursor: grab; transition: opacity 0.15s ease; }
+.mm-node:active { cursor: grabbing; }
+.mm-node circle { transition: filter 0.12s ease; }
+.mm-node:hover circle { filter: brightness(1.12); }
+.mm-label {
+  font-size: 11.5px; font-weight: 600; fill: var(--text-2); pointer-events: none;
+  paint-order: stroke; stroke: var(--surface); stroke-width: 3px;
+}
+.mm-edge { stroke: var(--border-strong); stroke-width: 1.5px; transition: opacity 0.15s ease; }
+.mm-panel {
+  position: absolute; bottom: 14px; left: 14px; max-width: 260px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: var(--shadow-md); padding: 12px 14px;
+}
+
 /* ---------- Dashboard ---------- */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 18px; }
 .kpi { padding: 14px 16px; }
