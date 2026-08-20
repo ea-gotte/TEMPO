@@ -124,7 +124,7 @@ function tick(nodes: SimNode[], edges: GraphEdge[], byId: Map<string, SimNode>, 
       const a = nodes[i], b = nodes[j];
       let dx = a.x - b.x, dy = a.y - b.y;
       let d2 = dx * dx + dy * dy;
-      if (d2 > 160000) continue; // > 400px: ignorar (ahorra CPU, no aporta al layout)
+      if (d2 > 490000) continue; // > 700px: ignorar (ahorra CPU, no aporta al layout)
       if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
       const d = Math.sqrt(d2);
       const force = (params.repel / d2) * alpha;
@@ -203,7 +203,7 @@ export function MindMap({ userId }: { userId: string }) {
   // se repelen los nodos) y atracción (qué tanto tiran los enlaces para juntar
   // los nodos conectados). Viven en un ref para que el loop de animación los
   // lea siempre al día sin tener que reiniciarse.
-  const [repel, setRepel] = useState(2600);
+  const [repel, setRepel] = useState(6000);
   const [attract, setAttract] = useState(0.06);
   const paramsRef = useRef<ForceParams>({ repel, attract });
   paramsRef.current = { repel, attract };
@@ -395,7 +395,7 @@ export function MindMap({ userId }: { userId: string }) {
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-3)" }}>
           Dispersión
           <input
-            type="range" min={800} max={6000} step={100} value={repel}
+            type="range" min={1000} max={30000} step={500} value={repel}
             onChange={(e) => { setRepel(Number(e.target.value)); reheat(); }}
             style={{ width: 110 }}
           />

@@ -140,7 +140,7 @@ export function OrgChart({ meId }: { meId: string }) {
     <div className="card" style={{ marginTop: 14 }}>
       <div style={{ padding: "16px 18px 4px" }}>
         <div className="card-title" style={{ marginBottom: 0 }}>
-          {isAdmin ? "Organigrama de la empresa" : "Mi cadena de mando"}
+          {isAdmin ? "Organigrama de la empresa" : "Organigrama"}
         </div>
       </div>
 

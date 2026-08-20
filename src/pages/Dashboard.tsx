@@ -3,8 +3,6 @@ import { useStore, validatedOvertimeMin, vacationInfo } from "../store";
 import { addDays, dayLabel, fmtDate, fmtDur, parseISO, today, weekStart } from "../utils";
 import { Avatar, Donut, HBarChart } from "../components/ui";
 import { Icon, type IconName } from "../components/Icon";
-import { MindMap } from "./MindMap";
-import { OrgChart } from "./OrgChart";
 
 export function Dashboard() {
   const { state } = useStore();
@@ -181,11 +179,6 @@ export function Dashboard() {
           </div>
         </div>
       </div>
-
-      <div style={{ marginTop: 14 }}>
-        <MindMap userId={me} />
-      </div>
-      <OrgChart meId={me} />
     </>
   );
 }
