@@ -112,8 +112,10 @@ function buildGraph(centerUser: User, entries: TimeEntry[], projects: Project[],
 }
 
 interface ForceParams {
-  /** Fuerza de dispersión: qué tanto se empujan los nodos entre sí para no amontonarse */
-  repel: number;
+  /** Dispersión del usuario: qué tanto empuja el nodo central a los demás (separa los anillos del centro) */
+  repelUser: number;
+  /** Dispersión entre elementos: qué tanto se empujan entre sí proyectos y subproyectos (para no amontonarse) */
+  repelSiblings: number;
   /** Fuerza de atracción: qué tanto tiran los enlaces de los nodos conectados para acercarlos */
   attract: number;
 }
@@ -127,7 +129,8 @@ function tick(nodes: SimNode[], edges: GraphEdge[], byId: Map<string, SimNode>, 
       if (d2 > 490000) continue; // > 700px: ignorar (ahorra CPU, no aporta al layout)
       if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
       const d = Math.sqrt(d2);
-      const force = (params.repel / d2) * alpha;
+      const repel = a.kind === "user" || b.kind === "user" ? params.repelUser : params.repelSiblings;
+      const force = (repel / d2) * alpha;
       const ux = dx / d, uy = dy / d;
       if (a.fx == null) { a.vx += ux * force; a.vy += uy * force; }
       if (b.fx == null) { b.vx -= ux * force; b.vy -= uy * force; }
@@ -199,14 +202,15 @@ export function MindMap({ userId }: { userId: string }) {
   const panInfo = useRef<{ startClientX: number; startClientY: number; startViewX: number; startViewY: number } | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
 
-  // Parámetros de la simulación, ajustables desde la UI: dispersión (qué tanto
-  // se repelen los nodos) y atracción (qué tanto tiran los enlaces para juntar
-  // los nodos conectados). Viven en un ref para que el loop de animación los
-  // lea siempre al día sin tener que reiniciarse.
-  const [repel, setRepel] = useState(6000);
+  // Parámetros de la simulación, ajustables desde la UI: dispersión desde el
+  // usuario, dispersión entre proyectos/subproyectos entre sí, y atracción de
+  // los enlaces. Viven en un ref para que el loop de animación los lea siempre
+  // al día sin tener que reiniciarse.
+  const [repelUser, setRepelUser] = useState(6000);
+  const [repelSiblings, setRepelSiblings] = useState(2600);
   const [attract, setAttract] = useState(0.06);
-  const paramsRef = useRef<ForceParams>({ repel, attract });
-  paramsRef.current = { repel, attract };
+  const paramsRef = useRef<ForceParams>({ repelUser, repelSiblings, attract });
+  paramsRef.current = { repelUser, repelSiblings, attract };
 
   // Ref siempre al día con las aristas actuales: si el loop de animación ya
   // estaba corriendo cuando cambian los datos, no debe quedarse leyendo una
@@ -393,10 +397,18 @@ export function MindMap({ userId }: { userId: string }) {
 
       <div style={{ display: "flex", alignItems: "center", gap: 18, padding: "10px 18px 0", flexWrap: "wrap" }}>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-3)" }}>
-          Dispersión
+          Dispersión desde el usuario
           <input
-            type="range" min={1000} max={30000} step={500} value={repel}
-            onChange={(e) => { setRepel(Number(e.target.value)); reheat(); }}
+            type="range" min={1000} max={30000} step={500} value={repelUser}
+            onChange={(e) => { setRepelUser(Number(e.target.value)); reheat(); }}
+            style={{ width: 110 }}
+          />
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-3)" }}>
+          Dispersión entre elementos
+          <input
+            type="range" min={500} max={20000} step={250} value={repelSiblings}
+            onChange={(e) => { setRepelSiblings(Number(e.target.value)); reheat(); }}
             style={{ width: 110 }}
           />
         </label>

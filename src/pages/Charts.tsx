@@ -1,7 +1,8 @@
 import React from "react";
 import { useStore } from "../store";
 import { MindMap } from "./MindMap";
-import { OrgChart } from "./OrgChart";
+// Organigrama oculto temporalmente: a repensar cómo organizarlo mejor (pedido 2026-08-20).
+// import { OrgChart } from "./OrgChart";
 
 export function Charts() {
   const { state } = useStore();
@@ -14,7 +15,7 @@ export function Charts() {
       </div>
 
       <MindMap userId={me} />
-      <OrgChart meId={me} />
+      {/* <OrgChart meId={me} /> */}
     </>
   );
 }
