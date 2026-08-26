@@ -34,15 +34,7 @@ Los datos de demostración se cargan automáticamente la primera vez y todo camb
 
 ## Acceso y roles (demo)
 
-Al abrir la app se muestra un **login por email y clave**. Usuarios de demostración (clic en la tarjeta para autocompletar):
-
-| Usuario | Email | Clave | Rol | Vista |
-|---|---|---|---|---|
-| Emmanuel Gotte | ea.gotte@gmail.com | `admin123` | Admin | Completa (gestión, control de horas, administración, integraciones) |
-| Carla Domínguez | carla@quantia.com | `carla123` | Supervisor | Completa + aprobaciones |
-| Martín Suárez | martin@quantia.com | `martin123` | Empleado | Básica (tiempo, calendario, dashboard, reportes propios, gestión) |
-| Lucía Ferrer | lucia@quantia.com | `lucia123` | Empleado | Básica |
-
+Al abrir la app se muestra un **login por email y clave**. 
 Los empleados solo ven sus propios reportes y solicitudes; el botón ⏻ del lateral cierra la sesión. En **Gestión → Registro** queda la trazabilidad completa de cada solicitud: quién la pidió, quién la aprobó/rechazó/validó y cuándo.
 
 ## Características técnicas
