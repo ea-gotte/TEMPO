@@ -5,6 +5,7 @@ Aplicación web SPA (React 18 + TypeScript + Vite) inspirada en Clockify (veloci
 ## Cómo ejecutarla
 
 ```bash
+cp .env.example .env   # completar con la URL y la clave anon de tu proyecto de Supabase
 npm install
 npm run dev      # http://localhost:5173
 npm run build    # build de producción en /dist
