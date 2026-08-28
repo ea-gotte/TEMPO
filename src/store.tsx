@@ -592,7 +592,11 @@ async function fetchAllRows<T = any>(table: string, pageSize = 1000): Promise<{ 
   return { data: rows, error: null };
 }
 
-async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSettings: LocalSettings) {
+async function fetchEntriesAndAbsences(
+  dispatch: React.Dispatch<Action>,
+  localSettings: LocalSettings,
+  isCurrent: () => boolean = () => true,
+) {
   const [
     { data: entryRows, error: entriesErr },
     { data: absenceRows, error: absencesErr },
@@ -629,6 +633,12 @@ async function fetchEntriesAndAbsences(dispatch: React.Dispatch<Action>, localSe
   if (corpEventsErr) console.warn("Error al leer corp_events:", corpEventsErr);
   if (settingsErr) console.warn("Error al leer app_settings:", settingsErr);
   if (notificationsErr) console.warn("Error al leer notifications:", notificationsErr);
+  // Guard contra respuestas fuera de orden: si mientras esta consulta viajaba
+  // ida y vuelta se disparó un refetch más nuevo (p.ej. por el propio drag de
+  // una tarjeta en Calendario), esta respuesta ya está desactualizada — aplicarla
+  // pisaría un cambio más reciente con uno viejo (se veía como "la tarjeta
+  // vuelve a su posición y después se corrige").
+  if (!isCurrent()) return;
   dispatch({ type: "syncEntries", entries: (entryRows || []).map(fromEntryRow) });
   dispatch({ type: "syncAbsences", absences: (absenceRows || []).map(fromAbsenceRow) });
   dispatch({ type: "syncHolidays", holidays: (holidayRows || []).map(fromHolidayRow) });
@@ -992,8 +1002,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       leaveTypeConfig: state.leaveTypeConfig,
       tags: state.tags,
     };
+    // Cada refetch se numera: si dos quedan en vuelo a la vez (p.ej. uno viejo
+    // todavía viajando cuando ya se disparó uno nuevo), solo se aplica la
+    // respuesta del último pedido, sin importar cuál responda primero.
+    let seq = 0;
     const refetch = () => {
-      if (!cancelled) fetchEntriesAndAbsences(dispatch, localSettings);
+      if (cancelled) return;
+      const mySeq = ++seq;
+      fetchEntriesAndAbsences(dispatch, localSettings, () => !cancelled && mySeq === seq);
     };
     // Realtime dispara un evento POR FILA, no por operación: una importación
     // masiva (ej. Clockify) que inserta cientos de filas de golpe generaba
