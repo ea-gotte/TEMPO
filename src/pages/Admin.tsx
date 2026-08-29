@@ -28,8 +28,6 @@ export function Admin() {
   const [surveyTitle, setSurveyTitle] = useState("");
   const [surveyDueDate, setSurveyDueDate] = useState(today());
   const [surveyQuestions, setSurveyQuestions] = useState<SurveyQuestion[]>([]);
-  const [newQuestionLabel, setNewQuestionLabel] = useState("");
-  const [newQuestionType, setNewQuestionType] = useState<SurveyQuestionType>("rating5");
   const isAdmin = state.users.find((u) => u.id === state.currentUserId)?.role === "admin";
 
   function addHoliday() {
@@ -161,24 +159,63 @@ export function Admin() {
   // el evento en el calendario corporativo y se notifica a todo el equipo
   // activo (quien no la respondió sigue viendo el aviso hasta que la conteste
   // o venza, ver el efecto en Shell.tsx).
+  // Armador de encuestas estilo Google Forms: cada pregunta se agrega en blanco
+  // y se edita en el lugar (título, tipo, opciones si corresponde), se puede
+  // reordenar y quitar antes de lanzar.
   function addSurveyQuestion() {
-    const label = newQuestionLabel.trim();
-    if (!label) return;
-    setSurveyQuestions([...surveyQuestions, { id: uid(), label, type: newQuestionType }]);
-    setNewQuestionLabel("");
+    setSurveyQuestions([...surveyQuestions, { id: uid(), label: "", type: "rating5" }]);
+  }
+
+  function updateSurveyQuestion(id: string, patch: Partial<SurveyQuestion>) {
+    setSurveyQuestions(surveyQuestions.map((q) => (q.id === id ? { ...q, ...patch } : q)));
   }
 
   function removeSurveyQuestion(id: string) {
     setSurveyQuestions(surveyQuestions.filter((q) => q.id !== id));
   }
 
+  function moveSurveyQuestion(index: number, dir: -1 | 1) {
+    const target = index + dir;
+    if (target < 0 || target >= surveyQuestions.length) return;
+    const next = [...surveyQuestions];
+    [next[index], next[target]] = [next[target], next[index]];
+    setSurveyQuestions(next);
+  }
+
+  function addOption(qid: string) {
+    updateSurveyQuestion(qid, { options: [...(surveyQuestions.find((q) => q.id === qid)?.options ?? []), ""] });
+  }
+
+  function updateOption(qid: string, idx: number, value: string) {
+    const q = surveyQuestions.find((x) => x.id === qid);
+    if (!q) return;
+    const options = (q.options ?? []).map((o, i) => (i === idx ? value : o));
+    updateSurveyQuestion(qid, { options });
+  }
+
+  function removeOption(qid: string, idx: number) {
+    const q = surveyQuestions.find((x) => x.id === qid);
+    if (!q) return;
+    updateSurveyQuestion(qid, { options: (q.options ?? []).filter((_, i) => i !== idx) });
+  }
+
+  const surveyQuestionsValid =
+    surveyQuestions.length > 0 &&
+    surveyQuestions.every((q) => {
+      if (!q.label.trim()) return false;
+      if (q.type === "choice" || q.type === "checkbox") {
+        return (q.options ?? []).filter((o) => o.trim()).length >= 2;
+      }
+      return true;
+    });
+
   function launchSurvey() {
     const title = surveyTitle.trim();
-    if (!title || !surveyDueDate || surveyQuestions.length === 0) return;
+    if (!title || !surveyDueDate || !surveyQuestionsValid) return;
     const survey = {
       id: uid(),
       title,
-      questions: surveyQuestions,
+      questions: surveyQuestions.map((q) => ({ ...q, label: q.label.trim(), options: q.options?.map((o) => o.trim()).filter(Boolean) })),
       launchedAt: new Date().toISOString(),
       dueDate: surveyDueDate,
       createdBy: state.currentUserId,
@@ -534,44 +571,75 @@ export function Admin() {
                 </div>
               </div>
 
-              <div style={{ marginTop: 12 }}>
+              <div style={{ marginTop: 14 }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Preguntas</label>
                 {surveyQuestions.length === 0 && (
                   <p style={{ fontSize: 12, color: "var(--text-3)", margin: "6px 0" }}>Agregá al menos una pregunta.</p>
                 )}
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
                   {surveyQuestions.map((q, i) => (
-                    <div key={q.id} className="list-item" style={{ gap: 10 }}>
-                      <span style={{ color: "var(--text-3)", fontSize: 12 }}>{i + 1}.</span>
-                      <span style={{ flex: 1 }}>{q.label}</span>
-                      <span className="badge">{q.type === "rating5" ? "1 a 5" : q.type === "yesno" ? "Sí/No" : "Texto libre"}</span>
-                      <button className="btn btn-ghost btn-sm" onClick={() => removeSurveyQuestion(q.id)}><Icon name="trash" size={13} /></button>
+                    <div key={q.id} className="card card-pad" style={{ background: "var(--surface-2)" }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ color: "var(--text-3)", fontSize: 12, minWidth: 16 }}>{i + 1}.</span>
+                        <input
+                          className="input" style={{ flex: 1 }} placeholder="Texto de la pregunta…"
+                          value={q.label} onChange={(e) => updateSurveyQuestion(q.id, { label: e.target.value })}
+                        />
+                        <select
+                          className="select" style={{ maxWidth: 170 }} value={q.type}
+                          onChange={(e) => {
+                            const type = e.target.value as SurveyQuestionType;
+                            const needsOptions = type === "choice" || type === "checkbox";
+                            updateSurveyQuestion(q.id, { type, options: needsOptions ? (q.options?.length ? q.options : ["", ""]) : undefined });
+                          }}
+                        >
+                          <option value="rating5">Calificación 1 a 5</option>
+                          <option value="yesno">Sí / No</option>
+                          <option value="text">Texto libre</option>
+                          <option value="choice">Opción múltiple (elegir 1)</option>
+                          <option value="checkbox">Casillas (elegir varias)</option>
+                        </select>
+                        <button className="btn btn-ghost btn-sm" onClick={() => moveSurveyQuestion(i, -1)} disabled={i === 0} aria-label="Subir pregunta">
+                          <Icon name="chevron-right" size={13} style={{ transform: "rotate(-90deg)" }} />
+                        </button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => moveSurveyQuestion(i, 1)} disabled={i === surveyQuestions.length - 1} aria-label="Bajar pregunta">
+                          <Icon name="chevron-right" size={13} style={{ transform: "rotate(90deg)" }} />
+                        </button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => removeSurveyQuestion(q.id)}><Icon name="trash" size={13} /></button>
+                      </div>
+
+                      {(q.type === "choice" || q.type === "checkbox") && (
+                        <div style={{ marginTop: 10, paddingLeft: 24, display: "flex", flexDirection: "column", gap: 6 }}>
+                          {(q.options ?? []).map((opt, oi) => (
+                            <div key={oi} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                              <Icon name={q.type === "choice" ? "circle-half" : "check"} size={13} style={{ color: "var(--text-3)" }} />
+                              <input
+                                className="input" style={{ maxWidth: 320 }} placeholder={`Opción ${oi + 1}`}
+                                value={opt} onChange={(e) => updateOption(q.id, oi, e.target.value)}
+                              />
+                              <button className="btn btn-ghost btn-sm" onClick={() => removeOption(q.id, oi)} disabled={(q.options?.length ?? 0) <= 2}>
+                                <Icon name="x" size={13} />
+                              </button>
+                            </div>
+                          ))}
+                          <button className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => addOption(q.id)}>
+                            <Icon name="plus" size={13} /> Agregar opción
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
-                <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-                  <input
-                    className="input" style={{ flex: "1 1 260px" }} placeholder="Texto de la pregunta…"
-                    value={newQuestionLabel}
-                    onChange={(e) => setNewQuestionLabel(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && addSurveyQuestion()}
-                  />
-                  <select className="select" style={{ maxWidth: 160 }} value={newQuestionType} onChange={(e) => setNewQuestionType(e.target.value as SurveyQuestionType)}>
-                    <option value="rating5">Calificación 1 a 5</option>
-                    <option value="yesno">Sí / No</option>
-                    <option value="text">Texto libre</option>
-                  </select>
-                  <button className="btn btn-secondary btn-sm" onClick={addSurveyQuestion} disabled={!newQuestionLabel.trim()}>
-                    <Icon name="plus" size={14} /> Agregar
-                  </button>
-                </div>
+                <button className="btn btn-secondary btn-sm" style={{ marginTop: 10 }} onClick={addSurveyQuestion}>
+                  <Icon name="plus" size={14} /> Agregar pregunta
+                </button>
               </div>
 
               <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
                 <button
                   className="btn btn-primary"
                   onClick={launchSurvey}
-                  disabled={!surveyTitle.trim() || !surveyDueDate || surveyQuestions.length === 0}
+                  disabled={!surveyTitle.trim() || !surveyDueDate || !surveyQuestionsValid}
                 >
                   <Icon name="zap" size={14} /> Lanzar encuesta
                 </button>

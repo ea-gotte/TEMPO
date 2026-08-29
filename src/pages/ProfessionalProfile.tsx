@@ -1,14 +1,17 @@
 import React, { useMemo, useState } from "react";
 import { useStore } from "../store";
-import type { ProfessionalEntry, ProfessionalProfile as ProfessionalProfileData } from "../types";
+import type { ProfessionalEntry, ProfessionalProfile as ProfessionalProfileData, Role } from "../types";
 import { fmtDate, fmtYearsSince, today, uid } from "../utils";
 import { computeSkills } from "../skills";
-import { Icon } from "../components/Icon";
+import { Avatar } from "../components/ui";
+import { Icon, type IconName } from "../components/Icon";
 import { SurveyModal } from "../components/SurveyModal";
 import { MindMap } from "./MindMap";
 import { FlightHours } from "./FlightHours";
 // Organigrama oculto temporalmente: a repensar cómo organizarlo mejor (pedido 2026-08-20).
 // import { OrgChart } from "./OrgChart";
+
+const ROLE_LABELS: Record<Role, string> = { admin: "Administrador", gerente: "Gerente", supervisor: "Supervisor", usuario: "Usuario" };
 
 const EMPTY_PROFILE = (userId: string): ProfessionalProfileData => ({
   id: userId, workExperienceSince: null, bimExperienceSince: null, education: [], courses: [],
@@ -26,17 +29,13 @@ export function ProfessionalProfile() {
   const canEdit = effectiveUserId === me.id || !isEmployee;
 
   const [tab, setTab] = useState<"mapa" | "horasvuelo" | "formacion" | "habilidades">("mapa");
+  const person = state.users.find((u) => u.id === effectiveUserId) ?? me;
+  const supervisor = state.users.find((u) => u.id === person.supervisorId);
 
   return (
     <>
       <div className="page-head">
         <h1>Perfil profesional</h1>
-        <div className="tabs">
-          <button className={tab === "mapa" ? "active" : ""} onClick={() => setTab("mapa")}>Mapa mental</button>
-          <button className={tab === "horasvuelo" ? "active" : ""} onClick={() => setTab("horasvuelo")}>Horas de vuelo</button>
-          <button className={tab === "formacion" ? "active" : ""} onClick={() => setTab("formacion")}>Formación</button>
-          <button className={tab === "habilidades" ? "active" : ""} onClick={() => setTab("habilidades")}>Habilidades</button>
-        </div>
         <span className="spacer" />
         {!isEmployee && (
           <select className="select" value={userId} onChange={(e) => setUserId(e.target.value)} style={{ maxWidth: 220 }}>
@@ -45,6 +44,28 @@ export function ProfessionalProfile() {
             ))}
           </select>
         )}
+      </div>
+
+      {/* Identidad de la persona, fija arriba de las 4 sub-pestañas para no perder de vista a quién se está viendo */}
+      <div className="card card-pad" style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <Avatar name={person.name} size={44} online={person.online} />
+        <div style={{ minWidth: 160 }}>
+          <div style={{ fontWeight: 700, fontSize: 15.5 }}>{person.name}</div>
+          <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{person.email}</div>
+        </div>
+        <span className="badge acc">{ROLE_LABELS[person.role]}</span>
+        {supervisor && (
+          <span style={{ fontSize: 12.5, color: "var(--text-2)", display: "flex", alignItems: "center", gap: 6 }}>
+            <Icon name="users" size={13} /> Reporta a {supervisor.name}
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        <div className="tabs">
+          <button className={tab === "mapa" ? "active" : ""} onClick={() => setTab("mapa")}>Mapa mental</button>
+          <button className={tab === "horasvuelo" ? "active" : ""} onClick={() => setTab("horasvuelo")}>Horas de vuelo</button>
+          <button className={tab === "formacion" ? "active" : ""} onClick={() => setTab("formacion")}>Formación</button>
+          <button className={tab === "habilidades" ? "active" : ""} onClick={() => setTab("habilidades")}>Habilidades</button>
+        </div>
       </div>
 
       {tab === "mapa" && <MindMap userId={effectiveUserId} />}
@@ -87,33 +108,17 @@ function FormacionTab({ userId, canEdit }: { userId: string; canEdit: boolean })
 
   return (
     <>
-      <div className="kpi-grid">
-        <div className="card kpi">
-          <div className="label"><Icon name="briefcase" size={14} /> Experiencia laboral</div>
-          <div className="value">{profile.workExperienceSince ? fmtYearsSince(profile.workExperienceSince) : "—"}</div>
-          {canEdit && (
-            <div style={{ marginTop: 8 }}>
-              <input
-                type="date" className="input" max={today()}
-                value={profile.workExperienceSince ?? ""}
-                onChange={(e) => save({ ...profile, workExperienceSince: e.target.value || null })}
-              />
-            </div>
-          )}
-        </div>
-        <div className="card kpi">
-          <div className="label"><Icon name="hard-hat" size={14} /> Experiencia en BIM</div>
-          <div className="value">{profile.bimExperienceSince ? fmtYearsSince(profile.bimExperienceSince) : "—"}</div>
-          {canEdit && (
-            <div style={{ marginTop: 8 }}>
-              <input
-                type="date" className="input" max={today()}
-                value={profile.bimExperienceSince ?? ""}
-                onChange={(e) => save({ ...profile, bimExperienceSince: e.target.value || null })}
-              />
-            </div>
-          )}
-        </div>
+      <div className="card card-pad" style={{ marginBottom: 14 }}>
+        <div className="card-title">Experiencia</div>
+        <ExperienceRow
+          icon="briefcase" label="Experiencia laboral" since={profile.workExperienceSince} canEdit={canEdit}
+          onChange={(v) => save({ ...profile, workExperienceSince: v })}
+        />
+        <hr style={{ border: "0.5px solid var(--border)", margin: "10px 0" }} />
+        <ExperienceRow
+          icon="hard-hat" label="Experiencia en BIM" since={profile.bimExperienceSince} canEdit={canEdit}
+          onChange={(v) => save({ ...profile, bimExperienceSince: v })}
+        />
       </div>
 
       <EntryList
@@ -129,6 +134,32 @@ function FormacionTab({ userId, canEdit }: { userId: string; canEdit: boolean })
         onRemove={(id) => removeEntry("courses", id)}
       />
     </>
+  );
+}
+
+function ExperienceRow({
+  icon, label, since, canEdit, onChange,
+}: {
+  icon: IconName;
+  label: string;
+  since: string | null;
+  canEdit: boolean;
+  onChange: (v: string | null) => void;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "6px 0" }}>
+      <span style={{ color: "var(--accent)" }}><Icon name={icon} size={17} /></span>
+      <div style={{ flex: "1 1 160px" }}>
+        <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{label}</div>
+        <div style={{ fontSize: 18, fontWeight: 700 }}>{since ? fmtYearsSince(since) : "Sin definir"}</div>
+      </div>
+      {canEdit && (
+        <div className="field" style={{ gap: 3 }}>
+          <label style={{ fontSize: 11 }}>Desde</label>
+          <input type="date" className="input" max={today()} value={since ?? ""} onChange={(e) => onChange(e.target.value || null)} />
+        </div>
+      )}
+    </div>
   );
 }
 

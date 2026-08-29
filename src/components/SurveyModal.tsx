@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useStore } from "../store";
 import type { Survey } from "../types";
 import { Modal, useToast } from "./ui";
+import { Icon } from "./Icon";
 import { uid } from "../utils";
 
 export function SurveyModal({ survey, onClose }: { survey: Survey; onClose: () => void }) {
@@ -14,6 +15,13 @@ export function SurveyModal({ survey, onClose }: { survey: Survey; onClose: () =
 
   function setAnswer(qid: string, value: string) {
     setAnswers((a) => ({ ...a, [qid]: value }));
+  }
+
+  /** "checkbox" permite elegir varias: se guardan unidas por "; " en el mismo string de respuesta */
+  function toggleCheckbox(qid: string, option: string) {
+    const current = (answers[qid] ?? "").split("; ").filter(Boolean);
+    const next = current.includes(option) ? current.filter((o) => o !== option) : [...current, option];
+    setAnswer(qid, next.join("; "));
   }
 
   const allAnswered = survey.questions.every((q) => (answers[q.id] ?? "").trim() !== "");
@@ -91,6 +99,39 @@ export function SurveyModal({ survey, onClose }: { survey: Survey; onClose: () =
             )}
             {q.type === "text" && (
               <textarea className="textarea" rows={3} value={answers[q.id] ?? ""} onChange={(e) => setAnswer(q.id, e.target.value)} />
+            )}
+            {q.type === "choice" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {(q.options ?? []).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    className={`btn btn-sm ${answers[q.id] === opt ? "btn-primary" : "btn-secondary"}`}
+                    style={{ justifyContent: "flex-start" }}
+                    onClick={() => setAnswer(q.id, opt)}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            )}
+            {q.type === "checkbox" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {(q.options ?? []).map((opt) => {
+                  const selected = (answers[q.id] ?? "").split("; ").filter(Boolean).includes(opt);
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      className={`btn btn-sm ${selected ? "btn-primary" : "btn-secondary"}`}
+                      style={{ justifyContent: "flex-start" }}
+                      onClick={() => toggleCheckbox(q.id, opt)}
+                    >
+                      <Icon name="check" size={12} style={{ opacity: selected ? 1 : 0.25 }} /> {opt}
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
         ))}

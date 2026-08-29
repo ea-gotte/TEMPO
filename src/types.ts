@@ -86,12 +86,14 @@ export interface ProfessionalProfile {
  * distinción). El admin arma y lanza cada ronda a mano; las preguntas son
  * libres por encuesta, no hay un catálogo fijo de habilidades.
  */
-export type SurveyQuestionType = "rating5" | "text" | "yesno";
+export type SurveyQuestionType = "rating5" | "text" | "yesno" | "choice" | "checkbox";
 
 export interface SurveyQuestion {
   id: ID;
   label: string;
   type: SurveyQuestionType;
+  /** Solo para "choice" (elegir una) y "checkbox" (elegir varias) */
+  options?: string[];
 }
 
 export interface Survey {
