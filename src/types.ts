@@ -59,6 +59,63 @@ export interface FlightActivity {
   active: boolean;
 }
 
+/**
+ * Perfil profesional: formación y experiencia de cada persona, editable
+ * directamente (no depende de las encuestas). Los años de experiencia se
+ * calculan siempre desde la fecha de inicio, nunca se guardan como número fijo.
+ */
+export interface ProfessionalEntry {
+  id: ID;
+  title: string;
+  institution?: string;
+  year?: number;
+}
+
+export interface ProfessionalProfile {
+  /** = el id del usuario (una fila por persona) */
+  id: ID;
+  workExperienceSince: string | null; // YYYY-MM-DD
+  bimExperienceSince: string | null; // YYYY-MM-DD
+  education: ProfessionalEntry[]; // Formación profesional
+  courses: ProfessionalEntry[]; // Formación complementaria
+}
+
+/**
+ * Encuestas: la fuente de la sección "Habilidades" del perfil profesional
+ * (autopercepción, no experiencia real — ver flightHours.ts para la
+ * distinción). El admin arma y lanza cada ronda a mano; las preguntas son
+ * libres por encuesta, no hay un catálogo fijo de habilidades.
+ */
+export type SurveyQuestionType = "rating5" | "text" | "yesno";
+
+export interface SurveyQuestion {
+  id: ID;
+  label: string;
+  type: SurveyQuestionType;
+}
+
+export interface Survey {
+  id: ID;
+  title: string;
+  questions: SurveyQuestion[];
+  launchedAt: string; // ISO
+  dueDate: string; // YYYY-MM-DD — se refleja como evento en el calendario corporativo
+  createdBy: ID;
+}
+
+export interface SurveyAnswer {
+  questionId: ID;
+  value: string;
+}
+
+export interface SurveyResponse {
+  id: ID;
+  surveyId: ID;
+  userId: ID;
+  answers: SurveyAnswer[];
+  submittedAt: string; // ISO
+}
+
 export type Role = "admin" | "gerente" | "supervisor" | "usuario";
 
 export type Jornada = "completa" | "media";
@@ -161,7 +218,8 @@ export type CorpEventType =
   | "Reunión"
   | "Horario especial"
   | "Home office"
-  | "Cierre de empresa";
+  | "Cierre de empresa"
+  | "Encuesta";
 
 export interface CorpEvent {
   id: ID;
@@ -198,6 +256,7 @@ export interface Notification {
     | "exceso-pendiente"
     | "falta-carga"
     | "vencimiento"
+    | "encuesta"
     | "error";
   title: string;
   body: string;
@@ -281,6 +340,9 @@ export interface AppState {
   tags: Tag[];
   flightCategories: FlightCategory[];
   flightActivities: FlightActivity[];
+  professionalProfiles: ProfessionalProfile[];
+  surveys: Survey[];
+  surveyResponses: SurveyResponse[];
   users: User[];
   entries: TimeEntry[];
   timers: RunningTimer[];

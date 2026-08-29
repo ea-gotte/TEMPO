@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
-import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role, FlightCategory, FlightActivity } from "./types";
+import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role, FlightCategory, FlightActivity, ProfessionalProfile, Survey, SurveyResponse } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword, addDays, addMonths, parseISO, today } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
@@ -42,6 +42,9 @@ type Action =
   | { type: "syncCorpEvents"; corpEvents: CorpEvent[] }
   | { type: "syncFlightCategories"; flightCategories: FlightCategory[] }
   | { type: "syncFlightActivities"; flightActivities: FlightActivity[] }
+  | { type: "syncProfessionalProfiles"; professionalProfiles: ProfessionalProfile[] }
+  | { type: "syncSurveys"; surveys: Survey[] }
+  | { type: "syncSurveyResponses"; surveyResponses: SurveyResponse[] }
   | {
       type: "syncSettings";
       company: CompanySettings;
@@ -303,6 +306,12 @@ function baseReducer(s: AppState, a: Action): AppState {
       return { ...s, flightCategories: a.flightCategories };
     case "syncFlightActivities":
       return { ...s, flightActivities: a.flightActivities };
+    case "syncProfessionalProfiles":
+      return { ...s, professionalProfiles: a.professionalProfiles };
+    case "syncSurveys":
+      return { ...s, surveys: a.surveys };
+    case "syncSurveyResponses":
+      return { ...s, surveyResponses: a.surveyResponses };
     case "syncSettings":
       return { ...s, company: a.company, rolePermissions: a.rolePermissions, leaveTypeConfig: a.leaveTypeConfig, tags: a.tags };
     case "syncNotifications":
@@ -329,6 +338,9 @@ function loadInitial(): AppState {
           leaveTypeConfig: parsed.leaveTypeConfig ?? defaults.leaveTypeConfig,
           flightCategories: parsed.flightCategories ?? defaults.flightCategories,
           flightActivities: parsed.flightActivities ?? defaults.flightActivities,
+          professionalProfiles: parsed.professionalProfiles ?? [],
+          surveys: parsed.surveys ?? [],
+          surveyResponses: parsed.surveyResponses ?? [],
           users: [],
           projects: parsed.projects.map((p) => ({
             ...p,
@@ -506,6 +518,53 @@ function fromFlightActivityRow(r: any): FlightActivity {
   return { id: r.id, categoryId: r.category_id, name: r.name, active: r.active };
 }
 
+function toProfessionalProfileRow(p: ProfessionalProfile) {
+  return {
+    id: p.id,
+    work_experience_since: p.workExperienceSince,
+    bim_experience_since: p.bimExperienceSince,
+    education: p.education,
+    courses: p.courses,
+  };
+}
+function fromProfessionalProfileRow(r: any): ProfessionalProfile {
+  return {
+    id: r.id,
+    workExperienceSince: r.work_experience_since,
+    bimExperienceSince: r.bim_experience_since,
+    education: r.education ?? [],
+    courses: r.courses ?? [],
+  };
+}
+
+function toSurveyRow(s: Survey) {
+  return {
+    id: s.id,
+    title: s.title,
+    questions: s.questions,
+    launched_at: s.launchedAt,
+    due_date: s.dueDate,
+    created_by: s.createdBy,
+  };
+}
+function fromSurveyRow(r: any): Survey {
+  return {
+    id: r.id,
+    title: r.title,
+    questions: r.questions ?? [],
+    launchedAt: r.launched_at,
+    dueDate: r.due_date,
+    createdBy: r.created_by,
+  };
+}
+
+function toSurveyResponseRow(r: SurveyResponse) {
+  return { id: r.id, survey_id: r.surveyId, user_id: r.userId, answers: r.answers, submitted_at: r.submittedAt };
+}
+function fromSurveyResponseRow(r: any): SurveyResponse {
+  return { id: r.id, surveyId: r.survey_id, userId: r.user_id, answers: r.answers ?? [], submittedAt: r.submitted_at };
+}
+
 function toSubProjectRow(sp: SubProject) {
   return {
     id: sp.id,
@@ -635,6 +694,9 @@ async function fetchEntriesAndAbsences(
     { data: notificationRows, error: notificationsErr },
     { data: flightCategoryRows, error: flightCategoriesErr },
     { data: flightActivityRows, error: flightActivitiesErr },
+    { data: profileRows, error: profilesErr },
+    { data: surveyRows, error: surveysErr },
+    { data: surveyResponseRows, error: surveyResponsesErr },
   ] = await Promise.all([
     fetchAllRows("time_entries"),
     fetchAllRows("absence_requests"),
@@ -649,6 +711,9 @@ async function fetchEntriesAndAbsences(
     supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(100),
     fetchAllRows("flight_categories"),
     fetchAllRows("flight_activities"),
+    fetchAllRows("professional_profiles"),
+    fetchAllRows("surveys"),
+    fetchAllRows("survey_responses"),
   ]);
   if (entriesErr) console.warn("Error al leer time_entries:", entriesErr);
   if (absencesErr) console.warn("Error al leer absence_requests:", absencesErr);
@@ -663,6 +728,9 @@ async function fetchEntriesAndAbsences(
   if (notificationsErr) console.warn("Error al leer notifications:", notificationsErr);
   if (flightCategoriesErr) console.warn("Error al leer flight_categories:", flightCategoriesErr);
   if (flightActivitiesErr) console.warn("Error al leer flight_activities:", flightActivitiesErr);
+  if (profilesErr) console.warn("Error al leer professional_profiles:", profilesErr);
+  if (surveysErr) console.warn("Error al leer surveys:", surveysErr);
+  if (surveyResponsesErr) console.warn("Error al leer survey_responses:", surveyResponsesErr);
   // Guard contra respuestas fuera de orden: si mientras esta consulta viajaba
   // ida y vuelta se disparó un refetch más nuevo (p.ej. por el propio drag de
   // una tarjeta en Calendario), esta respuesta ya está desactualizada — aplicarla
@@ -681,6 +749,9 @@ async function fetchEntriesAndAbsences(
   dispatch({ type: "syncNotifications", notifications: (notificationRows || []).map(fromNotificationRow) });
   dispatch({ type: "syncFlightCategories", flightCategories: (flightCategoryRows || []).map(fromFlightCategoryRow) });
   dispatch({ type: "syncFlightActivities", flightActivities: (flightActivityRows || []).map(fromFlightActivityRow) });
+  dispatch({ type: "syncProfessionalProfiles", professionalProfiles: (profileRows || []).map(fromProfessionalProfileRow) });
+  dispatch({ type: "syncSurveys", surveys: (surveyRows || []).map(fromSurveyRow) });
+  dispatch({ type: "syncSurveyResponses", surveyResponses: (surveyResponseRows || []).map(fromSurveyResponseRow) });
   if (settingsRow) {
     dispatch({
       type: "syncSettings",
@@ -774,6 +845,18 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
       }
       if (a.patch.flightActivities) {
         const err = await reconcileTable("flight_activities", prevState.flightActivities, a.patch.flightActivities, toFlightActivityRow);
+        if (err) errors.push(err);
+      }
+      if (a.patch.professionalProfiles) {
+        const err = await reconcileTable("professional_profiles", prevState.professionalProfiles, a.patch.professionalProfiles, toProfessionalProfileRow);
+        if (err) errors.push(err);
+      }
+      if (a.patch.surveys) {
+        const err = await reconcileTable("surveys", prevState.surveys, a.patch.surveys, toSurveyRow);
+        if (err) errors.push(err);
+      }
+      if (a.patch.surveyResponses) {
+        const err = await reconcileTable("survey_responses", prevState.surveyResponses, a.patch.surveyResponses, toSurveyResponseRow);
         if (err) errors.push(err);
       }
       if (a.patch.company || a.patch.tags || a.patch.rolePermissions || a.patch.leaveTypeConfig) {
@@ -1076,6 +1159,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, debouncedRefetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "flight_categories" }, debouncedRefetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "flight_activities" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "professional_profiles" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "surveys" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "survey_responses" }, debouncedRefetch)
       // audit_log queda afuera a propósito: casi cualquier acción genera una fila ahí,
       // y traer las 300 de vuelta en cada una sería un refetch constante para poco beneficio.
       .subscribe();

@@ -7,7 +7,7 @@ import { Icon, type IconName } from "./Icon";
 import { supabase } from "../supabase";
 
 /** Páginas visibles para cualquier rol, incluido "usuario" (vista básica) */
-export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "charts", "flighthours", "absences", "corp"];
+export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "profile", "absences", "corp"];
 
 /** Además de las básicas, el supervisor solo ve Control de horas (acotado a su equipo) */
 const SUPERVISOR_EXTRA_PAGES: PageKey[] = ["control"];
@@ -29,8 +29,7 @@ export type PageKey =
   | "tracker"
   | "calendar"
   | "reports"
-  | "charts"
-  | "flighthours"
+  | "profile"
   | "projects"
   | "team"
   | "control"
@@ -47,8 +46,7 @@ const NAV: { section: string; items: { key: PageKey; label: string; ico: IconNam
       { key: "calendar", label: "Calendario", ico: "calendar" },
       { key: "dashboard", label: "Dashboard", ico: "dashboard" },
       { key: "reports", label: "Reportes", ico: "trending-up" },
-      { key: "charts", label: "Gráficos", ico: "share-2" },
-      { key: "flighthours", label: "Horas de vuelo", ico: "activity" },
+      { key: "profile", label: "Perfil profesional", ico: "user" },
     ],
   },
   {
@@ -81,6 +79,7 @@ const KIND_ICON: Record<string, IconName> = {
   "exceso-pendiente": "flame",
   "falta-carga": "alert",
   vencimiento: "hourglass",
+  encuesta: "clipboard",
   error: "alert",
 };
 
@@ -128,6 +127,22 @@ export function Shell({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me.id, isApprover, otPending]);
+
+  // Aviso de encuesta pendiente: cubre tanto una ronda recién lanzada (a todos
+  // los que no la respondieron) como a una persona nueva que recién ingresa
+  // (ve la misma encuesta abierta como pendiente en su primer login). No
+  // bloquea el uso de la app, solo avisa.
+  const pendingSurvey = state.surveys.find(
+    (s) => s.dueDate >= today() && !state.surveyResponses.some((r) => r.surveyId === s.id && r.userId === me.id),
+  );
+  useEffect(() => {
+    if (!pendingSurvey) return;
+    const body = `Tenés pendiente la encuesta "${pendingSurvey.title}" (vence el ${dayLabel(pendingSurvey.dueDate)}).`;
+    if (!state.notifications.some((n) => n.kind === "encuesta" && n.body === body)) {
+      dispatch({ type: "notify", n: { userId: me.id, kind: "encuesta", title: "Encuesta pendiente", body } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me.id, pendingSurvey?.id]);
 
   const unread = state.notifications.filter((n) => !n.read).length;
   const pending = isApprover ? state.absences.filter((a) => a.status === "Pendiente").length + otPending : 0;

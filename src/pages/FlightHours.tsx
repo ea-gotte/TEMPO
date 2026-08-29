@@ -4,33 +4,16 @@ import { computeFlightHours } from "../flightHours";
 import { fmtDur } from "../utils";
 import { Icon } from "../components/Icon";
 
-export function FlightHours() {
+/** El selector de a quién ver vive en Charts.tsx (compartido con el Mapa mental). */
+export function FlightHours({ userId }: { userId: string }) {
   const { state } = useStore();
-  const me = state.users.find((u) => u.id === state.currentUserId)!;
-  // Mismo criterio que Reportes/Mapa mental: usuario y supervisor solo ven lo
-  // propio; admin/gerente pueden elegir a cualquier persona.
-  const isEmployee = me.role === "usuario" || me.role === "supervisor";
-  const [userId, setUserId] = useState(me.id);
-  const effectiveUserId = isEmployee ? me.id : userId;
-  const selectedUser = state.users.find((u) => u.id === effectiveUserId) ?? me;
+  const selectedUser = state.users.find((u) => u.id === userId)!;
 
-  const result = useMemo(() => computeFlightHours(state, effectiveUserId), [state, effectiveUserId]);
+  const result = useMemo(() => computeFlightHours(state, userId), [state, userId]);
   const [openActivity, setOpenActivity] = useState<string | null>(null);
 
   return (
     <>
-      <div className="page-head">
-        <h1>Horas de vuelo</h1>
-        <span className="spacer" />
-        {!isEmployee && (
-          <select className="select" value={userId} onChange={(e) => { setUserId(e.target.value); setOpenActivity(null); }} style={{ maxWidth: 220 }}>
-            {state.users.filter((u) => u.active).map((u) => (
-              <option key={u.id} value={u.id}>{u.name}</option>
-            ))}
-          </select>
-        )}
-      </div>
-
       <div className="kpi-grid">
         <div className="card kpi">
           <div className="label"><Icon name="activity" size={14} /> Horas de vuelo totales</div>

@@ -3,7 +3,7 @@ import { useStore } from "../store";
 import { Switch, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { fmtDate, fmtDateTime, today, uid } from "../utils";
-import type { Holiday, HolidayType, Role } from "../types";
+import type { Holiday, HolidayType, Role, SurveyQuestion, SurveyQuestionType } from "../types";
 import { AccountsImportPanel, ConfigImportExportPanel, ProjectsImportPanel, TimeEntriesImportPanel } from "../components/ImportPanels";
 
 const TAG_COLORS = ["#5b6cff", "#12b5a5", "#f5a524", "#f0446c", "#8b5cf6", "#0ea5e9", "#84cc16", "#f97316"];
@@ -16,7 +16,7 @@ export function Admin() {
   const { state, dispatch } = useStore();
   const toast = useToast();
   const [c, setC] = useState(state.company);
-  const [tab, setTab] = useState<"empresa" | "roles" | "licencias" | "etiquetas" | "horasvuelo" | "feriados" | "importar" | "correos" | "auditoria">("empresa");
+  const [tab, setTab] = useState<"empresa" | "roles" | "licencias" | "etiquetas" | "horasvuelo" | "encuestas" | "feriados" | "importar" | "correos" | "auditoria">("empresa");
   const [newTag, setNewTag] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
   const [newPerm, setNewPerm] = useState<Record<Role, string>>({ admin: "", gerente: "", supervisor: "", usuario: "" });
@@ -25,6 +25,11 @@ export function Admin() {
   const [newHolidayTitle, setNewHolidayTitle] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newActivityName, setNewActivityName] = useState<Record<string, string>>({});
+  const [surveyTitle, setSurveyTitle] = useState("");
+  const [surveyDueDate, setSurveyDueDate] = useState(today());
+  const [surveyQuestions, setSurveyQuestions] = useState<SurveyQuestion[]>([]);
+  const [newQuestionLabel, setNewQuestionLabel] = useState("");
+  const [newQuestionType, setNewQuestionType] = useState<SurveyQuestionType>("rating5");
   const isAdmin = state.users.find((u) => u.id === state.currentUserId)?.role === "admin";
 
   function addHoliday() {
@@ -152,6 +157,47 @@ export function Admin() {
     dispatch({ type: "audit", action: `Actividad de horas de vuelo ${act.active ? "desactivada" : "activada"}`, detail: act.name });
   }
 
+  // Encuestas: preguntas libres por ronda, lanzadas a mano. Al lanzar se crea
+  // el evento en el calendario corporativo y se notifica a todo el equipo
+  // activo (quien no la respondió sigue viendo el aviso hasta que la conteste
+  // o venza, ver el efecto en Shell.tsx).
+  function addSurveyQuestion() {
+    const label = newQuestionLabel.trim();
+    if (!label) return;
+    setSurveyQuestions([...surveyQuestions, { id: uid(), label, type: newQuestionType }]);
+    setNewQuestionLabel("");
+  }
+
+  function removeSurveyQuestion(id: string) {
+    setSurveyQuestions(surveyQuestions.filter((q) => q.id !== id));
+  }
+
+  function launchSurvey() {
+    const title = surveyTitle.trim();
+    if (!title || !surveyDueDate || surveyQuestions.length === 0) return;
+    const survey = {
+      id: uid(),
+      title,
+      questions: surveyQuestions,
+      launchedAt: new Date().toISOString(),
+      dueDate: surveyDueDate,
+      createdBy: state.currentUserId,
+    };
+    const event = { id: uid(), date: surveyDueDate, type: "Encuesta" as const, title: `Encuesta: ${title}`, allDay: true };
+    dispatch({ type: "patch", patch: { surveys: [...state.surveys, survey], corpEvents: [...state.corpEvents, event] } });
+    for (const u of state.users.filter((x) => x.active)) {
+      dispatch({
+        type: "notify",
+        n: { userId: u.id, kind: "encuesta", title: "Nueva encuesta", body: `"${title}" — respondé antes del ${fmtDate(surveyDueDate)}.` },
+      });
+    }
+    dispatch({ type: "audit", action: "Encuesta lanzada", detail: `${title} · vence ${fmtDate(surveyDueDate)}` });
+    toast(`Encuesta "${title}" lanzada.`);
+    setSurveyTitle("");
+    setSurveyQuestions([]);
+    setSurveyDueDate(today());
+  }
+
   function saveCompany() {
     dispatch({ type: "patch", patch: { company: c } });
     dispatch({ type: "audit", action: "Configuración de empresa", detail: `${c.name} · ${c.country} · ${c.timezone}` });
@@ -169,6 +215,7 @@ export function Admin() {
           <button className={tab === "licencias" ? "active" : ""} onClick={() => setTab("licencias")}>Tipos de licencia</button>
           <button className={tab === "etiquetas" ? "active" : ""} onClick={() => setTab("etiquetas")}>Etiquetas</button>
           <button className={tab === "horasvuelo" ? "active" : ""} onClick={() => setTab("horasvuelo")}>Horas de vuelo</button>
+          <button className={tab === "encuestas" ? "active" : ""} onClick={() => setTab("encuestas")}>Encuestas</button>
           <button className={tab === "feriados" ? "active" : ""} onClick={() => setTab("feriados")}>Feriados</button>
           <button className={tab === "importar" ? "active" : ""} onClick={() => setTab("importar")}>Importar datos</button>
           <button className={tab === "correos" ? "active" : ""} onClick={() => setTab("correos")}>Correos</button>
@@ -459,6 +506,100 @@ export function Admin() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {tab === "encuestas" && (
+        <div style={{ maxWidth: 680, display: "flex", flexDirection: "column", gap: 14 }}>
+          {!isAdmin && (
+            <p style={{ fontSize: 12.5, color: "var(--warning)" }}>Solo los administradores pueden lanzar encuestas.</p>
+          )}
+          <p style={{ fontSize: 12, color: "var(--text-3)" }}>
+            Alimentan la sección "Habilidades" del perfil profesional (autopercepción, no la experiencia real de
+            proyectos). Al lanzar una encuesta se crea un evento en el Calendario corporativo con la fecha límite y
+            se notifica a todo el equipo activo.
+          </p>
+
+          {isAdmin && (
+            <div className="card card-pad">
+              <div className="card-title">Nueva encuesta</div>
+              <div className="form-grid">
+                <div className="field">
+                  <label>Título</label>
+                  <input className="input" value={surveyTitle} onChange={(e) => setSurveyTitle(e.target.value)} placeholder="Ej. Autoevaluación 2026" />
+                </div>
+                <div className="field">
+                  <label>Fecha límite</label>
+                  <input type="date" className="input" min={today()} value={surveyDueDate} onChange={(e) => setSurveyDueDate(e.target.value)} />
+                </div>
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Preguntas</label>
+                {surveyQuestions.length === 0 && (
+                  <p style={{ fontSize: 12, color: "var(--text-3)", margin: "6px 0" }}>Agregá al menos una pregunta.</p>
+                )}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                  {surveyQuestions.map((q, i) => (
+                    <div key={q.id} className="list-item" style={{ gap: 10 }}>
+                      <span style={{ color: "var(--text-3)", fontSize: 12 }}>{i + 1}.</span>
+                      <span style={{ flex: 1 }}>{q.label}</span>
+                      <span className="badge">{q.type === "rating5" ? "1 a 5" : q.type === "yesno" ? "Sí/No" : "Texto libre"}</span>
+                      <button className="btn btn-ghost btn-sm" onClick={() => removeSurveyQuestion(q.id)}><Icon name="trash" size={13} /></button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                  <input
+                    className="input" style={{ flex: "1 1 260px" }} placeholder="Texto de la pregunta…"
+                    value={newQuestionLabel}
+                    onChange={(e) => setNewQuestionLabel(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addSurveyQuestion()}
+                  />
+                  <select className="select" style={{ maxWidth: 160 }} value={newQuestionType} onChange={(e) => setNewQuestionType(e.target.value as SurveyQuestionType)}>
+                    <option value="rating5">Calificación 1 a 5</option>
+                    <option value="yesno">Sí / No</option>
+                    <option value="text">Texto libre</option>
+                  </select>
+                  <button className="btn btn-secondary btn-sm" onClick={addSurveyQuestion} disabled={!newQuestionLabel.trim()}>
+                    <Icon name="plus" size={14} /> Agregar
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={launchSurvey}
+                  disabled={!surveyTitle.trim() || !surveyDueDate || surveyQuestions.length === 0}
+                >
+                  <Icon name="zap" size={14} /> Lanzar encuesta
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="card card-pad">
+            <div className="card-title">Encuestas lanzadas</div>
+            {state.surveys.length === 0 && <p style={{ fontSize: 12.5, color: "var(--text-3)" }}>Todavía no se lanzó ninguna.</p>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[...state.surveys].sort((a, b) => b.launchedAt.localeCompare(a.launchedAt)).map((s) => {
+                const responses = state.surveyResponses.filter((r) => r.surveyId === s.id).length;
+                const activeUsers = state.users.filter((u) => u.active).length;
+                const open = s.dueDate >= today();
+                return (
+                  <div key={s.id} className="list-item">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600 }}>{s.title}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{s.questions.length} preguntas · vence {fmtDate(s.dueDate)}</div>
+                    </div>
+                    <span className={`badge ${open ? "ok" : ""}`}>{open ? "Abierta" : "Cerrada"}</span>
+                    <span style={{ fontSize: 12, color: "var(--text-2)" }}>{responses} / {activeUsers} respondieron</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 

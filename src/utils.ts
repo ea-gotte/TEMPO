@@ -40,6 +40,26 @@ export function monthLabel(s: string): string {
   return parseISO(s).toLocaleDateString("es-AR", { month: "long", year: "numeric" });
 }
 
+/** Años y meses transcurridos desde una fecha (p.ej. inicio de experiencia laboral)
+ * hasta hoy. Siempre se calcula al vuelo, nunca se guarda un número fijo. */
+export function yearsSince(dateStr: string, todayISO: string = today()): { years: number; months: number } {
+  const from = parseISO(dateStr);
+  const to = parseISO(todayISO);
+  let months = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
+  if (to.getDate() < from.getDate()) months--;
+  months = Math.max(0, months);
+  return { years: Math.floor(months / 12), months: months % 12 };
+}
+
+/** "X años Y meses" (formato corto, omite la parte en cero) */
+export function fmtYearsSince(dateStr: string, todayISO: string = today()): string {
+  const { years, months } = yearsSince(dateStr, todayISO);
+  if (years === 0 && months === 0) return "Menos de 1 mes";
+  if (years === 0) return `${months} mes${months !== 1 ? "es" : ""}`;
+  if (months === 0) return `${years} año${years !== 1 ? "s" : ""}`;
+  return `${years} año${years !== 1 ? "s" : ""} ${months} mes${months !== 1 ? "es" : ""}`;
+}
+
 /** YYYY-MM-DD -> "dd/mm/aaaa" (formato usado en toda la app) */
 export function fmtDate(s: string): string {
   if (!s) return "";

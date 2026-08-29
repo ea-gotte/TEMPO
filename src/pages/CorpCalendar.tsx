@@ -11,6 +11,7 @@ const EVENT_STYLES: Record<string, { bg: string; icon: IconName }> = {
   "Cumpleaños": { bg: "#ec4899", icon: "cake" },
   "Capacitación": { bg: "#0ea5e9", icon: "graduation" },
   "Ausencia": { bg: "#12b5a5", icon: "sun" },
+  "Encuesta": { bg: "#8b5cf6", icon: "clipboard" },
 };
 
 const TYPES = Object.keys(EVENT_STYLES);
@@ -21,6 +22,7 @@ const TYPES = Object.keys(EVENT_STYLES);
 function unifiedType(t: string): string | null {
   if (t === "Capacitación") return "Capacitación";
   if (t === "Cumpleaños") return "Cumpleaños";
+  if (t === "Encuesta") return "Encuesta";
   // Feriado nacional/provincial/Día no laborable, Reunión, Horario especial,
   // Home office y Cierre de empresa ya no se muestran desde acá.
   return null;
@@ -143,7 +145,9 @@ export function CorpCalendar() {
               <span className={`num ${day === today() ? "today" : ""}`}>{parseISO(day).getDate()}</span>
               {items.slice(0, 3).map((i) => {
                 const st = EVENT_STYLES[i.type] ?? { bg: "#888", icon: "map-pin" as IconName };
-                const editable = isAdmin && i.eventId;
+                // Las encuestas se lanzan desde Administración, no se editan como
+                // un evento genérico (ese modal solo sabe crear "Capacitación").
+                const editable = isAdmin && i.eventId && i.type !== "Encuesta";
                 return (
                   <span
                     key={i.key}
