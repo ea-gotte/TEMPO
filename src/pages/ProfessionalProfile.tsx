@@ -8,8 +8,7 @@ import { Icon, type IconName } from "../components/Icon";
 import { SurveyModal } from "../components/SurveyModal";
 import { MindMap } from "./MindMap";
 import { FlightHours } from "./FlightHours";
-// Organigrama oculto temporalmente: a repensar cómo organizarlo mejor (pedido 2026-08-20).
-// import { OrgChart } from "./OrgChart";
+import { OrgChart } from "./OrgChart";
 
 const ROLE_LABELS: Record<Role, string> = { admin: "Administrador", gerente: "Gerente", supervisor: "Supervisor", usuario: "Usuario" };
 
@@ -31,7 +30,7 @@ export function ProfessionalProfile() {
   const effectiveUserId = canPickOthers ? userId : me.id;
   const canEdit = !isEspana && (effectiveUserId === me.id || !isEmployee);
 
-  const [tab, setTab] = useState<"formacion" | "habilidades" | "horasvuelo" | "mapa">("formacion");
+  const [tab, setTab] = useState<"formacion" | "habilidades" | "horasvuelo" | "mapa" | "organigrama">("formacion");
   const person = state.users.find((u) => u.id === effectiveUserId) ?? me;
   const supervisor = state.users.find((u) => u.id === person.supervisorId);
 
@@ -68,6 +67,7 @@ export function ProfessionalProfile() {
           <button className={tab === "habilidades" ? "active" : ""} onClick={() => setTab("habilidades")}>Habilidades</button>
           <button className={tab === "horasvuelo" ? "active" : ""} onClick={() => setTab("horasvuelo")}>Horas de vuelo</button>
           <button className={tab === "mapa" ? "active" : ""} onClick={() => setTab("mapa")}>Mapa mental</button>
+          <button className={tab === "organigrama" ? "active" : ""} onClick={() => setTab("organigrama")}>Organigrama</button>
         </div>
       </div>
 
@@ -75,7 +75,7 @@ export function ProfessionalProfile() {
       {tab === "habilidades" && <HabilidadesTab userId={effectiveUserId} isSelf={effectiveUserId === me.id} />}
       {tab === "horasvuelo" && <FlightHours userId={effectiveUserId} />}
       {tab === "mapa" && <MindMap userId={effectiveUserId} />}
-      {/* <OrgChart meId={effectiveUserId} /> */}
+      {tab === "organigrama" && <OrgChart meId={effectiveUserId} />}
     </>
   );
 }
