@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
-import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role } from "./types";
+import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role, FlightCategory, FlightActivity } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword, addDays, addMonths, parseISO, today } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
@@ -40,6 +40,8 @@ type Action =
   | { type: "syncOvertime"; overtime: OvertimeRequest[] }
   | { type: "syncAudit"; audit: AuditLog[] }
   | { type: "syncCorpEvents"; corpEvents: CorpEvent[] }
+  | { type: "syncFlightCategories"; flightCategories: FlightCategory[] }
+  | { type: "syncFlightActivities"; flightActivities: FlightActivity[] }
   | {
       type: "syncSettings";
       company: CompanySettings;
@@ -297,6 +299,10 @@ function baseReducer(s: AppState, a: Action): AppState {
       return { ...s, audit: a.audit };
     case "syncCorpEvents":
       return { ...s, corpEvents: a.corpEvents };
+    case "syncFlightCategories":
+      return { ...s, flightCategories: a.flightCategories };
+    case "syncFlightActivities":
+      return { ...s, flightActivities: a.flightActivities };
     case "syncSettings":
       return { ...s, company: a.company, rolePermissions: a.rolePermissions, leaveTypeConfig: a.leaveTypeConfig, tags: a.tags };
     case "syncNotifications":
@@ -321,10 +327,13 @@ function loadInitial(): AppState {
           passwordRecovery: isPasswordRecoveryLink,
           rolePermissions: parsed.rolePermissions ?? defaults.rolePermissions,
           leaveTypeConfig: parsed.leaveTypeConfig ?? defaults.leaveTypeConfig,
+          flightCategories: parsed.flightCategories ?? defaults.flightCategories,
+          flightActivities: parsed.flightActivities ?? defaults.flightActivities,
           users: [],
           projects: parsed.projects.map((p) => ({
             ...p,
             memberIds: p.memberIds ?? [],
+            flightActivityId: p.flightActivityId ?? null,
           })),
           subProjects: parsed.subProjects ?? [],
           absences: parsed.absences.map((a) => ({
@@ -467,6 +476,7 @@ function toProjectRow(p: Project) {
     budget_hours: p.budgetHours,
     member_ids: p.memberIds,
     notion_url: p.notionUrl ?? null,
+    flight_activity_id: p.flightActivityId,
   };
 }
 function fromProjectRow(r: any): Project {
@@ -479,7 +489,21 @@ function fromProjectRow(r: any): Project {
     budgetHours: r.budget_hours,
     memberIds: r.member_ids ?? [],
     notionUrl: r.notion_url ?? undefined,
+    flightActivityId: r.flight_activity_id ?? null,
   };
+}
+
+function toFlightCategoryRow(c: FlightCategory) {
+  return { id: c.id, name: c.name, active: c.active };
+}
+function fromFlightCategoryRow(r: any): FlightCategory {
+  return { id: r.id, name: r.name, active: r.active };
+}
+function toFlightActivityRow(a: FlightActivity) {
+  return { id: a.id, category_id: a.categoryId, name: a.name, active: a.active };
+}
+function fromFlightActivityRow(r: any): FlightActivity {
+  return { id: r.id, categoryId: r.category_id, name: r.name, active: r.active };
 }
 
 function toSubProjectRow(sp: SubProject) {
@@ -609,6 +633,8 @@ async function fetchEntriesAndAbsences(
     { data: corpEventRows, error: corpEventsErr },
     { data: settingsRow, error: settingsErr },
     { data: notificationRows, error: notificationsErr },
+    { data: flightCategoryRows, error: flightCategoriesErr },
+    { data: flightActivityRows, error: flightActivitiesErr },
   ] = await Promise.all([
     fetchAllRows("time_entries"),
     fetchAllRows("absence_requests"),
@@ -621,6 +647,8 @@ async function fetchEntriesAndAbsences(
     fetchAllRows("corp_events"),
     supabase.from("app_settings").select("*").eq("id", "global").maybeSingle(),
     supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(100),
+    fetchAllRows("flight_categories"),
+    fetchAllRows("flight_activities"),
   ]);
   if (entriesErr) console.warn("Error al leer time_entries:", entriesErr);
   if (absencesErr) console.warn("Error al leer absence_requests:", absencesErr);
@@ -633,6 +661,8 @@ async function fetchEntriesAndAbsences(
   if (corpEventsErr) console.warn("Error al leer corp_events:", corpEventsErr);
   if (settingsErr) console.warn("Error al leer app_settings:", settingsErr);
   if (notificationsErr) console.warn("Error al leer notifications:", notificationsErr);
+  if (flightCategoriesErr) console.warn("Error al leer flight_categories:", flightCategoriesErr);
+  if (flightActivitiesErr) console.warn("Error al leer flight_activities:", flightActivitiesErr);
   // Guard contra respuestas fuera de orden: si mientras esta consulta viajaba
   // ida y vuelta se disparó un refetch más nuevo (p.ej. por el propio drag de
   // una tarjeta en Calendario), esta respuesta ya está desactualizada — aplicarla
@@ -649,6 +679,8 @@ async function fetchEntriesAndAbsences(
   dispatch({ type: "syncAudit", audit: (auditRows || []).map(fromAuditRow) });
   dispatch({ type: "syncCorpEvents", corpEvents: (corpEventRows || []).map(fromCorpEventRow) });
   dispatch({ type: "syncNotifications", notifications: (notificationRows || []).map(fromNotificationRow) });
+  dispatch({ type: "syncFlightCategories", flightCategories: (flightCategoryRows || []).map(fromFlightCategoryRow) });
+  dispatch({ type: "syncFlightActivities", flightActivities: (flightActivityRows || []).map(fromFlightActivityRow) });
   if (settingsRow) {
     dispatch({
       type: "syncSettings",
@@ -734,6 +766,14 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
       }
       if (a.patch.corpEvents) {
         const err = await reconcileTable("corp_events", prevState.corpEvents, a.patch.corpEvents, toCorpEventRow);
+        if (err) errors.push(err);
+      }
+      if (a.patch.flightCategories) {
+        const err = await reconcileTable("flight_categories", prevState.flightCategories, a.patch.flightCategories, toFlightCategoryRow);
+        if (err) errors.push(err);
+      }
+      if (a.patch.flightActivities) {
+        const err = await reconcileTable("flight_activities", prevState.flightActivities, a.patch.flightActivities, toFlightActivityRow);
         if (err) errors.push(err);
       }
       if (a.patch.company || a.patch.tags || a.patch.rolePermissions || a.patch.leaveTypeConfig) {
@@ -1034,6 +1074,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "corp_events" }, debouncedRefetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, debouncedRefetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "flight_categories" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "flight_activities" }, debouncedRefetch)
       // audit_log queda afuera a propósito: casi cualquier acción genera una fila ahí,
       // y traer las 300 de vuelta en cada una sería un refetch constante para poco beneficio.
       .subscribe();

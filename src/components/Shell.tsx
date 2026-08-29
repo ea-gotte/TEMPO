@@ -7,7 +7,7 @@ import { Icon, type IconName } from "./Icon";
 import { supabase } from "../supabase";
 
 /** Páginas visibles para cualquier rol, incluido "usuario" (vista básica) */
-export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "charts", "absences", "corp"];
+export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "charts", "flighthours", "absences", "corp"];
 
 /** Además de las básicas, el supervisor solo ve Control de horas (acotado a su equipo) */
 const SUPERVISOR_EXTRA_PAGES: PageKey[] = ["control"];
@@ -30,6 +30,7 @@ export type PageKey =
   | "calendar"
   | "reports"
   | "charts"
+  | "flighthours"
   | "projects"
   | "team"
   | "control"
@@ -47,6 +48,7 @@ const NAV: { section: string; items: { key: PageKey; label: string; ico: IconNam
       { key: "dashboard", label: "Dashboard", ico: "dashboard" },
       { key: "reports", label: "Reportes", ico: "trending-up" },
       { key: "charts", label: "Gráficos", ico: "share-2" },
+      { key: "flighthours", label: "Horas de vuelo", ico: "activity" },
     ],
   },
   {

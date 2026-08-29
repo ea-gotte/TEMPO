@@ -20,6 +20,8 @@ export interface Project {
   memberIds: ID[];
   /** Link a la página del proyecto en Notion */
   notionUrl?: string;
+  /** Actividad de "Horas de vuelo" a la que suman las horas cargadas en este proyecto */
+  flightActivityId: ID | null;
 }
 
 /** Subproyecto: entidad propia dentro de un proyecto, con su propio presupuesto de horas. */
@@ -35,6 +37,26 @@ export interface Tag {
   id: ID;
   name: string;
   color: string;
+}
+
+/**
+ * Horas de vuelo: experiencia profesional acumulada a partir de la actividad
+ * real en proyectos (no de encuestas ni autopercepción). Categoría/Actividad
+ * son entidades propias (no texto suelto) para poder ampliar el catálogo sin
+ * tocar código — ver computeFlightHours() en flightHours.ts.
+ */
+export interface FlightCategory {
+  id: ID;
+  name: string;
+  /** Desactivada: no se ofrece para asignar a proyectos nuevos, pero el historial ya cargado no se borra */
+  active: boolean;
+}
+
+export interface FlightActivity {
+  id: ID;
+  categoryId: ID;
+  name: string;
+  active: boolean;
 }
 
 export type Role = "admin" | "gerente" | "supervisor" | "usuario";
@@ -257,6 +279,8 @@ export interface AppState {
   projects: Project[];
   subProjects: SubProject[];
   tags: Tag[];
+  flightCategories: FlightCategory[];
+  flightActivities: FlightActivity[];
   users: User[];
   entries: TimeEntry[];
   timers: RunningTimer[];

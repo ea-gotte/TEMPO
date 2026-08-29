@@ -325,6 +325,7 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
   const [status, setStatus] = useState<ProjectStatus>(project?.status ?? "activo");
   const [budgetHours, setBudgetHours] = useState<string>(project?.budgetHours?.toString() ?? "");
   const [notionUrl, setNotionUrl] = useState(project?.notionUrl ?? "");
+  const [flightActivityId, setFlightActivityId] = useState<string>(project?.flightActivityId ?? "");
   const [subProjects, setSubProjects] = useState<SubProject[]>(
     project ? state.subProjects.filter((sp) => sp.projectId === project.id) : [],
   );
@@ -347,6 +348,7 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
       budgetHours: subProjects.length > 0 ? subProjectsBudgetSum : (budgetHours ? Number(budgetHours) : null),
       memberIds,
       notionUrl: notionUrl.trim() || undefined,
+      flightActivityId: flightActivityId || null,
     };
     const finalSubProjects = subProjects.map((sp) => ({ ...sp, projectId: next.id }));
     const otherSubProjects = state.subProjects.filter((sp) => sp.projectId !== next.id);
@@ -417,6 +419,28 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
             onChange={(e) => setNotionUrl(e.target.value)}
             placeholder="https://notion.so/…"
           />
+        </div>
+        <div className="field">
+          <label>Actividad — Horas de vuelo</label>
+          <select className="select" value={flightActivityId} onChange={(e) => setFlightActivityId(e.target.value)}>
+            <option value="">— Sin asignar —</option>
+            {state.flightCategories
+              .filter((cat) => cat.active)
+              .map((cat) => {
+                const acts = state.flightActivities.filter(
+                  (a) => a.categoryId === cat.id && (a.active || a.id === flightActivityId),
+                );
+                if (acts.length === 0) return null;
+                return (
+                  <optgroup key={cat.id} label={cat.name}>
+                    {acts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}{a.active ? "" : " (inactiva)"}</option>
+                    ))}
+                  </optgroup>
+                );
+              })}
+          </select>
+          <span style={{ fontSize: 11, color: "var(--text-3)" }}>Las horas cargadas en este proyecto suman experiencia a esta actividad.</span>
         </div>
         <div className="field">
           <label>Color</label>

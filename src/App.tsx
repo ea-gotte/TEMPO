@@ -8,6 +8,7 @@ import { Tracker } from "./pages/Tracker";
 import { CalendarPage } from "./pages/Calendar";
 import { Reports } from "./pages/Reports";
 import { Charts } from "./pages/Charts";
+import { FlightHours } from "./pages/FlightHours";
 import { Projects } from "./pages/Projects";
 import { Team } from "./pages/Team";
 import { HoursControl } from "./pages/HoursControl";
@@ -24,6 +25,7 @@ const PAGES: Record<PageKey, React.ComponentType> = {
   calendar: CalendarPage,
   reports: Reports,
   charts: Charts,
+  flighthours: FlightHours,
   projects: Projects,
   team: Team,
   control: HoursControl,

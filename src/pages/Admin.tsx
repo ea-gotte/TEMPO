@@ -16,13 +16,15 @@ export function Admin() {
   const { state, dispatch } = useStore();
   const toast = useToast();
   const [c, setC] = useState(state.company);
-  const [tab, setTab] = useState<"empresa" | "roles" | "licencias" | "etiquetas" | "feriados" | "importar" | "correos" | "auditoria">("empresa");
+  const [tab, setTab] = useState<"empresa" | "roles" | "licencias" | "etiquetas" | "horasvuelo" | "feriados" | "importar" | "correos" | "auditoria">("empresa");
   const [newTag, setNewTag] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
   const [newPerm, setNewPerm] = useState<Record<Role, string>>({ admin: "", gerente: "", supervisor: "", usuario: "" });
   const [newHolidayDate, setNewHolidayDate] = useState(today());
   const [newHolidayType, setNewHolidayType] = useState<HolidayType>("Feriado nacional");
   const [newHolidayTitle, setNewHolidayTitle] = useState("");
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newActivityName, setNewActivityName] = useState<Record<string, string>>({});
   const isAdmin = state.users.find((u) => u.id === state.currentUserId)?.role === "admin";
 
   function addHoliday() {
@@ -108,6 +110,48 @@ export function Admin() {
     dispatch({ type: "audit", action: `Tipo de licencia ${lt.enabled ? "deshabilitado" : "habilitado"}`, detail: lt.type });
   }
 
+  // "Horas de vuelo": el catálogo nunca borra filas (una actividad desactivada
+  // conserva el historial ya cargado) — solo se agrega o se activa/desactiva.
+  function addFlightCategory() {
+    const name = newCategoryName.trim();
+    if (!name || state.flightCategories.some((c) => c.name.toLowerCase() === name.toLowerCase())) return;
+    dispatch({ type: "patch", patch: { flightCategories: [...state.flightCategories, { id: uid(), name, active: true }] } });
+    dispatch({ type: "audit", action: "Categoría de horas de vuelo creada", detail: name });
+    toast(`Categoría "${name}" creada.`);
+    setNewCategoryName("");
+  }
+
+  function renameFlightCategory(id: string, name: string) {
+    dispatch({ type: "patch", patch: { flightCategories: state.flightCategories.map((c) => (c.id === id ? { ...c, name } : c)) } });
+  }
+
+  function toggleFlightCategory(id: string) {
+    const cat = state.flightCategories.find((c) => c.id === id);
+    if (!cat) return;
+    dispatch({ type: "patch", patch: { flightCategories: state.flightCategories.map((c) => (c.id === id ? { ...c, active: !c.active } : c)) } });
+    dispatch({ type: "audit", action: `Categoría de horas de vuelo ${cat.active ? "desactivada" : "activada"}`, detail: cat.name });
+  }
+
+  function addFlightActivity(categoryId: string) {
+    const name = (newActivityName[categoryId] ?? "").trim();
+    if (!name || state.flightActivities.some((a) => a.categoryId === categoryId && a.name.toLowerCase() === name.toLowerCase())) return;
+    dispatch({ type: "patch", patch: { flightActivities: [...state.flightActivities, { id: uid(), categoryId, name, active: true }] } });
+    dispatch({ type: "audit", action: "Actividad de horas de vuelo creada", detail: name });
+    toast(`Actividad "${name}" creada.`);
+    setNewActivityName({ ...newActivityName, [categoryId]: "" });
+  }
+
+  function renameFlightActivity(id: string, name: string) {
+    dispatch({ type: "patch", patch: { flightActivities: state.flightActivities.map((a) => (a.id === id ? { ...a, name } : a)) } });
+  }
+
+  function toggleFlightActivity(id: string) {
+    const act = state.flightActivities.find((a) => a.id === id);
+    if (!act) return;
+    dispatch({ type: "patch", patch: { flightActivities: state.flightActivities.map((a) => (a.id === id ? { ...a, active: !a.active } : a)) } });
+    dispatch({ type: "audit", action: `Actividad de horas de vuelo ${act.active ? "desactivada" : "activada"}`, detail: act.name });
+  }
+
   function saveCompany() {
     dispatch({ type: "patch", patch: { company: c } });
     dispatch({ type: "audit", action: "Configuración de empresa", detail: `${c.name} · ${c.country} · ${c.timezone}` });
@@ -124,6 +168,7 @@ export function Admin() {
           <button className={tab === "roles" ? "active" : ""} onClick={() => setTab("roles")}>Roles y permisos</button>
           <button className={tab === "licencias" ? "active" : ""} onClick={() => setTab("licencias")}>Tipos de licencia</button>
           <button className={tab === "etiquetas" ? "active" : ""} onClick={() => setTab("etiquetas")}>Etiquetas</button>
+          <button className={tab === "horasvuelo" ? "active" : ""} onClick={() => setTab("horasvuelo")}>Horas de vuelo</button>
           <button className={tab === "feriados" ? "active" : ""} onClick={() => setTab("feriados")}>Feriados</button>
           <button className={tab === "importar" ? "active" : ""} onClick={() => setTab("importar")}>Importar datos</button>
           <button className={tab === "correos" ? "active" : ""} onClick={() => setTab("correos")}>Correos</button>
@@ -319,6 +364,99 @@ export function Admin() {
                 ))}
               </div>
               <button className="btn btn-primary btn-sm" onClick={addTag} disabled={!newTag.trim()}><Icon name="plus" size={14} /> Agregar</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "horasvuelo" && (
+        <div style={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: 14 }}>
+          {!isAdmin && (
+            <p style={{ fontSize: 12.5, color: "var(--warning)" }}>
+              Solo los administradores pueden modificar las categorías y actividades.
+            </p>
+          )}
+          <p style={{ fontSize: 12, color: "var(--text-3)" }}>
+            Categorías y actividades del sistema de "Horas de vuelo": la experiencia acumulada de cada persona según
+            los proyectos en los que trabajó. Se asignan por proyecto en Clientes y proyectos. Desactivar una
+            actividad la saca del selector para proyectos nuevos, pero no borra las horas ya acumuladas con ella.
+          </p>
+          {state.flightCategories.map((cat) => {
+            const activities = state.flightActivities.filter((a) => a.categoryId === cat.id);
+            return (
+              <div key={cat.id} className="card card-pad">
+                <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
+                  <input
+                    className="input"
+                    style={{ maxWidth: 240, fontWeight: 650 }}
+                    value={cat.name}
+                    disabled={!isAdmin}
+                    onChange={(e) => renameFlightCategory(cat.id, e.target.value)}
+                    aria-label={`Nombre de categoría ${cat.name}`}
+                  />
+                  <span className={`badge ${cat.active ? "ok" : ""}`}>{cat.active ? "Activa" : "Inactiva"}</span>
+                  {isAdmin && (
+                    <button className="btn btn-secondary btn-sm" style={{ marginLeft: "auto" }} onClick={() => toggleFlightCategory(cat.id)}>
+                      {cat.active ? "Desactivar" : "Activar"}
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 4 }}>
+                  {activities.map((act) => (
+                    <div key={act.id} className="list-item" style={{ gap: 10 }}>
+                      <input
+                        className="input"
+                        style={{ maxWidth: 260 }}
+                        value={act.name}
+                        disabled={!isAdmin}
+                        onChange={(e) => renameFlightActivity(act.id, e.target.value)}
+                        aria-label={`Nombre de actividad ${act.name}`}
+                      />
+                      <span className={`badge ${act.active ? "ok" : ""}`} style={{ marginLeft: "auto" }}>
+                        {act.active ? "Activa" : "Inactiva"}
+                      </span>
+                      {isAdmin && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => toggleFlightActivity(act.id)}>
+                          {act.active ? "Desactivar" : "Activar"}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {activities.length === 0 && (
+                    <p style={{ fontSize: 12, color: "var(--text-3)" }}>Todavía no tiene actividades.</p>
+                  )}
+                  {isAdmin && (
+                    <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                      <input
+                        className="input"
+                        style={{ maxWidth: 240 }}
+                        placeholder="Nueva actividad…"
+                        value={newActivityName[cat.id] ?? ""}
+                        onChange={(e) => setNewActivityName({ ...newActivityName, [cat.id]: e.target.value })}
+                        onKeyDown={(e) => e.key === "Enter" && addFlightActivity(cat.id)}
+                      />
+                      <button className="btn btn-secondary btn-sm" onClick={() => addFlightActivity(cat.id)} disabled={!(newActivityName[cat.id] ?? "").trim()}>
+                        <Icon name="plus" size={14} /> Agregar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {isAdmin && (
+            <div className="card card-pad" style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <input
+                className="input"
+                style={{ maxWidth: 240 }}
+                placeholder="Nueva categoría…"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addFlightCategory()}
+              />
+              <button className="btn btn-primary btn-sm" onClick={addFlightCategory} disabled={!newCategoryName.trim()}>
+                <Icon name="plus" size={14} /> Nueva categoría
+              </button>
             </div>
           )}
         </div>

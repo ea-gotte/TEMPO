@@ -165,23 +165,23 @@ export function seedState(): AppState {
     projects: [
       {
         id: "p1", clientId: "c1", name: "Nave industrial — Parque Sur", color: P.indigo, status: "activo",
-        budgetHours: 320, memberIds: ["u1", "u2"],
+        budgetHours: 320, memberIds: ["u1", "u2"], flightActivityId: "act-obra-civil",
       },
       {
         id: "p2", clientId: "c2", name: "Edificio Meridiano 24", color: P.teal, status: "activo",
-        budgetHours: 480, memberIds: ["u1", "u2", "u3", "u4"],
+        budgetHours: 480, memberIds: ["u1", "u2", "u3", "u4"], flightActivityId: "act-general",
       },
       {
         id: "p3", clientId: "c1", name: "Coordinación BIM — Hospital Norte", color: P.amber, status: "activo",
-        budgetHours: 200, memberIds: ["u1", "u3"],
+        budgetHours: 200, memberIds: ["u1", "u3"], flightActivityId: "act-hospitales",
       },
       {
         id: "p4", clientId: "c3", name: "Gestión interna", color: P.rose, status: "activo",
-        budgetHours: null, memberIds: ["u1", "u2", "u3", "u4"],
+        budgetHours: null, memberIds: ["u1", "u2", "u3", "u4"], flightActivityId: null,
       },
       {
         id: "p5", clientId: "c2", name: "Auditoría estructural — Depósitos", color: P.lime, status: "completado",
-        budgetHours: 120, memberIds: ["u2"],
+        budgetHours: 120, memberIds: ["u2"], flightActivityId: "act-obra-civil",
       },
     ],
     subProjects: [],
@@ -190,6 +190,24 @@ export function seedState(): AppState {
       { id: "g2", name: "Entregable", color: P.indigo },
       { id: "g3", name: "Reunión", color: P.amber },
       { id: "g4", name: "Revisión", color: P.teal },
+    ],
+    // Catálogo inicial de "Horas de vuelo" — configurable desde Administración,
+    // sin tocar código (ver sql/supabase_schema_phase16_flight_hours.sql).
+    flightCategories: [
+      { id: "cat-modelado-bim", name: "Modelado BIM", active: true },
+      { id: "cat-gestion-bim", name: "Gestión BIM", active: true },
+    ],
+    flightActivities: [
+      { id: "act-general", categoryId: "cat-modelado-bim", name: "Modelado BIM - General", active: true },
+      { id: "act-hospitales", categoryId: "cat-modelado-bim", name: "Modelado BIM - Hospitales", active: true },
+      { id: "act-scan-to-bim", categoryId: "cat-modelado-bim", name: "Modelado BIM - Scan to BIM", active: true },
+      { id: "act-data-centers", categoryId: "cat-modelado-bim", name: "Modelado BIM - Data Centers", active: true },
+      { id: "act-obra-civil", categoryId: "cat-modelado-bim", name: "Modelado BIM - Obra Civil", active: true },
+      { id: "act-viales", categoryId: "cat-modelado-bim", name: "Modelado BIM - Viales", active: true },
+      { id: "act-ferroviario", categoryId: "cat-modelado-bim", name: "Modelado BIM - Ferroviario", active: true },
+      { id: "act-hidraulica", categoryId: "cat-modelado-bim", name: "Modelado BIM - Hidráulica", active: true },
+      { id: "act-documentacion", categoryId: "cat-gestion-bim", name: "Gestión BIM - Documentación", active: true },
+      { id: "act-4d5d", categoryId: "cat-gestion-bim", name: "Gestión BIM - 4D / 5D", active: true },
     ],
     users: [],
     entries: seedEntries(),

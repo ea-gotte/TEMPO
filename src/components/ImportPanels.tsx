@@ -361,6 +361,7 @@ export function ProjectsImportPanel() {
           budgetHours: row.budgetHours,
           memberIds: row.members,
           notionUrl: row.notionUrl,
+          flightActivityId: null,
         });
       }
     }
