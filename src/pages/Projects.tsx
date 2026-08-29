@@ -20,6 +20,24 @@ export function Projects() {
   const [fClient, setFClient] = useState("");
   const [fStatus, setFStatus] = useState<ProjectStatus | "">("");
   const [fMember, setFMember] = useState("");
+  const [fActivity, setFActivity] = useState("");
+
+  type SortKey = "name" | "client" | "status" | "hours" | "activity";
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  function sortArrow(key: SortKey) {
+    if (sortKey !== key) return null;
+    return <Icon name="chevron-right" size={11} style={{ transform: sortDir === "asc" ? "rotate(-90deg)" : "rotate(90deg)" }} />;
+  }
 
   const spentBy = useMemo(() => {
     const m = new Map<string, number>();
@@ -30,7 +48,7 @@ export function Projects() {
     return m;
   }, [state.entries]);
 
-  const filtersActive = Boolean(fQuery || fClient || fStatus || fMember);
+  const filtersActive = Boolean(fQuery || fClient || fStatus || fMember || fActivity);
   const filteredProjects = useMemo(
     () =>
       state.projects.filter((p) => {
@@ -38,16 +56,45 @@ export function Projects() {
         if (fClient && p.clientId !== fClient) return false;
         if (fStatus && p.status !== fStatus) return false;
         if (fMember && !p.memberIds.includes(fMember)) return false;
+        if (fActivity === "__none__" && p.flightActivityId) return false;
+        if (fActivity && fActivity !== "__none__" && p.flightActivityId !== fActivity) return false;
         return true;
       }),
-    [state.projects, fQuery, fClient, fStatus, fMember],
+    [state.projects, fQuery, fClient, fStatus, fMember, fActivity],
   );
+
+  const sortedProjects = useMemo(() => {
+    if (!sortKey) return filteredProjects;
+    const dir = sortDir === "asc" ? 1 : -1;
+    const clientName = (p: Project) => state.clients.find((c) => c.id === p.clientId)?.name ?? "";
+    const activityName = (p: Project) => state.flightActivities.find((a) => a.id === p.flightActivityId)?.name ?? "";
+    return [...filteredProjects].sort((a, b) => {
+      switch (sortKey) {
+        case "name": return a.name.localeCompare(b.name) * dir;
+        case "client": return clientName(a).localeCompare(clientName(b)) * dir;
+        case "status": return a.status.localeCompare(b.status) * dir;
+        case "hours": return ((spentBy.get(a.id) ?? 0) - (spentBy.get(b.id) ?? 0)) * dir;
+        case "activity": return activityName(a).localeCompare(activityName(b)) * dir;
+        default: return 0;
+      }
+    });
+  }, [filteredProjects, sortKey, sortDir, state.clients, state.flightActivities, spentBy]);
 
   function clearFilters() {
     setFQuery("");
     setFClient("");
     setFStatus("");
     setFMember("");
+    setFActivity("");
+  }
+
+  function setProjectActivity(p: Project, flightActivityId: string) {
+    dispatch({
+      type: "patch",
+      patch: { projects: state.projects.map((x) => (x.id === p.id ? { ...x, flightActivityId: flightActivityId || null } : x)) },
+    });
+    const actName = state.flightActivities.find((a) => a.id === flightActivityId)?.name ?? "Sin asignar";
+    dispatch({ type: "audit", action: "Actividad de horas de vuelo asignada", detail: `${p.name} → ${actName}` });
   }
 
   function confirmDeleteProject() {
@@ -84,81 +131,90 @@ export function Projects() {
 
       {tab === "proyectos" && (
         <>
-          <div className="card card-pad no-print" style={{ marginBottom: 14 }}>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-              <div className="field" style={{ flex: "1 1 200px" }}>
-                <label>Buscar</label>
-                <div style={{ position: "relative" }}>
-                  <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", color: "var(--text-3)", display: "grid" }}>
-                    <Icon name="search" size={14} />
-                  </span>
-                  <input
-                    className="input"
-                    style={{ paddingLeft: 30 }}
-                    placeholder="Nombre del proyecto…"
-                    value={fQuery}
-                    onChange={(e) => setFQuery(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="field">
-                <label>Cliente</label>
-                <select className="select" value={fClient} onChange={(e) => setFClient(e.target.value)}>
-                  <option value="">Todos</option>
-                  {state.clients.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label>Estado</label>
-                <select className="select" value={fStatus} onChange={(e) => setFStatus(e.target.value as ProjectStatus | "")}>
-                  <option value="">Todos</option>
-                  <option value="activo">Activo</option>
-                  <option value="pausado">Pausado</option>
-                  <option value="completado">Completado</option>
-                  <option value="archivado">Archivado</option>
-                </select>
-              </div>
-              <div className="field">
-                <label>Persona</label>
-                <select className="select" value={fMember} onChange={(e) => setFMember(e.target.value)}>
-                  <option value="">Todas</option>
-                  {state.users.filter((u) => u.active).map((u) => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                  ))}
-                </select>
-              </div>
-              {filtersActive && (
-                <button className="btn btn-ghost btn-sm" onClick={clearFilters}>Limpiar filtros</button>
-              )}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+            <p className="page-sub" style={{ margin: 0 }}>
+              {filteredProjects.length} de {state.projects.length} proyectos
+            </p>
+            <span style={{ flex: 1 }} />
+            <div className="field" style={{ width: 180 }}>
+              <select className="select" value={fMember} onChange={(e) => setFMember(e.target.value)}>
+                <option value="">Equipo: todos</option>
+                {state.users.filter((u) => u.active).map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
             </div>
+            {filtersActive && (
+              <button className="btn btn-ghost btn-sm" onClick={clearFilters}>Limpiar filtros</button>
+            )}
           </div>
-          <p className="page-sub" style={{ margin: "0 0 10px" }}>
-            {filteredProjects.length} de {state.projects.length} proyectos
-          </p>
           <div className="card" style={{ overflowX: "auto" }}>
           <table className="table">
             <thead>
               <tr>
-                <th>Proyecto</th>
-                <th>Cliente</th>
-                <th>Estado</th>
-                <th>Horas proyectadas / cargadas</th>
+                <th className="th-sort" onClick={() => toggleSort("name")}>Proyecto {sortArrow("name")}</th>
+                <th className="th-sort" onClick={() => toggleSort("client")}>Cliente {sortArrow("client")}</th>
+                <th className="th-sort" onClick={() => toggleSort("status")}>Estado {sortArrow("status")}</th>
+                <th className="th-sort" onClick={() => toggleSort("hours")}>Horas proyectadas / cargadas {sortArrow("hours")}</th>
+                <th className="th-sort" onClick={() => toggleSort("activity")}>Actividad — Horas de vuelo {sortArrow("activity")}</th>
                 <th>Notion</th>
+                <th></th>
+              </tr>
+              <tr className="th-filters">
+                <th>
+                  <input
+                    className="input"
+                    placeholder="Buscar…"
+                    value={fQuery}
+                    onChange={(e) => setFQuery(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </th>
+                <th>
+                  <select className="select" value={fClient} onChange={(e) => setFClient(e.target.value)} onClick={(e) => e.stopPropagation()}>
+                    <option value="">Todos</option>
+                    {state.clients.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </th>
+                <th>
+                  <select className="select" value={fStatus} onChange={(e) => setFStatus(e.target.value as ProjectStatus | "")} onClick={(e) => e.stopPropagation()}>
+                    <option value="">Todos</option>
+                    <option value="activo">Activo</option>
+                    <option value="pausado">Pausado</option>
+                    <option value="completado">Completado</option>
+                    <option value="archivado">Archivado</option>
+                  </select>
+                </th>
+                <th></th>
+                <th>
+                  <select className="select" value={fActivity} onChange={(e) => setFActivity(e.target.value)} onClick={(e) => e.stopPropagation()}>
+                    <option value="">Todas</option>
+                    <option value="__none__">Sin asignar</option>
+                    {state.flightCategories.map((cat) => (
+                      <optgroup key={cat.id} label={cat.name}>
+                        {state.flightActivities.filter((a) => a.categoryId === cat.id).map((a) => (
+                          <option key={a.id} value={a.id}>{a.name}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </th>
+                <th></th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {filteredProjects.length === 0 && (
-                <tr><td colSpan={6}><Empty icon="search" text="Sin resultados" sub="Probá ajustar o limpiar los filtros." /></td></tr>
+              {sortedProjects.length === 0 && (
+                <tr><td colSpan={7}><Empty icon="search" text="Sin resultados" sub="Probá ajustar o limpiar los filtros." /></td></tr>
               )}
-              {filteredProjects.map((p) => {
+              {sortedProjects.map((p) => {
                 const client = state.clients.find((c) => c.id === p.clientId);
                 const spent = spentBy.get(p.id) ?? 0;
                 const pct = p.budgetHours ? Math.min(100, (spent / 60 / p.budgetHours) * 100) : null;
                 return (
-                  <tr key={p.id}>
+                  <tr key={p.id} onDoubleClick={() => setEditProject(p)} style={{ cursor: "pointer" }} title="Doble clic para editar">
                     <td>
                       <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 600 }}>
                         <Dot color={p.color} /> {p.name}
@@ -197,16 +253,35 @@ export function Projects() {
                         <span style={{ color: "var(--text-3)" }}>Sin proyección · {fmtDur(spent)} cargadas</span>
                       )}
                     </td>
+                    <td style={{ minWidth: 190 }} onDoubleClick={(e) => e.stopPropagation()}>
+                      <select
+                        className="select"
+                        value={p.flightActivityId ?? ""}
+                        onChange={(e) => setProjectActivity(p, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <option value="">— Sin asignar —</option>
+                        {state.flightCategories.map((cat) => (
+                          <optgroup key={cat.id} label={cat.name}>
+                            {state.flightActivities
+                              .filter((a) => a.categoryId === cat.id && (a.active || a.id === p.flightActivityId))
+                              .map((a) => (
+                                <option key={a.id} value={a.id}>{a.name}{a.active ? "" : " (inactiva)"}</option>
+                              ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </td>
                     <td>
                       {p.notionUrl ? (
-                        <a href={p.notionUrl} target="_blank" rel="noreferrer" className="badge acc" title={p.notionUrl}>
+                        <a href={p.notionUrl} target="_blank" rel="noreferrer" className="badge acc" title={p.notionUrl} onClick={(e) => e.stopPropagation()}>
                           <Icon name="book" size={11} /> Abrir en Notion
                         </a>
                       ) : (
                         <span style={{ color: "var(--text-3)" }}>—</span>
                       )}
                     </td>
-                    <td>
+                    <td onDoubleClick={(e) => e.stopPropagation()}>
                       <button className="btn btn-ghost btn-sm" onClick={() => setEditProject(p)}><Icon name="pencil" size={13} /> Editar</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => setDeleteProject(p)}><Icon name="trash" size={13} /> Eliminar</button>
                     </td>

@@ -212,6 +212,10 @@ a { color: var(--accent); text-decoration: none; }
 .table tr:last-child td { border-bottom: none; }
 .table tbody tr { transition: background 0.1s; }
 .table tbody tr:hover { background: var(--surface-2); }
+.th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+.th-sort:hover { color: var(--text-2); }
+.th-filters th { padding-top: 4px; padding-bottom: 8px; }
+.th-filters .input, .th-filters .select { font-size: 12px; padding: 5px 8px; min-width: 110px; }
 
 .progress { height: 6px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
 .progress > div { height: 100%; border-radius: 99px; background: var(--accent); transition: width 0.3s; }
