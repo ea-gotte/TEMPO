@@ -122,6 +122,14 @@ export type Role = "admin" | "gerente" | "supervisor" | "usuario";
 
 export type Jornada = "completa" | "media";
 
+/**
+ * Equipo de trabajo: fijo por ahora (Fase 18). Restringe el acceso además del
+ * rol — Equipo España queda en consulta (ver canSeePage en Shell.tsx) sin
+ * cambiar el rol de la persona; los usuarios existentes sin equipo asignado
+ * se tratan como LATAM (comportamiento actual, sin cambios).
+ */
+export type Team = "espana" | "latam";
+
 export interface User {
   id: ID;
   name: string;
@@ -132,6 +140,7 @@ export interface User {
   recoveryCode?: string | null;
   recoveryExpires?: string | null;
   role: Role;
+  team: Team;
   jornada: Jornada;
   supervisorId: ID | null;
   weeklyHours: number; // jornada semanal

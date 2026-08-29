@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useStore, vacationInfo } from "../store";
-import type { Jornada, Role, User } from "../types";
+import type { Jornada, Role, Team as TeamType, User } from "../types";
 import { uid, weekStart, addDays, fmtDate, fmtDur, today, hashPassword, validatePassword } from "../utils";
 import { Avatar, DateField, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
@@ -42,6 +42,7 @@ export function Team() {
             <tr>
               <th>Persona</th>
               <th>Rol</th>
+              <th>Equipo</th>
               <th>Supervisor</th>
               <th>Jornada</th>
               <th>Ingreso / Vacaciones</th>
@@ -73,6 +74,9 @@ export function Team() {
                     <span className={`badge ${u.role === "admin" ? "acc" : u.role === "gerente" ? "ok" : u.role === "supervisor" ? "warn" : ""}`} style={{ textTransform: "capitalize" }}>
                       {u.role}
                     </span>
+                  </td>
+                  <td>
+                    <span className={`badge ${u.team === "espana" ? "warn" : ""}`}>{u.team === "espana" ? "España" : "LATAM"}</span>
                   </td>
                   <td style={{ fontSize: 12.5 }}>{sup?.name ?? "—"}</td>
                   <td style={{ fontSize: 12.5 }}>
@@ -142,6 +146,7 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
   const mustChangePassword = user ? (user.mustChangePassword ?? false) : true;
   const [error, setError] = useState("");
   const [role, setRole] = useState<Role>(user?.role ?? "usuario");
+  const [team, setTeam] = useState<TeamType>(user?.team ?? "latam");
   const [supervisorId, setSupervisorId] = useState(user?.supervisorId ?? "");
   const [jornada, setJornada] = useState<Jornada>(user?.jornada ?? "completa");
   const [weeklyHours, setWeeklyHours] = useState(user?.weeklyHours ?? state.company.defaultWeeklyHours);
@@ -174,6 +179,7 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
       password: hashedPassword,
       mustChangePassword,
       role,
+      team,
       jornada,
       supervisorId: supervisorId || null,
       weeklyHours,
@@ -194,6 +200,7 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
       name: next.name,
       email: next.email,
       role: next.role,
+      team: next.team,
       jornada: next.jornada,
       supervisor_id: next.supervisorId || null,
       weekly_hours: next.weeklyHours,
@@ -266,6 +273,18 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
             <option value="gerente">Gerente</option>
             <option value="admin">Administrador</option>
           </select>
+        </div>
+        <div className="field">
+          <label>Equipo de trabajo</label>
+          <select className="select" value={team} onChange={(e) => setTeam(e.target.value as TeamType)}>
+            <option value="latam">Equipo LATAM</option>
+            <option value="espana">Equipo España</option>
+          </select>
+          {team === "espana" && (
+            <span style={{ fontSize: 11, color: "var(--text-3)" }}>
+              Acceso de consulta: perfil profesional y reportes. Un gerente de España conserva la aprobación de ausencias.
+            </span>
+          )}
         </div>
         <div className="field">
           <label>Supervisor</label>

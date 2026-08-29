@@ -140,6 +140,7 @@ export function AccountsImportPanel() {
           email: row.email,
           password: row.password || `${row.name.split(" ")[0].toLowerCase()}123`,
           role: row.role,
+          team: "latam",
           jornada,
           supervisorId: null,
           weeklyHours: row.weeklyHours,

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useStore, vacationInfo } from "../store";
-import type { Role } from "../types";
+import type { Role, Team } from "../types";
 import { dayLabel, fmtDate, today, validatePassword } from "../utils";
 import { Avatar, Modal, useToast } from "./ui";
 import { Icon, type IconName } from "./Icon";
@@ -13,10 +13,25 @@ export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "r
 const SUPERVISOR_EXTRA_PAGES: PageKey[] = ["control"];
 
 /**
- * Admin: todo. Gerente: todo menos Administración. Supervisor: las básicas más
- * Control de horas. Usuario: solo las básicas.
+ * Equipo España: acceso principalmente de consulta — perfil profesional
+ * (propio y de terceros) y reportes de horas/actividad, nada del uso diario
+ * (registro de tiempo, ausencias propias, administración). El gerente de
+ * España conserva la facultad de aprobar ausencias como única excepción; su
+ * gestión de equipo sigue en las plataformas que ya usa ese equipo, no acá.
+ * No cambia el rol de nadie — mismo rol de siempre, acceso más acotado.
  */
-export function canSeePage(role: Role, key: PageKey): boolean {
+const ESPANA_PAGES: PageKey[] = ["profile", "reports"];
+
+/**
+ * Admin: todo. Gerente: todo menos Administración. Supervisor: las básicas más
+ * Control de horas. Usuario: solo las básicas. Equipo España restringe por
+ * encima de todo lo anterior (ver ESPANA_PAGES).
+ */
+export function canSeePage(role: Role, team: Team, key: PageKey): boolean {
+  if (team === "espana") {
+    if (ESPANA_PAGES.includes(key)) return true;
+    return key === "absences" && role === "gerente";
+  }
   if (EMPLOYEE_PAGES.includes(key)) return true;
   if (role === "admin") return true;
   if (role === "gerente") return key !== "admin";
@@ -182,7 +197,7 @@ export function Shell({
           </span>
         </div>
         {NAV.map((sec) => {
-          const items = sec.items.filter((it) => canSeePage(me.role, it.key));
+          const items = sec.items.filter((it) => canSeePage(me.role, me.team, it.key));
           if (items.length === 0) return null;
           return (
           <React.Fragment key={sec.section}>

@@ -95,7 +95,11 @@ export function Absences() {
   // desde Control de horas. Aprobar/gestionar solicitudes queda para admin/gerente.
   const canApprove = me.role === "admin" || me.role === "gerente";
   const canManage = me.role === "admin" || me.role === "gerente";
-  const [tab, setTab] = useState<"mias" | "aprobar" | "extra" | "registro">("mias");
+  // Equipo España: acceso de consulta — canSeePage ya solo deja llegar acá a
+  // un gerente de España (para aprobar). No carga solicitudes propias ni
+  // informa horas extra propias en esta plataforma.
+  const isEspana = me.team === "espana";
+  const [tab, setTab] = useState<"mias" | "aprobar" | "extra" | "registro">(isEspana ? "aprobar" : "mias");
   const [showNew, setShowNew] = useState(false);
   const [detail, setDetail] = useState<AbsenceRequest | null>(null);
   const [comment, setComment] = useState("");
@@ -166,9 +170,11 @@ export function Absences() {
       <div className="page-head">
         <h1>Gestión</h1>
         <span className="spacer" />
-        <button className="btn btn-primary" onClick={() => setShowNew(true)}>
-          <Icon name="plus" size={15} /> Nueva solicitud
-        </button>
+        {!isEspana && (
+          <button className="btn btn-primary" onClick={() => setShowNew(true)}>
+            <Icon name="plus" size={15} /> Nueva solicitud
+          </button>
+        )}
       </div>
 
       <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
@@ -207,15 +213,17 @@ export function Absences() {
       </div>
 
       <div className="tabs no-print" style={{ marginBottom: 14 }}>
-        <button className={tab === "mias" ? "active" : ""} onClick={() => setTab("mias")}>Mis solicitudes</button>
+        {!isEspana && <button className={tab === "mias" ? "active" : ""} onClick={() => setTab("mias")}>Mis solicitudes</button>}
         {canApprove && (
           <button className={tab === "aprobar" ? "active" : ""} onClick={() => setTab("aprobar")}>
             Por aprobar {toApprove.length > 0 && `(${toApprove.length})`}
           </button>
         )}
-        <button className={tab === "extra" ? "active" : ""} onClick={() => setTab("extra")}>
-          Horas extra {canApprove && otPending.length > 0 && `(${otPending.length})`}
-        </button>
+        {!isEspana && (
+          <button className={tab === "extra" ? "active" : ""} onClick={() => setTab("extra")}>
+            Horas extra {canApprove && otPending.length > 0 && `(${otPending.length})`}
+          </button>
+        )}
         <button className={tab === "registro" ? "active" : ""} onClick={() => setTab("registro")}>Registro</button>
       </div>
 

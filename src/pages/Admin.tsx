@@ -12,11 +12,28 @@ const ROLE_LABELS: Record<Role, string> = { admin: "Administrador", gerente: "Ge
 
 const HOLIDAY_TYPES: HolidayType[] = ["Feriado nacional", "Feriado provincial", "Día no laborable"];
 
+type AdminTab = "empresa" | "roles" | "licencias" | "etiquetas" | "horasvuelo" | "encuestas" | "feriados" | "importar" | "correos" | "auditoria";
+
+/** Agrupadas por tema, en vez de una sola fila plana de 10 botones */
+const TAB_GROUPS: { label: string; tabs: { key: AdminTab; label: string }[] }[] = [
+  { label: "General", tabs: [{ key: "empresa", label: "Empresa" }, { key: "roles", label: "Roles y permisos" }] },
+  {
+    label: "Catálogos",
+    tabs: [
+      { key: "etiquetas", label: "Etiquetas" },
+      { key: "licencias", label: "Tipos de licencia" },
+      { key: "horasvuelo", label: "Horas de vuelo" },
+    ],
+  },
+  { label: "Comunicación", tabs: [{ key: "encuestas", label: "Encuestas" }, { key: "feriados", label: "Feriados" }, { key: "correos", label: "Correos" }] },
+  { label: "Datos", tabs: [{ key: "importar", label: "Importar datos" }, { key: "auditoria", label: "Auditoría" }] },
+];
+
 export function Admin() {
   const { state, dispatch } = useStore();
   const toast = useToast();
   const [c, setC] = useState(state.company);
-  const [tab, setTab] = useState<"empresa" | "roles" | "licencias" | "etiquetas" | "horasvuelo" | "encuestas" | "feriados" | "importar" | "correos" | "auditoria">("empresa");
+  const [tab, setTab] = useState<AdminTab>("empresa");
   const [newTag, setNewTag] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
   const [newPerm, setNewPerm] = useState<Record<Role, string>>({ admin: "", gerente: "", supervisor: "", usuario: "" });
@@ -245,19 +262,21 @@ export function Admin() {
     <>
       <div className="page-head">
         <h1>Administración</h1>
-        <span className="spacer" />
-        <div className="tabs">
-          <button className={tab === "empresa" ? "active" : ""} onClick={() => setTab("empresa")}>Empresa</button>
-          <button className={tab === "roles" ? "active" : ""} onClick={() => setTab("roles")}>Roles y permisos</button>
-          <button className={tab === "licencias" ? "active" : ""} onClick={() => setTab("licencias")}>Tipos de licencia</button>
-          <button className={tab === "etiquetas" ? "active" : ""} onClick={() => setTab("etiquetas")}>Etiquetas</button>
-          <button className={tab === "horasvuelo" ? "active" : ""} onClick={() => setTab("horasvuelo")}>Horas de vuelo</button>
-          <button className={tab === "encuestas" ? "active" : ""} onClick={() => setTab("encuestas")}>Encuestas</button>
-          <button className={tab === "feriados" ? "active" : ""} onClick={() => setTab("feriados")}>Feriados</button>
-          <button className={tab === "importar" ? "active" : ""} onClick={() => setTab("importar")}>Importar datos</button>
-          <button className={tab === "correos" ? "active" : ""} onClick={() => setTab("correos")}>Correos</button>
-          <button className={tab === "auditoria" ? "active" : ""} onClick={() => setTab("auditoria")}>Auditoría</button>
-        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: 18 }} className="no-print">
+        {TAB_GROUPS.map((g) => (
+          <div key={g.label}>
+            <div style={{ fontSize: 11, fontWeight: 650, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-3)", marginBottom: 6 }}>
+              {g.label}
+            </div>
+            <div className="tabs">
+              {g.tabs.map((t) => (
+                <button key={t.key} className={tab === t.key ? "active" : ""} onClick={() => setTab(t.key)}>{t.label}</button>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
       {tab === "empresa" && (

@@ -1046,6 +1046,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               email: p.email,
               password: "", // Supabase Auth maneja la clave
               role: p.role || "usuario",
+              team: p.team || "latam",
               jornada: p.jornada || "completa",
               supervisorId: p.supervisor_id || null,
               weeklyHours: p.weekly_hours || 40,
@@ -1069,6 +1070,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
                 email: session.user.email || "",
                 password: "",
                 role: (meta.role as any) || "admin",
+                team: "latam",
                 jornada: (meta.jornada as any) || "completa",
                 supervisorId: null,
                 weeklyHours: 40,

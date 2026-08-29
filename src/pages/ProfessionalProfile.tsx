@@ -21,14 +21,17 @@ export function ProfessionalProfile() {
   const { state } = useStore();
   const me = state.users.find((u) => u.id === state.currentUserId)!;
   // Mismo criterio que Reportes: usuario y supervisor solo ven lo propio;
-  // admin/gerente pueden elegir a cualquier persona. Un solo selector para
-  // todas las vistas de esta pestaña.
+  // admin/gerente pueden elegir a cualquier persona. Equipo España también
+  // puede elegir a cualquiera (ver perfiles de terceros es justamente su
+  // acceso), pero nunca edita — ni el propio ni el de nadie más.
   const isEmployee = me.role === "usuario" || me.role === "supervisor";
+  const isEspana = me.team === "espana";
+  const canPickOthers = !isEmployee || isEspana;
   const [userId, setUserId] = useState(me.id);
-  const effectiveUserId = isEmployee ? me.id : userId;
-  const canEdit = effectiveUserId === me.id || !isEmployee;
+  const effectiveUserId = canPickOthers ? userId : me.id;
+  const canEdit = !isEspana && (effectiveUserId === me.id || !isEmployee);
 
-  const [tab, setTab] = useState<"mapa" | "horasvuelo" | "formacion" | "habilidades">("mapa");
+  const [tab, setTab] = useState<"formacion" | "habilidades" | "horasvuelo" | "mapa">("formacion");
   const person = state.users.find((u) => u.id === effectiveUserId) ?? me;
   const supervisor = state.users.find((u) => u.id === person.supervisorId);
 
@@ -37,7 +40,7 @@ export function ProfessionalProfile() {
       <div className="page-head">
         <h1>Perfil profesional</h1>
         <span className="spacer" />
-        {!isEmployee && (
+        {canPickOthers && (
           <select className="select" value={userId} onChange={(e) => setUserId(e.target.value)} style={{ maxWidth: 220 }}>
             {state.users.filter((u) => u.active).map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
@@ -61,17 +64,17 @@ export function ProfessionalProfile() {
         )}
         <span style={{ flex: 1 }} />
         <div className="tabs">
-          <button className={tab === "mapa" ? "active" : ""} onClick={() => setTab("mapa")}>Mapa mental</button>
-          <button className={tab === "horasvuelo" ? "active" : ""} onClick={() => setTab("horasvuelo")}>Horas de vuelo</button>
           <button className={tab === "formacion" ? "active" : ""} onClick={() => setTab("formacion")}>Formación</button>
           <button className={tab === "habilidades" ? "active" : ""} onClick={() => setTab("habilidades")}>Habilidades</button>
+          <button className={tab === "horasvuelo" ? "active" : ""} onClick={() => setTab("horasvuelo")}>Horas de vuelo</button>
+          <button className={tab === "mapa" ? "active" : ""} onClick={() => setTab("mapa")}>Mapa mental</button>
         </div>
       </div>
 
-      {tab === "mapa" && <MindMap userId={effectiveUserId} />}
-      {tab === "horasvuelo" && <FlightHours userId={effectiveUserId} />}
       {tab === "formacion" && <FormacionTab userId={effectiveUserId} canEdit={canEdit} />}
       {tab === "habilidades" && <HabilidadesTab userId={effectiveUserId} isSelf={effectiveUserId === me.id} />}
+      {tab === "horasvuelo" && <FlightHours userId={effectiveUserId} />}
+      {tab === "mapa" && <MindMap userId={effectiveUserId} />}
       {/* <OrgChart meId={effectiveUserId} /> */}
     </>
   );
