@@ -60,6 +60,19 @@ export function fmtYearsSince(dateStr: string, todayISO: string = today()): stri
   return `${years} año${years !== 1 ? "s" : ""} ${months} mes${months !== 1 ? "es" : ""}`;
 }
 
+/** Fecha aproximada de inicio que resulta de restarle a otra una cantidad de
+ * años (admite fracciones, ej. 1.5 = un año y medio) — usado para convertir
+ * "X años de experiencia" (un número suelto) en la fecha de inicio que el
+ * resto de la app espera, al importar datos de un formulario externo. */
+export function yearsAgoISO(years: number, fromISO: string = today()): string {
+  const d = parseISO(fromISO);
+  const wholeYears = Math.floor(years);
+  const fractionDays = Math.round((years - wholeYears) * 365);
+  d.setFullYear(d.getFullYear() - wholeYears);
+  d.setDate(d.getDate() - fractionDays);
+  return isoDate(d);
+}
+
 /** YYYY-MM-DD -> "dd/mm/aaaa" (formato usado en toda la app) */
 export function fmtDate(s: string): string {
   if (!s) return "";

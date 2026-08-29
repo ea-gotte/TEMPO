@@ -4,7 +4,7 @@ import { Switch, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { fmtDate, fmtDateTime, today, uid } from "../utils";
 import type { Holiday, HolidayType, Role, SurveyQuestion, SurveyQuestionType } from "../types";
-import { AccountsImportPanel, ConfigImportExportPanel, ProjectsImportPanel, TimeEntriesImportPanel } from "../components/ImportPanels";
+import { AccountsImportPanel, ConfigImportExportPanel, ProfessionalProfileImportPanel, ProjectsImportPanel, TimeEntriesImportPanel } from "../components/ImportPanels";
 
 const TAG_COLORS = ["#5b6cff", "#12b5a5", "#f5a524", "#f0446c", "#8b5cf6", "#0ea5e9", "#84cc16", "#f97316"];
 
@@ -769,6 +769,7 @@ export function Admin() {
               <AccountsImportPanel />
               <ProjectsImportPanel />
               <TimeEntriesImportPanel />
+              <ProfessionalProfileImportPanel />
               <ConfigImportExportPanel />
             </>
           )}

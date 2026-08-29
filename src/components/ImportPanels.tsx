@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
-import type { AppState, Jornada, ProjectStatus, Role, TimeEntry, User } from "../types";
-import { addDays, downloadFile, normText, parseCSV, parseDMY, toCSV, today, uid } from "../utils";
+import type { AppState, Jornada, ProfessionalEntry, ProfessionalProfile, ProjectStatus, Role, TimeEntry, User } from "../types";
+import { addDays, downloadFile, fmtYearsSince, normText, parseCSV, parseDMY, toCSV, today, uid, yearsAgoISO } from "../utils";
 import { Icon } from "./Icon";
 import { useToast } from "./ui";
 import { COLORS } from "../pages/Projects";
@@ -794,6 +794,193 @@ export function TimeEntriesImportPanel() {
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
             <button className="btn btn-primary" onClick={apply} disabled={newCount === 0 || importing}>
               <Icon name="check" size={14} /> {importing ? "Importando…" : `Confirmar importación (${newCount})`}
+            </button>
+          </div>
+        </>
+      )}
+    </ImportCard>
+  );
+}
+
+/* ============================== Perfil profesional (formulario externo) ============================== */
+
+/** "6 años" / "1.5" / "3 años aprox" / "2 y medio" -> 6 / 1.5 / 3 / 2.5.
+ * El formulario de origen no fuerza formato numérico, así que llegan variantes
+ * de texto libre — se toma el primer número que aparece y "medio" suma 0.5. */
+function parseYears(raw: string): number | null {
+  const s = raw.trim().toLowerCase();
+  if (!s) return null;
+  const m = s.match(/(\d+(?:[.,]\d+)?)/);
+  if (!m) return null;
+  let n = parseFloat(m[1].replace(",", "."));
+  if (/medio/.test(s) && !m[1].includes(".") && !m[1].includes(",")) n += 0.5;
+  return Number.isFinite(n) ? n : null;
+}
+
+interface ProfileImportRow {
+  rowNum: number;
+  email: string;
+  userId: string | null;
+  userName: string | null;
+  formacionAcademica: string;
+  workExperienceSince: string | null;
+  bimExperienceSince: string | null;
+  certificadosUrls: string[];
+  certificadoValidezUrl: string;
+  error?: string;
+}
+
+async function parseProfileTable(file: File, state: AppState): Promise<{ rows: ProfileImportRow[]; headerError?: string }> {
+  const table = await readTable(file);
+  if (table.length < 2) return { rows: [], headerError: "El archivo no tiene filas de datos." };
+  const header = table[0].map((h) => normText(cellToText(h)));
+  const iEmail = findCol(header, ["correo electronico (quantia)", "correo electronico", "email", "correo"]);
+  if (iEmail === -1) return { rows: [], headerError: "El archivo debe tener una columna de correo electrónico." };
+  const iFormacion = findCol(header, ["formacion academica"]);
+  const iCertificados = findCol(header, ["formacion complementaria - certificados"]);
+  const iExpLaboral = findCol(header, ["anos de experiencia - laboral"]);
+  const iCertValidez = findCol(header, ["certificado de validez laboral"]);
+  const iExpBim = findCol(header, ["anos de experiencia - bim"]);
+
+  const todayISO = today();
+  const rows: ProfileImportRow[] = [];
+  for (let r = 1; r < table.length; r++) {
+    const cols = table[r];
+    const email = cellToText(cols[iEmail]).trim();
+    if (!email) continue;
+    const user = state.users.find((u) => normText(u.email) === normText(email));
+    const workYears = iExpLaboral >= 0 ? parseYears(cellToText(cols[iExpLaboral])) : null;
+    const bimYears = iExpBim >= 0 ? parseYears(cellToText(cols[iExpBim])) : null;
+    rows.push({
+      rowNum: r + 1,
+      email,
+      userId: user?.id ?? null,
+      userName: user?.name ?? null,
+      formacionAcademica: iFormacion >= 0 ? cellToText(cols[iFormacion]).trim() : "",
+      workExperienceSince: workYears !== null ? yearsAgoISO(workYears, todayISO) : null,
+      bimExperienceSince: bimYears !== null ? yearsAgoISO(bimYears, todayISO) : null,
+      certificadosUrls: iCertificados >= 0 ? cellToText(cols[iCertificados]).split(",").map((s) => s.trim()).filter(Boolean) : [],
+      certificadoValidezUrl: iCertValidez >= 0 ? cellToText(cols[iCertValidez]).trim() : "",
+      error: user ? undefined : "No se encontró un usuario con ese email.",
+    });
+  }
+  return { rows };
+}
+
+export function ProfessionalProfileImportPanel() {
+  const { state, dispatch } = useStore();
+  const toast = useToast();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [rows, setRows] = useState<ProfileImportRow[]>([]);
+  const [fileError, setFileError] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [importing, setImporting] = useState(false);
+
+  async function onPick(file: File | undefined) {
+    if (!file) return;
+    setFileName(file.name);
+    setImporting(true);
+    try {
+      const { rows: parsed, headerError } = await parseProfileTable(file, state);
+      setFileError(headerError ?? "");
+      setRows(parsed);
+    } catch {
+      setFileError("No se pudo leer el archivo. Verificá que sea el .xlsx o .csv de respuestas exportado desde Google Forms.");
+      setRows([]);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function apply() {
+    const valid = rows.filter((r) => !r.error);
+    if (valid.length === 0) return;
+
+    const profiles = [...state.professionalProfiles];
+    for (const row of valid) {
+      const idx = profiles.findIndex((p) => p.id === row.userId);
+      const prev: ProfessionalProfile = idx >= 0
+        ? profiles[idx]
+        : { id: row.userId!, workExperienceSince: null, bimExperienceSince: null, education: [], courses: [] };
+
+      const education: ProfessionalEntry[] = [...prev.education];
+      if (row.formacionAcademica && !education.some((e) => e.title === row.formacionAcademica)) {
+        education.push({ id: uid(), title: row.formacionAcademica });
+      }
+      if (row.certificadoValidezUrl && !education.some((e) => e.fileUrl === row.certificadoValidezUrl)) {
+        education.push({ id: uid(), title: "Certificado de validez laboral", fileUrl: row.certificadoValidezUrl });
+      }
+
+      const courses: ProfessionalEntry[] = [...prev.courses];
+      for (const url of row.certificadosUrls) {
+        if (courses.some((c) => c.fileUrl === url)) continue;
+        const n = courses.filter((c) => c.title.startsWith("Certificado complementario")).length + 1;
+        courses.push({ id: uid(), title: `Certificado complementario ${n}`, fileUrl: url });
+      }
+
+      const next: ProfessionalProfile = {
+        id: row.userId!,
+        workExperienceSince: row.workExperienceSince ?? prev.workExperienceSince,
+        bimExperienceSince: row.bimExperienceSince ?? prev.bimExperienceSince,
+        education,
+        courses,
+      };
+      if (idx >= 0) profiles[idx] = next;
+      else profiles.push(next);
+    }
+
+    dispatch({ type: "patch", patch: { professionalProfiles: profiles } });
+    dispatch({ type: "audit", action: "Importación de perfil profesional", detail: `${valid.length} personas procesadas desde ${fileName}` });
+    toast(`${valid.length} perfil${valid.length !== 1 ? "es" : ""} actualizado${valid.length !== 1 ? "s" : ""}.`);
+    setRows([]);
+    setFileName("");
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  const validCount = rows.filter((r) => !r.error).length;
+  const errorCount = rows.filter((r) => r.error).length;
+
+  return (
+    <ImportCard
+      title="Perfil profesional (formulario externo)"
+      description='Subí el .xlsx (o .csv) de respuestas exportado desde Google Forms. Columnas reconocidas: correo electrónico, Formación académica, Formación complementaria - Certificados (links separados por coma), Años de experiencia - Laboral, Certificado de validez laboral (link) y Años de experiencia - BIM. Se matchea por email contra los usuarios de TEMPO; "Años de experiencia" (acepta texto libre como "6 años" o "2 y medio") se convierte en la fecha de inicio que usa Formación. Si volvés a importar el mismo archivo no duplica formación ni certificados ya cargados.'
+      inputRef={inputRef}
+      onPick={onPick}
+      fileName={fileName}
+      accept=".xlsx,.xls,.csv"
+      pickLabel="Elegir archivo de respuestas"
+    >
+      {fileError && (
+        <p style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+          <Icon name="alert" size={13} /> {fileError}
+        </p>
+      )}
+      {importing && <p style={{ fontSize: 12.5, color: "var(--text-3)" }}>Leyendo archivo…</p>}
+      {rows.length > 0 && !fileError && (
+        <>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "8px 0" }}>
+            <span className="badge ok">{validCount} listas para importar</span>
+            {errorCount > 0 && <span className="badge bad">{errorCount} sin usuario en TEMPO</span>}
+          </div>
+          <PreviewTable
+            rows={rows}
+            columns={[
+              { label: "Fila", render: (r) => r.rowNum },
+              { label: "Email", render: (r) => r.email },
+              { label: "Persona", render: (r) => r.userName ?? "—" },
+              { label: "Formación", render: (r) => r.formacionAcademica || "—" },
+              { label: "Exp. laboral", render: (r) => (r.workExperienceSince ? fmtYearsSince(r.workExperienceSince) : "—") },
+              { label: "Exp. BIM", render: (r) => (r.bimExperienceSince ? fmtYearsSince(r.bimExperienceSince) : "—") },
+              { label: "Certificados", render: (r) => r.certificadosUrls.length + (r.certificadoValidezUrl ? 1 : 0) },
+              {
+                label: "Estado",
+                render: (r) => (r.error ? <span className="badge bad">{r.error}</span> : <span className="badge ok">Listo</span>),
+              },
+            ]}
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+            <button className="btn btn-primary" onClick={apply} disabled={validCount === 0}>
+              <Icon name="check" size={14} /> Confirmar importación ({validCount})
             </button>
           </div>
         </>

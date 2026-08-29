@@ -69,6 +69,8 @@ export interface ProfessionalEntry {
   title: string;
   institution?: string;
   year?: number;
+  /** Link al certificado/archivo (ej. Google Drive), si vino de una importación */
+  fileUrl?: string;
 }
 
 export interface ProfessionalProfile {

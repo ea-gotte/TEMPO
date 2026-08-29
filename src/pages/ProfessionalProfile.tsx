@@ -199,6 +199,11 @@ function EntryList({
               value={e.year ?? ""} disabled={!canEdit}
               onChange={(ev) => onUpdate(e.id, { year: ev.target.value ? Number(ev.target.value) : undefined })}
             />
+            {e.fileUrl && (
+              <a href={e.fileUrl} target="_blank" rel="noreferrer" className="badge acc" title={e.fileUrl}>
+                <Icon name="paperclip" size={11} /> Ver archivo
+              </a>
+            )}
             {canEdit && (
               <button className="btn btn-ghost btn-sm" onClick={() => onRemove(e.id)}><Icon name="trash" size={13} /></button>
             )}
