@@ -8,6 +8,8 @@ import { supabase } from "../supabase";
 
 const DAY_NAMES = ["L", "M", "X", "J", "V", "S", "D"];
 
+type SortKey = "name" | "role" | "team" | "supervisor" | "jornada" | "hire" | "week";
+
 export function Team() {
   const { state } = useStore();
   const [edit, setEdit] = useState<User | "new" | null>(null);
@@ -16,6 +18,72 @@ export function Team() {
 
   const ws = weekStart(today());
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
+
+  const [fName, setFName] = useState("");
+  const [fRole, setFRole] = useState<Role | "">("");
+  const [fTeam, setFTeam] = useState<TeamType | "">("");
+  const [fSupervisor, setFSupervisor] = useState("");
+  const [fJornada, setFJornada] = useState<Jornada | "">("");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  function sortArrow(key: SortKey) {
+    if (sortKey !== key) return null;
+    return <Icon name="chevron-right" size={11} style={{ transform: sortDir === "asc" ? "rotate(-90deg)" : "rotate(90deg)" }} />;
+  }
+
+  const weekMinById = new Map(
+    state.users.map((u) => [
+      u.id,
+      state.entries.filter((e) => e.userId === u.id && weekDays.includes(e.date)).reduce((a, e) => a + (e.end - e.start), 0),
+    ]),
+  );
+
+  const filtersActive = Boolean(fName || fRole || fTeam || fSupervisor || fJornada);
+  const filteredUsers = state.users.filter((u) => {
+    if (fName && !u.name.toLowerCase().includes(fName.trim().toLowerCase()) && !u.email.toLowerCase().includes(fName.trim().toLowerCase())) return false;
+    if (fRole && u.role !== fRole) return false;
+    if (fTeam && u.team !== fTeam) return false;
+    if (fSupervisor && u.supervisorId !== fSupervisor) return false;
+    if (fJornada && u.jornada !== fJornada) return false;
+    return true;
+  });
+
+  const sortedUsers = sortKey
+    ? [...filteredUsers].sort((a, b) => {
+        const dir = sortDir === "asc" ? 1 : -1;
+        switch (sortKey) {
+          case "name": return a.name.localeCompare(b.name) * dir;
+          case "role": return a.role.localeCompare(b.role) * dir;
+          case "team": return a.team.localeCompare(b.team) * dir;
+          case "supervisor": {
+            const an = state.users.find((x) => x.id === a.supervisorId)?.name ?? "";
+            const bn = state.users.find((x) => x.id === b.supervisorId)?.name ?? "";
+            return an.localeCompare(bn) * dir;
+          }
+          case "jornada": return (a.weeklyHours - b.weeklyHours) * dir;
+          case "hire": return a.hireDate.localeCompare(b.hireDate) * dir;
+          case "week": return ((weekMinById.get(a.id) ?? 0) - (weekMinById.get(b.id) ?? 0)) * dir;
+          default: return 0;
+        }
+      })
+    : filteredUsers;
+
+  function clearFilters() {
+    setFName("");
+    setFRole("");
+    setFTeam("");
+    setFSupervisor("");
+    setFJornada("");
+  }
 
   return (
     <>
@@ -36,28 +104,74 @@ export function Team() {
         </div>
       </div>
 
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+        <p className="page-sub" style={{ margin: 0 }}>
+          {filteredUsers.length} de {state.users.length} personas
+        </p>
+        {filtersActive && (
+          <button className="btn btn-ghost btn-sm" onClick={clearFilters}>Limpiar filtros</button>
+        )}
+      </div>
+
       <div className="card" style={{ overflowX: "auto" }}>
         <table className="table">
           <thead>
             <tr>
-              <th>Persona</th>
-              <th>Rol</th>
-              <th>Equipo</th>
-              <th>Supervisor</th>
-              <th>Jornada</th>
-              <th>Ingreso / Vacaciones</th>
+              <th className="th-sort" onClick={() => toggleSort("name")}>Persona {sortArrow("name")}</th>
+              <th className="th-sort" onClick={() => toggleSort("role")}>Rol {sortArrow("role")}</th>
+              <th className="th-sort" onClick={() => toggleSort("team")}>Equipo {sortArrow("team")}</th>
+              <th className="th-sort" onClick={() => toggleSort("supervisor")}>Supervisor {sortArrow("supervisor")}</th>
+              <th className="th-sort" onClick={() => toggleSort("jornada")}>Jornada {sortArrow("jornada")}</th>
+              <th className="th-sort" onClick={() => toggleSort("hire")}>Ingreso / Vacaciones {sortArrow("hire")}</th>
               <th>Días laborales</th>
-              <th>Esta semana</th>
+              <th className="th-sort" onClick={() => toggleSort("week")}>Esta semana {sortArrow("week")}</th>
+              {canManage && <th></th>}
+            </tr>
+            <tr className="th-filters">
+              <th>
+                <input className="input" placeholder="Buscar…" value={fName} onChange={(e) => setFName(e.target.value)} onClick={(e) => e.stopPropagation()} />
+              </th>
+              <th>
+                <select className="select" value={fRole} onChange={(e) => setFRole(e.target.value as Role | "")} onClick={(e) => e.stopPropagation()}>
+                  <option value="">Todos</option>
+                  <option value="admin">Administrador</option>
+                  <option value="gerente">Gerente</option>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="usuario">Usuario</option>
+                </select>
+              </th>
+              <th>
+                <select className="select" value={fTeam} onChange={(e) => setFTeam(e.target.value as TeamType | "")} onClick={(e) => e.stopPropagation()}>
+                  <option value="">Todos</option>
+                  <option value="latam">LATAM</option>
+                  <option value="espana">España</option>
+                </select>
+              </th>
+              <th>
+                <select className="select" value={fSupervisor} onChange={(e) => setFSupervisor(e.target.value)} onClick={(e) => e.stopPropagation()}>
+                  <option value="">Todos</option>
+                  {state.users.filter((u) => u.role !== "usuario").map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </th>
+              <th>
+                <select className="select" value={fJornada} onChange={(e) => setFJornada(e.target.value as Jornada | "")} onClick={(e) => e.stopPropagation()}>
+                  <option value="">Todas</option>
+                  <option value="completa">Completa</option>
+                  <option value="media">Media</option>
+                </select>
+              </th>
+              <th></th>
+              <th></th>
               {canManage && <th></th>}
             </tr>
           </thead>
           <tbody>
-            {state.users.map((u) => {
+            {sortedUsers.map((u) => {
               const sup = state.users.find((x) => x.id === u.supervisorId);
               const vac = vacationInfo(state, u.id, today());
-              const weekMin = state.entries
-                .filter((e) => e.userId === u.id && weekDays.includes(e.date))
-                .reduce((a, e) => a + (e.end - e.start), 0);
+              const weekMin = weekMinById.get(u.id) ?? 0;
               const pct = Math.min(100, (weekMin / (u.weeklyHours * 60)) * 100);
               return (
                 <tr key={u.id}>
