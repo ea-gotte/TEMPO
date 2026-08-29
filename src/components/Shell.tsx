@@ -45,6 +45,7 @@ export type PageKey =
   | "calendar"
   | "reports"
   | "profile"
+  | "summary"
   | "projects"
   | "team"
   | "control"
@@ -67,6 +68,7 @@ const NAV: { section: string; items: { key: PageKey; label: string; ico: IconNam
   {
     section: "Gestión",
     items: [
+      { key: "summary", label: "Resumen de personal", ico: "star" },
       { key: "projects", label: "Clientes y proyectos", ico: "folder" },
       { key: "team", label: "Equipo", ico: "users" },
       { key: "control", label: "Control de horas", ico: "check-circle" },
