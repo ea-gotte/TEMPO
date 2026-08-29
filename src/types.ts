@@ -120,6 +120,28 @@ export interface SurveyResponse {
   submittedAt: string; // ISO
 }
 
+/**
+ * Buzón de ideas: cualquier persona reporta un error o una mejora; el
+ * registro es público (lo ve todo el mundo, no solo el admin). El admin
+ * cambia el estado y puede dejar una respuesta — quien lo reportó recibe una
+ * notificación cuando eso pasa.
+ */
+export type FeedbackType = "bug" | "mejora";
+export type FeedbackStatus = "pendiente" | "en_progreso" | "implementado" | "futuras_versiones" | "rechazado";
+
+export interface FeedbackItem {
+  id: ID;
+  userId: ID;
+  type: FeedbackType;
+  title: string;
+  description: string;
+  status: FeedbackStatus;
+  createdAt: string; // ISO
+  adminResponse?: string;
+  respondedBy?: ID;
+  respondedAt?: string; // ISO
+}
+
 export type Role = "admin" | "gerente" | "supervisor" | "usuario";
 
 export type Jornada = "completa" | "media";
@@ -270,6 +292,7 @@ export interface Notification {
     | "falta-carga"
     | "vencimiento"
     | "encuesta"
+    | "feedback"
     | "error";
   title: string;
   body: string;
@@ -356,6 +379,7 @@ export interface AppState {
   professionalProfiles: ProfessionalProfile[];
   surveys: Survey[];
   surveyResponses: SurveyResponse[];
+  feedbackItems: FeedbackItem[];
   users: User[];
   entries: TimeEntry[];
   timers: RunningTimer[];

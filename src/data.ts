@@ -212,6 +212,7 @@ export function seedState(): AppState {
     professionalProfiles: [],
     surveys: [],
     surveyResponses: [],
+    feedbackItems: [],
     users: [],
     entries: seedEntries(),
     timers: [],

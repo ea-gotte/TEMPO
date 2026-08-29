@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
-import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role, FlightCategory, FlightActivity, ProfessionalProfile, Survey, SurveyResponse } from "./types";
+import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role, FlightCategory, FlightActivity, ProfessionalProfile, Survey, SurveyResponse, FeedbackItem } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword, addDays, addMonths, parseISO, today } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
@@ -45,6 +45,7 @@ type Action =
   | { type: "syncProfessionalProfiles"; professionalProfiles: ProfessionalProfile[] }
   | { type: "syncSurveys"; surveys: Survey[] }
   | { type: "syncSurveyResponses"; surveyResponses: SurveyResponse[] }
+  | { type: "syncFeedbackItems"; feedbackItems: FeedbackItem[] }
   | {
       type: "syncSettings";
       company: CompanySettings;
@@ -312,6 +313,8 @@ function baseReducer(s: AppState, a: Action): AppState {
       return { ...s, surveys: a.surveys };
     case "syncSurveyResponses":
       return { ...s, surveyResponses: a.surveyResponses };
+    case "syncFeedbackItems":
+      return { ...s, feedbackItems: a.feedbackItems };
     case "syncSettings":
       return { ...s, company: a.company, rolePermissions: a.rolePermissions, leaveTypeConfig: a.leaveTypeConfig, tags: a.tags };
     case "syncNotifications":
@@ -341,6 +344,7 @@ function loadInitial(): AppState {
           professionalProfiles: parsed.professionalProfiles ?? [],
           surveys: parsed.surveys ?? [],
           surveyResponses: parsed.surveyResponses ?? [],
+          feedbackItems: parsed.feedbackItems ?? [],
           users: [],
           projects: parsed.projects.map((p) => ({
             ...p,
@@ -565,6 +569,35 @@ function fromSurveyResponseRow(r: any): SurveyResponse {
   return { id: r.id, surveyId: r.survey_id, userId: r.user_id, answers: r.answers ?? [], submittedAt: r.submitted_at };
 }
 
+function toFeedbackItemRow(f: FeedbackItem) {
+  return {
+    id: f.id,
+    user_id: f.userId,
+    type: f.type,
+    title: f.title,
+    description: f.description,
+    status: f.status,
+    created_at: f.createdAt,
+    admin_response: f.adminResponse ?? null,
+    responded_by: f.respondedBy ?? null,
+    responded_at: f.respondedAt ?? null,
+  };
+}
+function fromFeedbackItemRow(r: any): FeedbackItem {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    type: r.type,
+    title: r.title,
+    description: r.description ?? "",
+    status: r.status,
+    createdAt: r.created_at,
+    adminResponse: r.admin_response ?? undefined,
+    respondedBy: r.responded_by ?? undefined,
+    respondedAt: r.responded_at ?? undefined,
+  };
+}
+
 function toSubProjectRow(sp: SubProject) {
   return {
     id: sp.id,
@@ -697,6 +730,7 @@ async function fetchEntriesAndAbsences(
     { data: profileRows, error: profilesErr },
     { data: surveyRows, error: surveysErr },
     { data: surveyResponseRows, error: surveyResponsesErr },
+    { data: feedbackItemRows, error: feedbackItemsErr },
   ] = await Promise.all([
     fetchAllRows("time_entries"),
     fetchAllRows("absence_requests"),
@@ -714,6 +748,7 @@ async function fetchEntriesAndAbsences(
     fetchAllRows("professional_profiles"),
     fetchAllRows("surveys"),
     fetchAllRows("survey_responses"),
+    fetchAllRows("feedback_items"),
   ]);
   if (entriesErr) console.warn("Error al leer time_entries:", entriesErr);
   if (absencesErr) console.warn("Error al leer absence_requests:", absencesErr);
@@ -731,6 +766,7 @@ async function fetchEntriesAndAbsences(
   if (profilesErr) console.warn("Error al leer professional_profiles:", profilesErr);
   if (surveysErr) console.warn("Error al leer surveys:", surveysErr);
   if (surveyResponsesErr) console.warn("Error al leer survey_responses:", surveyResponsesErr);
+  if (feedbackItemsErr) console.warn("Error al leer feedback_items:", feedbackItemsErr);
   // Guard contra respuestas fuera de orden: si mientras esta consulta viajaba
   // ida y vuelta se disparó un refetch más nuevo (p.ej. por el propio drag de
   // una tarjeta en Calendario), esta respuesta ya está desactualizada — aplicarla
@@ -752,6 +788,7 @@ async function fetchEntriesAndAbsences(
   dispatch({ type: "syncProfessionalProfiles", professionalProfiles: (profileRows || []).map(fromProfessionalProfileRow) });
   dispatch({ type: "syncSurveys", surveys: (surveyRows || []).map(fromSurveyRow) });
   dispatch({ type: "syncSurveyResponses", surveyResponses: (surveyResponseRows || []).map(fromSurveyResponseRow) });
+  dispatch({ type: "syncFeedbackItems", feedbackItems: (feedbackItemRows || []).map(fromFeedbackItemRow) });
   if (settingsRow) {
     dispatch({
       type: "syncSettings",
@@ -857,6 +894,10 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
       }
       if (a.patch.surveyResponses) {
         const err = await reconcileTable("survey_responses", prevState.surveyResponses, a.patch.surveyResponses, toSurveyResponseRow);
+        if (err) errors.push(err);
+      }
+      if (a.patch.feedbackItems) {
+        const err = await reconcileTable("feedback_items", prevState.feedbackItems, a.patch.feedbackItems, toFeedbackItemRow);
         if (err) errors.push(err);
       }
       if (a.patch.company || a.patch.tags || a.patch.rolePermissions || a.patch.leaveTypeConfig) {
@@ -1164,6 +1205,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "professional_profiles" }, debouncedRefetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "surveys" }, debouncedRefetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "survey_responses" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "feedback_items" }, debouncedRefetch)
       // audit_log queda afuera a propósito: casi cualquier acción genera una fila ahí,
       // y traer las 300 de vuelta en cada una sería un refetch constante para poco beneficio.
       .subscribe();

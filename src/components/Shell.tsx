@@ -7,7 +7,7 @@ import { Icon, type IconName } from "./Icon";
 import { supabase } from "../supabase";
 
 /** Páginas visibles para cualquier rol, incluido "usuario" (vista básica) */
-export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "profile", "absences", "corp"];
+export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "profile", "absences", "corp", "feedback"];
 
 /** Además de las básicas, el supervisor solo ve Control de horas (acotado a su equipo) */
 const SUPERVISOR_EXTRA_PAGES: PageKey[] = ["control"];
@@ -15,12 +15,13 @@ const SUPERVISOR_EXTRA_PAGES: PageKey[] = ["control"];
 /**
  * Equipo España: acceso principalmente de consulta — perfil profesional
  * (propio y de terceros) y reportes de horas/actividad, nada del uso diario
- * (registro de tiempo, ausencias propias, administración). El gerente de
+ * (registro de tiempo, ausencias propias, administración). El buzón de ideas
+ * queda igual para todos (no es una acción administrativa). El gerente de
  * España conserva la facultad de aprobar ausencias como única excepción; su
  * gestión de equipo sigue en las plataformas que ya usa ese equipo, no acá.
  * No cambia el rol de nadie — mismo rol de siempre, acceso más acotado.
  */
-const ESPANA_PAGES: PageKey[] = ["profile", "reports"];
+const ESPANA_PAGES: PageKey[] = ["profile", "reports", "feedback"];
 
 /**
  * Admin: todo. Gerente: todo menos Administración. Supervisor: las básicas más
@@ -45,6 +46,7 @@ export type PageKey =
   | "calendar"
   | "reports"
   | "profile"
+  | "feedback"
   | "summary"
   | "projects"
   | "team"
@@ -63,6 +65,7 @@ const NAV: { section: string; items: { key: PageKey; label: string; ico: IconNam
       { key: "dashboard", label: "Dashboard", ico: "dashboard" },
       { key: "reports", label: "Reportes", ico: "trending-up" },
       { key: "profile", label: "Perfil profesional", ico: "user" },
+      { key: "feedback", label: "Buzón de ideas", ico: "lightbulb" },
     ],
   },
   {
@@ -97,6 +100,7 @@ const KIND_ICON: Record<string, IconName> = {
   "falta-carga": "alert",
   vencimiento: "hourglass",
   encuesta: "clipboard",
+  feedback: "lightbulb",
   error: "alert",
 };
 
