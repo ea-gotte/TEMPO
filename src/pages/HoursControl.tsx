@@ -270,9 +270,12 @@ function ComplianceChart({ incidents, me, allUsers }: { incidents: HoursIncident
   const escalated = incidents.filter((i) => i.escalationLevel > 0 || i.fallbackToAdmins).length;
   const isAdmin = me.role === "admin";
 
+  // Equipo España se ve en el organigrama (para tener el panorama completo de
+  // la cadena de mando), pero queda exento: no usa TEMPO para cargar horas,
+  // así que nunca se le exige nada acá (ver computeHoursIncidents, que ya no
+  // genera incidencias para ese equipo).
   const roots = useMemo(() => {
-    // Equipo España no usa TEMPO para cargar horas: no participa de este control.
-    const active = allUsers.filter((u) => u.active && u.team !== "espana");
+    const active = allUsers.filter((u) => u.active);
     if (isAdmin || me.role === "gerente") return buildForest(active);
     const ids = teamIds(active, me.id);
     return buildForest(active.filter((u) => ids.has(u.id)));
@@ -329,6 +332,9 @@ function ComplianceChart({ incidents, me, allUsers }: { incidents: HoursIncident
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)" }}>
             <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--warning)" }} /> Tiene el aviso activo
           </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)" }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--surface-3)", border: "1px solid var(--border-strong)" }} /> Equipo España (exento)
+          </span>
         </div>
 
         {nodes.length === 0 ? (
@@ -354,13 +360,15 @@ function ComplianceChart({ incidents, me, allUsers }: { incidents: HoursIncident
                 })}
               </svg>
               {nodes.map((n) => {
-                const status = failingIds.has(n.user.id) ? "status-red" : onPathIds.has(n.user.id) ? "status-amber" : "status-ok";
+                const status = n.user.team === "espana"
+                  ? "status-exento"
+                  : failingIds.has(n.user.id) ? "status-red" : onPathIds.has(n.user.id) ? "status-amber" : "status-ok";
                 return (
                   <div
                     key={n.user.id}
                     className={`org-card ${status}${n.user.id === me.id ? " me" : ""}`}
                     style={{ position: "absolute", left: n.x, top: n.y, width: CARD_W, height: CARD_H }}
-                    title={`${n.user.name} · ${ROLE_LABEL[n.user.role] ?? n.user.role}`}
+                    title={`${n.user.name} · ${ROLE_LABEL[n.user.role] ?? n.user.role}${n.user.team === "espana" ? " · Equipo España (exento de carga de horas)" : ""}`}
                   >
                     <Avatar name={n.user.name} size={26} />
                     <div style={{ minWidth: 0 }}>
