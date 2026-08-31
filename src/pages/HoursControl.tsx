@@ -14,6 +14,7 @@ export function HoursControl() {
   const toast = useToast();
   const me = state.users.find((u) => u.id === state.currentUserId)!;
   const [anchor, setAnchor] = useState(today());
+  const [tab, setTab] = useState<"semana" | "cadena">("semana");
 
   const ws = weekStart(anchor);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(ws, i)), [ws]);
@@ -28,6 +29,8 @@ export function HoursControl() {
   const rows = useMemo(() => {
     return state.users
       .filter((u) => u.active)
+      // Equipo España no usa TEMPO para cargar horas (ver canSeePage en Shell.tsx).
+      .filter((u) => u.team !== "espana")
       .filter((u) => me.role !== "supervisor" || myDownline.has(u.id))
       .map((u) => {
         const perDay = weekDays.map((d) =>
@@ -94,31 +97,47 @@ export function HoursControl() {
       <div className="page-head">
         <h1>Control de horas</h1>
         <span className="spacer" />
-        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, -7))} aria-label="Semana anterior"><Icon name="arrow-left" size={14} /></button>
-        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
-        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, 7))} aria-label="Semana siguiente"><Icon name="arrow-right" size={14} /></button>
-      </div>
-      <p className="page-sub">
-        Semana del {dayLabel(ws)} al {dayLabel(addDays(ws, 6))} · la carga esperada se controla según el tipo de jornada de cada persona (completa o media).
-      </p>
-
-      <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))" }}>
-        <div className="card kpi">
-          <span className="label"><Icon name="check-circle" size={14} /> Carga OK</span>
-          <div className="value">{summary.ok}</div>
-        </div>
-        <div className="card kpi">
-          <span className="label"><Icon name="alert" size={14} /> Incompletos</span>
-          <div className="value">{summary.incompleto}</div>
-        </div>
-        <div className="card kpi">
-          <span className="label"><Icon name="ban" size={14} /> Sin carga</span>
-          <div className="value">{summary.sinCarga}</div>
-          <div className="hint">Notificalos con el botón "Notificar"</div>
-        </div>
+        {tab === "semana" && (
+          <>
+            <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, -7))} aria-label="Semana anterior"><Icon name="arrow-left" size={14} /></button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, 7))} aria-label="Semana siguiente"><Icon name="arrow-right" size={14} /></button>
+          </>
+        )}
       </div>
 
-      <div className="card" style={{ overflowX: "auto" }}>
+      <div className="tabs" style={{ marginBottom: 14 }}>
+        <button className={tab === "semana" ? "active" : ""} onClick={() => setTab("semana")}>Semana actual</button>
+        <button className={tab === "cadena" ? "active" : ""} onClick={() => setTab("cadena")}>
+          Cadena de mando{incidents.length > 0 ? ` (${incidents.length})` : ""}
+        </button>
+      </div>
+
+      {tab === "cadena" ? (
+        <ComplianceChart incidents={incidents} me={me} allUsers={state.users} />
+      ) : (
+        <>
+          <p className="page-sub">
+            Semana del {dayLabel(ws)} al {dayLabel(addDays(ws, 6))} · la carga esperada se controla según el tipo de jornada de cada persona (completa o media).
+          </p>
+
+          <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))" }}>
+            <div className="card kpi">
+              <span className="label"><Icon name="check-circle" size={14} /> Carga OK</span>
+              <div className="value">{summary.ok}</div>
+            </div>
+            <div className="card kpi">
+              <span className="label"><Icon name="alert" size={14} /> Incompletos</span>
+              <div className="value">{summary.incompleto}</div>
+            </div>
+            <div className="card kpi">
+              <span className="label"><Icon name="ban" size={14} /> Sin carga</span>
+              <div className="value">{summary.sinCarga}</div>
+              <div className="hint">Notificalos con el botón "Notificar"</div>
+            </div>
+          </div>
+
+          <div className="card" style={{ overflowX: "auto" }}>
         <table className="table">
           <thead>
             <tr>
@@ -231,9 +250,9 @@ export function HoursControl() {
             })}
           </tbody>
         </table>
-      </div>
-
-      <ComplianceChart incidents={incidents} me={me} allUsers={state.users} />
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -252,7 +271,8 @@ function ComplianceChart({ incidents, me, allUsers }: { incidents: HoursIncident
   const isAdmin = me.role === "admin";
 
   const roots = useMemo(() => {
-    const active = allUsers.filter((u) => u.active);
+    // Equipo España no usa TEMPO para cargar horas: no participa de este control.
+    const active = allUsers.filter((u) => u.active && u.team !== "espana");
     if (isAdmin || me.role === "gerente") return buildForest(active);
     const ids = teamIds(active, me.id);
     return buildForest(active.filter((u) => ids.has(u.id)));
@@ -281,8 +301,7 @@ function ComplianceChart({ incidents, me, allUsers }: { incidents: HoursIncident
   }, [incidents, allUsers]);
 
   return (
-    <div style={{ marginTop: 20 }}>
-      <h2 style={{ fontSize: 16, marginBottom: 4 }}>Cadena de mando — incidencias de carga</h2>
+    <div>
       <p className="page-sub" style={{ marginTop: 0 }}>
         Semanas ya cerradas con carga incompleta o sin cargar. Se resuelven solas apenas la persona carga esas horas; si
         nadie actúa, el aviso escala automáticamente al responsable de arriba en la cadena cada 2 días.

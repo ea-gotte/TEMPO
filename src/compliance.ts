@@ -75,7 +75,9 @@ export function computeHoursIncidents(state: AppState, todayISO: string): HoursI
   const incidents: HoursIncident[] = [];
   const thisWeek = weekStart(todayISO);
   for (const u of state.users) {
-    if (!u.active || u.weeklyHours <= 0) continue;
+    // Equipo España no usa TEMPO para cargar horas (ver canSeePage en Shell.tsx):
+    // no tiene sentido pedirles que "carguen" nada, así que nunca generan incidencia.
+    if (!u.active || u.weeklyHours <= 0 || u.team === "espana") continue;
     for (let i = 1; i <= LOOKBACK_WEEKS; i++) {
       const ws = addDays(thisWeek, -7 * i);
       const weekEnd = addDays(ws, 6);
@@ -126,9 +128,11 @@ export function visibleIncidents(incidents: HoursIncident[], viewer: User, users
  * Avisos automáticos para el usuario logueado: se generan cuando él es el
  * destinatario actual de una incidencia (directo o por escalamiento), o
  * cuando la cadena se agotó sin llegar a un admin y él lo es (aviso de
- * respaldo). El texto queda fijo por incidencia+nivel para poder
- * deduplicar contra el historial de notificaciones (mismo patrón que el
- * resto de los avisos automáticos de la app).
+ * respaldo). Se manda como máximo un recordatorio por día por incidencia
+ * (la fecha del día queda en el texto, que es lo que se usa para
+ * deduplicar contra el historial de notificaciones — mismo patrón que el
+ * resto de los avisos automáticos de la app): si sigue sin resolverse,
+ * al otro día se vuelve a avisar.
  */
 export function myComplianceAlerts(state: AppState, meId: ID, todayISO: string): { title: string; body: string }[] {
   const me = state.users.find((u) => u.id === meId);
@@ -146,7 +150,7 @@ export function myComplianceAlerts(state: AppState, meId: ID, todayISO: string):
     const escalated = inc.escalationLevel > 0 || isAdminFallback;
     alerts.push({
       title: escalated ? "Incidencia de carga escalada" : "Aviso de carga de horas",
-      body: `${user.name} ${severityLabel} de la semana del ${dayLabel(inc.weekStart)} (nivel ${levelTag}).`,
+      body: `Hoy ${dayLabel(todayISO)}: ${user.name} ${severityLabel} de la semana del ${dayLabel(inc.weekStart)} (nivel ${levelTag}).`,
     });
   }
   return alerts;
