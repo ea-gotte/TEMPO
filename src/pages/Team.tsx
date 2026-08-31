@@ -1,23 +1,20 @@
 import React, { useState } from "react";
 import { useStore, vacationInfo } from "../store";
 import type { Jornada, Role, Team as TeamType, User } from "../types";
-import { uid, weekStart, addDays, fmtDate, fmtDur, today, hashPassword, validatePassword } from "../utils";
+import { uid, fmtDate, today, hashPassword, validatePassword } from "../utils";
 import { Avatar, DateField, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { supabase } from "../supabase";
 
 const DAY_NAMES = ["L", "M", "X", "J", "V", "S", "D"];
 
-type SortKey = "name" | "role" | "team" | "supervisor" | "jornada" | "hire" | "week";
+type SortKey = "name" | "role" | "team" | "supervisor" | "jornada" | "hire";
 
 export function Team() {
   const { state } = useStore();
   const [edit, setEdit] = useState<User | "new" | null>(null);
   const me = state.users.find((u) => u.id === state.currentUserId)!;
   const canManage = me.role === "admin" || me.role === "gerente";
-
-  const ws = weekStart(today());
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
 
   const [fName, setFName] = useState("");
   const [fRole, setFRole] = useState<Role | "">("");
@@ -39,13 +36,6 @@ export function Team() {
     if (sortKey !== key) return null;
     return <Icon name="chevron-right" size={11} style={{ transform: sortDir === "asc" ? "rotate(-90deg)" : "rotate(90deg)" }} />;
   }
-
-  const weekMinById = new Map(
-    state.users.map((u) => [
-      u.id,
-      state.entries.filter((e) => e.userId === u.id && weekDays.includes(e.date)).reduce((a, e) => a + (e.end - e.start), 0),
-    ]),
-  );
 
   const filtersActive = Boolean(fName || fRole || fTeam || fSupervisor || fJornada);
   const filteredUsers = state.users.filter((u) => {
@@ -71,7 +61,6 @@ export function Team() {
           }
           case "jornada": return (a.weeklyHours - b.weeklyHours) * dir;
           case "hire": return a.hireDate.localeCompare(b.hireDate) * dir;
-          case "week": return ((weekMinById.get(a.id) ?? 0) - (weekMinById.get(b.id) ?? 0)) * dir;
           default: return 0;
         }
       })
@@ -124,7 +113,6 @@ export function Team() {
               <th className="th-sort" onClick={() => toggleSort("jornada")}>Jornada {sortArrow("jornada")}</th>
               <th className="th-sort" onClick={() => toggleSort("hire")}>Ingreso / Vacaciones {sortArrow("hire")}</th>
               <th>Días laborales</th>
-              <th className="th-sort" onClick={() => toggleSort("week")}>Esta semana {sortArrow("week")}</th>
               {canManage && <th></th>}
             </tr>
             <tr className="th-filters">
@@ -163,7 +151,6 @@ export function Team() {
                 </select>
               </th>
               <th></th>
-              <th></th>
               {canManage && <th></th>}
             </tr>
           </thead>
@@ -171,7 +158,6 @@ export function Team() {
             {sortedUsers.map((u) => {
               const sup = state.users.find((x) => x.id === u.supervisorId);
               const vac = vacationInfo(state, u.id, today());
-              const weekMin = weekMinById.get(u.id) ?? 0;
               return (
                 <tr key={u.id}>
                   <td>
@@ -223,11 +209,6 @@ export function Team() {
                           {d}
                         </span>
                       ))}
-                    </div>
-                  </td>
-                  <td style={{ minWidth: 120 }}>
-                    <div style={{ fontSize: 12, fontFamily: "var(--mono)" }}>
-                      {fmtDur(weekMin)} / {u.weeklyHours} h
                     </div>
                   </td>
                   {canManage && (
