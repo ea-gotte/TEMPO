@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useStore, vacationInfo } from "../store";
 import type { Role, Team } from "../types";
 import { dayLabel, fmtDate, today, validatePassword } from "../utils";
+import { myComplianceAlerts } from "../compliance";
 import { Avatar, Modal, useToast } from "./ui";
 import { Icon, type IconName } from "./Icon";
 import { supabase } from "../supabase";
@@ -164,6 +165,19 @@ export function Shell({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me.id, pendingSurvey?.id]);
+
+  // Cadena de mando: avisos automáticos de carga de horas — cuando alguien de
+  // la línea de mando de este usuario (directa o escalada) no cargó una
+  // semana ya cerrada. Ver compliance.ts para la lógica de escalamiento.
+  const complianceAlerts = useMemo(() => myComplianceAlerts(state, me.id, today()), [state.users, state.entries, me.id]);
+  useEffect(() => {
+    for (const alert of complianceAlerts) {
+      if (!state.notifications.some((n) => n.kind === "falta-carga" && n.body === alert.body)) {
+        dispatch({ type: "notify", n: { userId: me.id, kind: "falta-carga", title: alert.title, body: alert.body } });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [complianceAlerts.map((a) => a.body).join("|")]);
 
   const unread = state.notifications.filter((n) => !n.read).length;
   const pending = isApprover ? state.absences.filter((a) => a.status === "Pendiente").length + otPending : 0;

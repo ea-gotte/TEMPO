@@ -3,6 +3,8 @@ import { overtimeClaimDeadline, useStore } from "../store";
 import { addDays, dayLabel, fmtDur, today, uid, weekStart } from "../utils";
 import { Avatar, Empty, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
+import { computeHoursIncidents, getDownlineIds, visibleIncidents, type HoursIncident } from "../compliance";
+import type { User } from "../types";
 
 const DAY_SHORT = ["L", "M", "X", "J", "V", "S", "D"];
 
@@ -17,12 +19,15 @@ export function HoursControl() {
   // Las horas extra de una semana solo se pueden reclamar hasta 3 meses después de esa semana.
   const claimExpired = today() > overtimeClaimDeadline(ws);
 
+  // El supervisor controla a toda su línea de mando (directos e indirectos,
+  // a través de los supervisores que dependen de él); admin y gerente ven a
+  // todo el mundo. Ver compliance.ts.
+  const myDownline = useMemo(() => getDownlineIds(me.id, state.users), [state.users, me.id]);
+
   const rows = useMemo(() => {
     return state.users
       .filter((u) => u.active)
-      // El supervisor solo controla a quienes lo tienen asignado como su Supervisor;
-      // admin y gerente ven a todo el mundo.
-      .filter((u) => me.role !== "supervisor" || u.supervisorId === me.id)
+      .filter((u) => me.role !== "supervisor" || myDownline.has(u.id))
       .map((u) => {
         const perDay = weekDays.map((d) =>
           state.entries.filter((e) => e.userId === u.id && e.date === d).reduce((a, e) => a + (e.end - e.start), 0),
@@ -36,7 +41,14 @@ export function HoursControl() {
           loaded === 0 ? "sin-carga" : overtimeMin > 0 ? "extra" : loaded >= expected * 0.95 ? "ok" : "incompleto";
         return { u, perDay, loaded, expected, overtimeMin, supervisor, otRequest, status };
       });
-  }, [state.users, state.entries, state.overtime, weekDays, ws, me.id, me.role]);
+  }, [state.users, state.entries, state.overtime, weekDays, ws, me.id, me.role, myDownline]);
+
+  // Incidencias de la cadena de mando: semanas ya cerradas donde alguien no
+  // cargó correctamente, con su nivel de escalamiento actual. Ver compliance.ts.
+  const incidents = useMemo(() => {
+    const all = computeHoursIncidents(state, today());
+    return visibleIncidents(all, me, state.users);
+  }, [state, me]);
 
   if (me.role === "usuario") {
     return (
@@ -219,6 +231,114 @@ export function HoursControl() {
           </tbody>
         </table>
       </div>
+
+      <ComplianceSection incidents={incidents} users={state.users} />
     </>
+  );
+}
+
+const ROLE_LABEL: Record<string, string> = { admin: "Admin", gerente: "Gerente", supervisor: "Supervisor", usuario: "Usuario" };
+
+function ComplianceSection({ incidents, users }: { incidents: HoursIncident[]; users: User[] }) {
+  const escalated = incidents.filter((i) => i.escalationLevel > 0 || i.fallbackToAdmins).length;
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <h2 style={{ fontSize: 16, marginBottom: 4 }}>Cadena de mando — incidencias de carga</h2>
+      <p className="page-sub" style={{ marginTop: 0 }}>
+        Semanas ya cerradas con carga incompleta o sin cargar. Se resuelven solas apenas la persona carga esas horas; si
+        nadie actúa, el aviso escala automáticamente al responsable de arriba en la cadena cada 2 días.
+      </p>
+
+      <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))" }}>
+        <div className="card kpi">
+          <span className="label"><Icon name="alert" size={14} /> Incidencias abiertas</span>
+          <div className="value">{incidents.length}</div>
+        </div>
+        <div className="card kpi">
+          <span className="label"><Icon name="arrow-right" size={14} /> Escaladas</span>
+          <div className="value">{escalated}</div>
+        </div>
+      </div>
+
+      {incidents.length === 0 ? (
+        <div className="card card-pad">
+          <Empty icon="check-circle" text="Sin incidencias" sub="Nadie de tu línea de mando tiene semanas cerradas con carga incompleta." />
+        </div>
+      ) : (
+        <div className="card" style={{ overflowX: "auto" }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Persona</th>
+                <th>Semana</th>
+                <th>Estado</th>
+                <th>Antigüedad</th>
+                <th>Cadena de mando</th>
+                <th>Aviso actual</th>
+              </tr>
+            </thead>
+            <tbody>
+              {incidents.map((inc) => {
+                const person = users.find((u) => u.id === inc.userId);
+                if (!person) return null;
+                return (
+                  <tr key={`${inc.userId}-${inc.weekStart}`}>
+                    <td>
+                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                        <Avatar name={person.name} size={26} />
+                        <span style={{ fontWeight: 650 }}>{person.name}</span>
+                      </div>
+                    </td>
+                    <td style={{ fontSize: 12.5 }}>{dayLabel(inc.weekStart)} – {dayLabel(addDays(inc.weekStart, 6))}</td>
+                    <td>
+                      {inc.severity === "sin-carga" ? (
+                        <span className="badge bad"><Icon name="ban" size={11} /> Sin carga</span>
+                      ) : (
+                        <span className="badge warn"><Icon name="alert" size={11} /> Incompleto</span>
+                      )}
+                      <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>
+                        {fmtDur(inc.loadedMinutes)} / {fmtDur(inc.expectedMinutes)}
+                      </div>
+                    </td>
+                    <td style={{ fontSize: 12.5 }}>{inc.ageDays} día{inc.ageDays !== 1 ? "s" : ""}</td>
+                    <td style={{ fontSize: 12 }}>
+                      {inc.chain.length === 0 ? (
+                        <span style={{ color: "var(--text-3)" }}>Sin supervisor asignado</span>
+                      ) : (
+                        inc.chain.map((id, idx) => {
+                          const sup = users.find((u) => u.id === id);
+                          const notified = idx <= inc.escalationLevel;
+                          return (
+                            <span key={id} style={{ color: notified ? "var(--text-1)" : "var(--text-3)", fontWeight: notified ? 650 : 400 }}>
+                              {idx > 0 ? " → " : ""}{sup ? `${sup.name} (${ROLE_LABEL[sup.role] ?? sup.role})` : "—"}
+                            </span>
+                          );
+                        })
+                      )}
+                    </td>
+                    <td>
+                      {(() => {
+                        const target = inc.notifyTargetId ? users.find((u) => u.id === inc.notifyTargetId) : null;
+                        return (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                            {target && (
+                              <span className={`badge ${inc.escalationLevel > 0 ? "warn" : "acc"}`}>
+                                {inc.escalationLevel > 0 ? "Escalado a " : ""}{target.name}
+                              </span>
+                            )}
+                            {inc.fallbackToAdmins && <span className="badge bad">Todos los admins</span>}
+                          </div>
+                        );
+                      })()}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
