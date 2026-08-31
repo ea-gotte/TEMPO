@@ -4,6 +4,7 @@ import { addDays, dayLabel, fmtDur, today, uid, weekStart } from "../utils";
 import { Avatar, Empty, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { computeHoursIncidents, getDownlineIds, visibleIncidents, type HoursIncident } from "../compliance";
+import { buildForest, buildLayout, teamIds, CARD_W, CARD_H } from "../orgTree";
 import type { User } from "../types";
 
 const DAY_SHORT = ["L", "M", "X", "J", "V", "S", "D"];
@@ -232,15 +233,52 @@ export function HoursControl() {
         </table>
       </div>
 
-      <ComplianceSection incidents={incidents} users={state.users} />
+      <ComplianceChart incidents={incidents} me={me} allUsers={state.users} />
     </>
   );
 }
 
 const ROLE_LABEL: Record<string, string> = { admin: "Admin", gerente: "Gerente", supervisor: "Supervisor", usuario: "Usuario" };
 
-function ComplianceSection({ incidents, users }: { incidents: HoursIncident[]; users: User[] }) {
+/**
+ * Cadena de mando como organigrama: cada persona es un cuadro verde (todo
+ * cargado bien). Si a alguien le falta cargar horas, su cuadro se pone rojo
+ * y la línea que lo une con su supervisor sigue en rojo hacia arriba —
+ * un nivel más por cada 2 días que pase sin resolverse — hasta el
+ * responsable que tiene el aviso activo en este momento (marcado en ámbar).
+ */
+function ComplianceChart({ incidents, me, allUsers }: { incidents: HoursIncident[]; me: User; allUsers: User[] }) {
   const escalated = incidents.filter((i) => i.escalationLevel > 0 || i.fallbackToAdmins).length;
+  const isAdmin = me.role === "admin";
+
+  const roots = useMemo(() => {
+    const active = allUsers.filter((u) => u.active);
+    if (isAdmin || me.role === "gerente") return buildForest(active);
+    const ids = teamIds(active, me.id);
+    return buildForest(active.filter((u) => ids.has(u.id)));
+  }, [allUsers, isAdmin, me.role, me.id]);
+
+  const { nodes, edges, totalWidth, totalHeight } = useMemo(() => buildLayout(roots), [roots]);
+
+  const { failingIds, onPathIds, redEdges } = useMemo(() => {
+    const failing = new Set<string>();
+    const onPath = new Set<string>();
+    const redEdgeKeys = new Set<string>();
+    for (const inc of incidents) {
+      failing.add(inc.userId);
+      if (inc.escalationLevel >= 0) {
+        const path = [inc.userId, ...inc.chain.slice(0, inc.escalationLevel + 1)];
+        for (let i = 0; i < path.length - 1; i++) {
+          onPath.add(path[i + 1]);
+          redEdgeKeys.add(`${path[i + 1]}|${path[i]}`); // parentId|childId
+        }
+      }
+      if (inc.fallbackToAdmins) {
+        for (const u of allUsers) if (u.role === "admin") onPath.add(u.id);
+      }
+    }
+    return { failingIds: failing, onPathIds: onPath, redEdges: redEdgeKeys };
+  }, [incidents, allUsers]);
 
   return (
     <div style={{ marginTop: 20 }}>
@@ -261,84 +299,62 @@ function ComplianceSection({ incidents, users }: { incidents: HoursIncident[]; u
         </div>
       </div>
 
-      {incidents.length === 0 ? (
-        <div className="card card-pad">
-          <Empty icon="check-circle" text="Sin incidencias" sub="Nadie de tu línea de mando tiene semanas cerradas con carga incompleta." />
+      <div className="card">
+        <div style={{ padding: "14px 18px 4px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)" }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--success)" }} /> Al día
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)" }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--danger)" }} /> No cargó sus horas
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)" }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--warning)" }} /> Tiene el aviso activo
+          </span>
         </div>
-      ) : (
-        <div className="card" style={{ overflowX: "auto" }}>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Persona</th>
-                <th>Semana</th>
-                <th>Estado</th>
-                <th>Antigüedad</th>
-                <th>Cadena de mando</th>
-                <th>Aviso actual</th>
-              </tr>
-            </thead>
-            <tbody>
-              {incidents.map((inc) => {
-                const person = users.find((u) => u.id === inc.userId);
-                if (!person) return null;
+
+        {nodes.length === 0 ? (
+          <div style={{ textAlign: "center", color: "var(--text-3)", padding: 30 }}>
+            Todavía no hay una jerarquía definida (asigná un supervisor en Equipo).
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto", padding: "10px 18px 20px" }}>
+            <div style={{ position: "relative", width: totalWidth, height: totalHeight }}>
+              <svg width={totalWidth} height={totalHeight} style={{ position: "absolute", inset: 0, overflow: "visible" }}>
+                {edges.map((e, i) => {
+                  const midX = (e.x1 + e.x2) / 2;
+                  const isRed = redEdges.has(`${e.parentId}|${e.childId}`);
+                  return (
+                    <path
+                      key={i}
+                      d={`M ${e.x1} ${e.y1} H ${midX} V ${e.y2} H ${e.x2}`}
+                      fill="none"
+                      stroke={isRed ? "var(--danger)" : "var(--border-strong)"}
+                      strokeWidth={isRed ? 2.5 : 1.5}
+                    />
+                  );
+                })}
+              </svg>
+              {nodes.map((n) => {
+                const status = failingIds.has(n.user.id) ? "status-red" : onPathIds.has(n.user.id) ? "status-amber" : "status-ok";
                 return (
-                  <tr key={`${inc.userId}-${inc.weekStart}`}>
-                    <td>
-                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                        <Avatar name={person.name} size={26} />
-                        <span style={{ fontWeight: 650 }}>{person.name}</span>
-                      </div>
-                    </td>
-                    <td style={{ fontSize: 12.5 }}>{dayLabel(inc.weekStart)} – {dayLabel(addDays(inc.weekStart, 6))}</td>
-                    <td>
-                      {inc.severity === "sin-carga" ? (
-                        <span className="badge bad"><Icon name="ban" size={11} /> Sin carga</span>
-                      ) : (
-                        <span className="badge warn"><Icon name="alert" size={11} /> Incompleto</span>
-                      )}
-                      <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>
-                        {fmtDur(inc.loadedMinutes)} / {fmtDur(inc.expectedMinutes)}
-                      </div>
-                    </td>
-                    <td style={{ fontSize: 12.5 }}>{inc.ageDays} día{inc.ageDays !== 1 ? "s" : ""}</td>
-                    <td style={{ fontSize: 12 }}>
-                      {inc.chain.length === 0 ? (
-                        <span style={{ color: "var(--text-3)" }}>Sin supervisor asignado</span>
-                      ) : (
-                        inc.chain.map((id, idx) => {
-                          const sup = users.find((u) => u.id === id);
-                          const notified = idx <= inc.escalationLevel;
-                          return (
-                            <span key={id} style={{ color: notified ? "var(--text-1)" : "var(--text-3)", fontWeight: notified ? 650 : 400 }}>
-                              {idx > 0 ? " → " : ""}{sup ? `${sup.name} (${ROLE_LABEL[sup.role] ?? sup.role})` : "—"}
-                            </span>
-                          );
-                        })
-                      )}
-                    </td>
-                    <td>
-                      {(() => {
-                        const target = inc.notifyTargetId ? users.find((u) => u.id === inc.notifyTargetId) : null;
-                        return (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                            {target && (
-                              <span className={`badge ${inc.escalationLevel > 0 ? "warn" : "acc"}`}>
-                                {inc.escalationLevel > 0 ? "Escalado a " : ""}{target.name}
-                              </span>
-                            )}
-                            {inc.fallbackToAdmins && <span className="badge bad">Todos los admins</span>}
-                          </div>
-                        );
-                      })()}
-                    </td>
-                  </tr>
+                  <div
+                    key={n.user.id}
+                    className={`org-card ${status}${n.user.id === me.id ? " me" : ""}`}
+                    style={{ position: "absolute", left: n.x, top: n.y, width: CARD_W, height: CARD_H }}
+                    title={`${n.user.name} · ${ROLE_LABEL[n.user.role] ?? n.user.role}`}
+                  >
+                    <Avatar name={n.user.name} size={26} />
+                    <div style={{ minWidth: 0 }}>
+                      <div className="org-name">{n.user.name}</div>
+                      <div className="org-role">{ROLE_LABEL[n.user.role] ?? n.user.role}</div>
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
-      )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

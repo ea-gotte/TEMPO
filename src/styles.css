@@ -369,6 +369,11 @@ a { color: var(--accent); text-decoration: none; }
 .org-name { font-size: 12px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .org-role { font-size: 10.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* Cadena de mando (Control de horas): mismo organigrama, coloreado por cumplimiento. */
+.org-card.status-ok { border-color: var(--success); background: var(--success-soft); }
+.org-card.status-red { border-color: var(--danger); background: var(--danger-soft); }
+.org-card.status-amber { border-color: var(--warning); background: var(--warning-soft); }
+
 /* ---------- Dashboard ---------- */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 18px; }
 .kpi { padding: 14px 16px; }
