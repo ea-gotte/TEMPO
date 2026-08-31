@@ -172,7 +172,6 @@ export function Team() {
               const sup = state.users.find((x) => x.id === u.supervisorId);
               const vac = vacationInfo(state, u.id, today());
               const weekMin = weekMinById.get(u.id) ?? 0;
-              const pct = Math.min(100, (weekMin / (u.weeklyHours * 60)) * 100);
               return (
                 <tr key={u.id}>
                   <td>
@@ -227,11 +226,8 @@ export function Team() {
                     </div>
                   </td>
                   <td style={{ minWidth: 120 }}>
-                    <div style={{ fontSize: 12, fontFamily: "var(--mono)", marginBottom: 3 }}>
+                    <div style={{ fontSize: 12, fontFamily: "var(--mono)" }}>
                       {fmtDur(weekMin)} / {u.weeklyHours} h
-                    </div>
-                    <div className="progress">
-                      <div style={{ width: `${pct}%`, background: pct < 50 ? "var(--warning)" : "var(--accent)" }} />
                     </div>
                   </td>
                   {canManage && (
