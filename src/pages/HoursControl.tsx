@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { overtimeClaimDeadline, useStore } from "../store";
+import { overtimeClaimDeadline, expectedMinutesInRange, useStore } from "../store";
 import { addDays, dayLabel, fmtDur, today, uid, weekStart } from "../utils";
 import { Avatar, Empty, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
@@ -37,7 +37,9 @@ export function HoursControl() {
           state.entries.filter((e) => e.userId === u.id && e.date === d).reduce((a, e) => a + (e.end - e.start), 0),
         );
         const loaded = perDay.reduce((a, b) => a + b, 0);
-        const expected = u.weeklyHours * 60;
+        // Descuenta feriados y ausencias de día completo ya aprobadas de esa
+        // semana (mismo cálculo que Reportes) — un feriado no exige carga.
+        const expected = expectedMinutesInRange(state, u, ws, addDays(ws, 6));
         const overtimeMin = Math.max(0, loaded - expected);
         const supervisor = state.users.find((x) => x.id === u.supervisorId);
         const otRequest = state.overtime.find((o) => o.userId === u.id && o.weekStart === ws);
@@ -45,7 +47,7 @@ export function HoursControl() {
           loaded === 0 ? "sin-carga" : overtimeMin > 0 ? "extra" : loaded >= expected * 0.95 ? "ok" : "incompleto";
         return { u, perDay, loaded, expected, overtimeMin, supervisor, otRequest, status };
       });
-  }, [state.users, state.entries, state.overtime, weekDays, ws, me.id, me.role, myDownline]);
+  }, [state, weekDays, ws, me.id, me.role, myDownline]);
 
   // Incidencias de la cadena de mando: semanas ya cerradas donde alguien no
   // cargó correctamente, con su nivel de escalamiento actual. Ver compliance.ts.
@@ -187,7 +189,9 @@ export function HoursControl() {
                             style={{
                               width: 10, borderRadius: 3,
                               height: Math.max(2, (m / maxDay) * 26),
-                              background: m === 0 ? "var(--surface-3)" : u.workDays.includes(i + 1) ? "var(--accent)" : "var(--warning)",
+                              // Un día fuera del horario habitual con horas cargadas es extra, no un
+                              // problema a validar — mismo color que un día habilitado normal.
+                              background: m === 0 ? "var(--surface-3)" : "var(--accent)",
                             }}
                           />
                           <span style={{ fontSize: 9, color: "var(--text-3)" }}>{DAY_SHORT[i]}</span>

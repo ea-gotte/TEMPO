@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
-import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, Notification, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role, FlightCategory, FlightActivity, ProfessionalProfile, Survey, SurveyResponse, FeedbackItem } from "./types";
+import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, AbsenceType, ID, Notification, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role, FlightCategory, FlightActivity, ProfessionalProfile, Survey, SurveyResponse, FeedbackItem } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword, addDays, addMonths, parseISO, today } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
@@ -1381,6 +1381,55 @@ function countWorkDays(from: string, to: string, workDays: number[], holidays?: 
 /** Fechas de feriados como set de strings YYYY-MM-DD, para excluirlas del conteo de días hábiles */
 export function holidayDateSet(state: AppState): Set<string> {
   return new Set(state.holidays.map((h) => h.date));
+}
+
+/** Tipos de ausencia que sacan el día entero de la jornada esperada (a diferencia
+ * de, por ejemplo, "Trabajo remoto" u "Horario reducido", donde igual se trabaja). */
+const FULL_DAY_ABSENCE_TYPES: AbsenceType[] = [
+  "Vacaciones", "Licencia médica", "Maternidad/Paternidad", "Licencia por estudio", "Día personal", "Permiso especial",
+];
+
+function fullDayOffDatesInRange(state: AppState, userId: ID, from: string, to: string): Set<string> {
+  const offDays = new Set<string>();
+  for (const a of state.absences) {
+    if (a.userId !== userId || a.status !== "Aprobado" || !FULL_DAY_ABSENCE_TYPES.includes(a.type)) continue;
+    if (a.dateTo < from || a.dateFrom > to) continue;
+    let d = a.dateFrom < from ? from : a.dateFrom;
+    const end = a.dateTo > to ? to : a.dateTo;
+    let guard = 0;
+    while (d <= end && guard < 400) {
+      offDays.add(d);
+      d = addDays(d, 1);
+      guard++;
+    }
+  }
+  return offDays;
+}
+
+/**
+ * Minutos esperados de una persona en [from, to]: recorre día por día del
+ * período, cuenta solo sus días laborales habilitados (u.workDays) y
+ * descarta feriados y ausencias de día completo ya aprobadas (vacaciones,
+ * licencias, etc.) — un feriado o unas vacaciones no cuentan como jornada
+ * exigida. No usa un "/5" fijo: la tarifa diaria sale de sus propios días
+ * laborales (podría trabajar, por ejemplo, solo 3 días por semana). La
+ * usan tanto Reportes como Control de horas y la cadena de mando, para que
+ * los tres midan "lo esperado" de la misma forma.
+ */
+export function expectedMinutesInRange(state: AppState, u: User, from: string, to: string): number {
+  const holidays = holidayDateSet(state);
+  const offDays = fullDayOffDatesInRange(state, u.id, from, to);
+  const dailyMin = u.jornada === "media" ? 4 * 60 : (u.weeklyHours * 60) / Math.max(1, u.workDays.length);
+  let expectedDays = 0;
+  let d = from;
+  let guard = 0;
+  while (d <= to && guard < 400) {
+    const dow = ((parseISO(d).getDay() + 6) % 7) + 1; // 1=Lun..7=Dom
+    if (u.workDays.includes(dow) && !holidays.has(d) && !offDays.has(d)) expectedDays++;
+    d = addDays(d, 1);
+    guard++;
+  }
+  return dailyMin * expectedDays;
 }
 
 /** Todas las fechas (YYYY-MM-DD) de un rango, incluyendo ambos extremos */

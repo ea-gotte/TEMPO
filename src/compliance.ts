@@ -1,5 +1,6 @@
 import type { AppState, ID, User } from "./types";
 import { addDays, dayLabel, parseISO, weekStart } from "./utils";
+import { expectedMinutesInRange } from "./store";
 
 /**
  * Cadena de mando: control de cumplimiento de carga de horas.
@@ -84,7 +85,9 @@ export function computeHoursIncidents(state: AppState, todayISO: string): HoursI
       const loaded = state.entries
         .filter((e) => e.userId === u.id && e.date >= ws && e.date <= weekEnd)
         .reduce((a, e) => a + (e.end - e.start), 0);
-      const expected = u.weeklyHours * 60;
+      // Descuenta feriados y ausencias de día completo ya aprobadas de esa
+      // semana (mismo cálculo que Reportes y Control de horas).
+      const expected = expectedMinutesInRange(state, u, ws, weekEnd);
       if (loaded >= expected * MIN_LOAD_RATIO) continue; // esa semana está OK, no es incidencia
 
       const detectedAt = addDays(ws, 7); // primer día en que la semana ya se puede juzgar cerrada
