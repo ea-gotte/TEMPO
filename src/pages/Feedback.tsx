@@ -172,7 +172,7 @@ function FeedbackCard({ item, isAdmin, isOwn }: { item: FeedbackItem; isAdmin: b
           <p style={{ fontSize: 13, marginTop: 8, whiteSpace: "pre-wrap" }}>{item.description}</p>
         </div>
         <span className={`badge ${STATUS_BADGE[item.status]}`}>{STATUS_LABELS[item.status]}</span>
-        {isOwn && !isAdmin && item.status === "pendiente" && (
+        {(isAdmin || (isOwn && item.status === "pendiente")) && (
           <button className="btn btn-ghost btn-sm" onClick={() => setDeleting(true)}><Icon name="trash" size={13} /></button>
         )}
       </div>
