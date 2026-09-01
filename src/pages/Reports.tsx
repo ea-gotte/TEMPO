@@ -1,10 +1,53 @@
 import React, { useMemo, useState } from "react";
-import { useStore, visibleProjects } from "../store";
+import { useStore, visibleProjects, holidayDateSet } from "../store";
 import { addDays, addMonths, fmtDate, downloadFile, fmtDur, toCSV, today, weekStart } from "../utils";
 import { HBarChart, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
+import type { AbsenceType, User } from "../types";
 
 type Period = "semana" | "mes" | "personalizado";
+
+/** Tipos de ausencia que sacan el día entero de la jornada esperada (a diferencia
+ * de, por ejemplo, "Trabajo remoto" u "Horario reducido", donde igual se trabaja). */
+const FULL_DAY_ABSENCE_TYPES: AbsenceType[] = [
+  "Vacaciones", "Licencia médica", "Maternidad/Paternidad", "Licencia por estudio", "Día personal", "Permiso especial",
+];
+
+/**
+ * Minutos esperados de una persona en [from, to]: recorre día por día del
+ * período, cuenta solo sus días laborales habilitados (u.workDays) y
+ * descarta feriados y ausencias de día completo ya aprobadas (vacaciones,
+ * licencias, etc.) — un feriado o unas vacaciones no cuentan como jornada
+ * exigida. No usa un "/5" fijo: la tarifa diaria sale de sus propios días
+ * laborales (podría trabajar, por ejemplo, solo 3 días por semana).
+ */
+function expectedMinutesInRange(u: User, from: string, to: string, holidays: Set<string>, absences: { userId: string; type: AbsenceType; status: string; dateFrom: string; dateTo: string }[]): number {
+  const offDays = new Set<string>();
+  for (const a of absences) {
+    if (a.userId !== u.id || a.status !== "Aprobado" || !FULL_DAY_ABSENCE_TYPES.includes(a.type)) continue;
+    if (a.dateTo < from || a.dateFrom > to) continue;
+    let d = a.dateFrom < from ? from : a.dateFrom;
+    const end = a.dateTo > to ? to : a.dateTo;
+    let guard = 0;
+    while (d <= end && guard < 400) {
+      offDays.add(d);
+      d = addDays(d, 1);
+      guard++;
+    }
+  }
+
+  const dailyMin = u.jornada === "media" ? 4 * 60 : (u.weeklyHours * 60) / Math.max(1, u.workDays.length);
+  let expectedDays = 0;
+  let d = from;
+  let guard = 0;
+  while (d <= to && guard < 400) {
+    const dow = ((new Date(d + "T00:00:00").getDay() + 6) % 7) + 1; // 1=Lun..7=Dom
+    if (u.workDays.includes(dow) && !holidays.has(d) && !offDays.has(d)) expectedDays++;
+    d = addDays(d, 1);
+    guard++;
+  }
+  return dailyMin * expectedDays;
+}
 
 export function Reports() {
   const { state } = useStore();
@@ -73,11 +116,18 @@ export function Reports() {
     .filter((x) => x.value > 0)
     .sort((a, b) => b.value - a.value);
 
+  const holidays = useMemo(() => holidayDateSet(state), [state.holidays]);
+
   const byUser = state.users
     .map((u) => {
-      const mins = sum(filtered.filter((e) => e.userId === u.id));
-      const days = new Set(filtered.filter((e) => e.userId === u.id).map((e) => e.date)).size;
-      const expected = (u.weeklyHours / 5) * 60 * Math.max(days, 1);
+      const userEntries = filtered.filter((e) => e.userId === u.id);
+      const mins = sum(userEntries);
+      // "Días con carga" es solo informativo: cuántas fechas distintas tienen
+      // algo cargado (puede incluir un fin de semana con horas extra). La
+      // jornada esperada (para extra/utilización) NO sale de acá — sale del
+      // calendario real del período, ver expectedMinutesInRange.
+      const days = new Set(userEntries.map((e) => e.date)).size;
+      const expected = expectedMinutesInRange(u, rFrom, rTo, holidays, state.absences);
       return { u, mins, days, overtime: Math.max(0, mins - expected), util: expected ? Math.min(150, Math.round((mins / expected) * 100)) : 0 };
     })
     .filter((x) => x.mins > 0)

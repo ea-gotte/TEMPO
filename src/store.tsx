@@ -1379,7 +1379,7 @@ function countWorkDays(from: string, to: string, workDays: number[], holidays?: 
 }
 
 /** Fechas de feriados como set de strings YYYY-MM-DD, para excluirlas del conteo de días hábiles */
-function holidayDateSet(state: AppState): Set<string> {
+export function holidayDateSet(state: AppState): Set<string> {
   return new Set(state.holidays.map((h) => h.date));
 }
 
