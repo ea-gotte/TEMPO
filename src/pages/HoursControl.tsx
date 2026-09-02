@@ -56,6 +56,12 @@ export function HoursControl() {
     return visibleIncidents(all, me, state.users);
   }, [state, me]);
 
+  // La pestaña "Cadena de mando" se navega semana a semana con el mismo
+  // control de fecha que "Semana actual" — se filtran las incidencias a la
+  // semana elegida (ws). Las semanas futuras o la actual (todavía no
+  // cerrada) simplemente no tienen incidencias que mostrar.
+  const weekIncidents = useMemo(() => incidents.filter((i) => i.weekStart === ws), [incidents, ws]);
+
   if (me.role === "usuario") {
     return (
       <div className="card">
@@ -107,23 +113,25 @@ export function HoursControl() {
         </div>
       </div>
 
-      {tab === "semana" && (
-        // .page-sub trae un margin-top negativo (-14px) pensado para pegarse
-        // directo al .page-head; este renglón intermedio compensa con más
-        // margen abajo (mismo ajuste que en Calendario).
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, -7))} aria-label="Semana anterior"><Icon name="arrow-left" size={14} /></button>
-          <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
-          <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, 7))} aria-label="Semana siguiente"><Icon name="arrow-right" size={14} /></button>
-        </div>
-      )}
+      {/* Navegación de semana, compartida por las dos pestañas: en "Semana
+          actual" controla qué semana se audita; en "Cadena de mando" filtra
+          las incidencias a esa misma semana. .page-sub trae un margin-top
+          negativo (-14px) pensado para pegarse directo al .page-head; este
+          renglón intermedio compensa con más margen abajo (mismo ajuste que
+          en Calendario). */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}>
+        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, -7))} aria-label="Semana anterior"><Icon name="arrow-left" size={14} /></button>
+        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, 7))} aria-label="Semana siguiente"><Icon name="arrow-right" size={14} /></button>
+        <strong>Semana del {dayLabel(ws)} al {dayLabel(addDays(ws, 6))}</strong>
+      </div>
 
       {tab === "cadena" ? (
-        <ComplianceChart incidents={incidents} me={me} allUsers={state.users} />
+        <ComplianceChart incidents={weekIncidents} me={me} allUsers={state.users} />
       ) : (
         <>
           <p className="page-sub">
-            Semana del {dayLabel(ws)} al {dayLabel(addDays(ws, 6))} · la carga esperada se controla según el tipo de jornada de cada persona (completa o media).
+            La carga esperada se controla según el tipo de jornada de cada persona (completa o media).
           </p>
 
           <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))" }}>
@@ -313,8 +321,9 @@ function ComplianceChart({ incidents, me, allUsers }: { incidents: HoursIncident
   return (
     <div>
       <p className="page-sub" style={{ marginTop: 0 }}>
-        Semanas ya cerradas con carga incompleta o sin cargar. Se resuelven solas apenas la persona carga esas horas; si
-        nadie actúa, el aviso escala automáticamente al responsable de arriba en la cadena cada 2 días.
+        Incidencias de la semana elegida arriba (una semana en curso o futura todavía no tiene nada que mostrar, porque
+        recién se puede juzgar una vez cerrada). Se resuelven solas apenas la persona carga esas horas; si nadie actúa,
+        el aviso escala automáticamente al responsable de arriba en la cadena cada 2 días.
       </p>
 
       <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))" }}>
