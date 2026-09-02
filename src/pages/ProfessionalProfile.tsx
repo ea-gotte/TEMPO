@@ -48,7 +48,15 @@ export function ProfessionalProfile() {
         )}
       </div>
 
-      {/* Identidad de la persona, fija arriba de las 4 sub-pestañas para no perder de vista a quién se está viendo */}
+      <div className="tabs" style={{ marginBottom: 14 }}>
+        <button className={tab === "formacion" ? "active" : ""} onClick={() => setTab("formacion")}>Formación</button>
+        <button className={tab === "habilidades" ? "active" : ""} onClick={() => setTab("habilidades")}>Habilidades</button>
+        <button className={tab === "horasvuelo" ? "active" : ""} onClick={() => setTab("horasvuelo")}>Horas de vuelo</button>
+        <button className={tab === "mapa" ? "active" : ""} onClick={() => setTab("mapa")}>Mapa mental</button>
+        <button className={tab === "organigrama" ? "active" : ""} onClick={() => setTab("organigrama")}>Organigrama</button>
+      </div>
+
+      {/* Identidad de la persona, fija arriba de las sub-pestañas para no perder de vista a quién se está viendo */}
       <div className="card card-pad" style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
         <Avatar name={person.name} size={44} online={person.online} />
         <div style={{ minWidth: 160 }}>
@@ -61,14 +69,6 @@ export function ProfessionalProfile() {
             <Icon name="users" size={13} /> Reporta a {supervisor.name}
           </span>
         )}
-        <span style={{ flex: 1 }} />
-        <div className="tabs">
-          <button className={tab === "formacion" ? "active" : ""} onClick={() => setTab("formacion")}>Formación</button>
-          <button className={tab === "habilidades" ? "active" : ""} onClick={() => setTab("habilidades")}>Habilidades</button>
-          <button className={tab === "horasvuelo" ? "active" : ""} onClick={() => setTab("horasvuelo")}>Horas de vuelo</button>
-          <button className={tab === "mapa" ? "active" : ""} onClick={() => setTab("mapa")}>Mapa mental</button>
-          <button className={tab === "organigrama" ? "active" : ""} onClick={() => setTab("organigrama")}>Organigrama</button>
-        </div>
       </div>
 
       {tab === "formacion" && <FormacionTab userId={effectiveUserId} canEdit={canEdit} />}

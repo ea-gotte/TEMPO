@@ -99,21 +99,24 @@ export function HoursControl() {
       <div className="page-head">
         <h1>Control de horas</h1>
         <span className="spacer" />
-        {tab === "semana" && (
-          <>
-            <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, -7))} aria-label="Semana anterior"><Icon name="arrow-left" size={14} /></button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, 7))} aria-label="Semana siguiente"><Icon name="arrow-right" size={14} /></button>
-          </>
-        )}
+        <div className="tabs">
+          <button className={tab === "semana" ? "active" : ""} onClick={() => setTab("semana")}>Semana actual</button>
+          <button className={tab === "cadena" ? "active" : ""} onClick={() => setTab("cadena")}>
+            Cadena de mando{incidents.length > 0 ? ` (${incidents.length})` : ""}
+          </button>
+        </div>
       </div>
 
-      <div className="tabs" style={{ marginBottom: 14 }}>
-        <button className={tab === "semana" ? "active" : ""} onClick={() => setTab("semana")}>Semana actual</button>
-        <button className={tab === "cadena" ? "active" : ""} onClick={() => setTab("cadena")}>
-          Cadena de mando{incidents.length > 0 ? ` (${incidents.length})` : ""}
-        </button>
-      </div>
+      {tab === "semana" && (
+        // .page-sub trae un margin-top negativo (-14px) pensado para pegarse
+        // directo al .page-head; este renglón intermedio compensa con más
+        // margen abajo (mismo ajuste que en Calendario).
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, -7))} aria-label="Semana anterior"><Icon name="arrow-left" size={14} /></button>
+          <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
+          <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, 7))} aria-label="Semana siguiente"><Icon name="arrow-right" size={14} /></button>
+        </div>
+      )}
 
       {tab === "cadena" ? (
         <ComplianceChart incidents={incidents} me={me} allUsers={state.users} />

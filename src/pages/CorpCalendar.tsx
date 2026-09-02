@@ -96,8 +96,9 @@ export function CorpCalendar() {
         <h1>Calendario corporativo</h1>
         <span className="spacer" />
         <button className="btn btn-secondary btn-sm" onClick={() => shiftMonth(-1)} aria-label="Mes anterior"><Icon name="arrow-left" size={14} /></button>
-        <strong style={{ textTransform: "capitalize", minWidth: 140, textAlign: "center" }}>{monthLabel(anchor)}</strong>
+        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
         <button className="btn btn-secondary btn-sm" onClick={() => shiftMonth(1)} aria-label="Mes siguiente"><Icon name="arrow-right" size={14} /></button>
+        <strong style={{ textTransform: "capitalize", minWidth: 140, textAlign: "center" }}>{monthLabel(anchor)}</strong>
         {isAdmin && <button className="btn btn-primary" onClick={() => setShowNew(true)}><Icon name="plus" size={15} /> Evento</button>}
       </div>
 
