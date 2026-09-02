@@ -101,6 +101,7 @@ const CalBlock = React.memo(function CalBlock({
   conf,
   isDragging,
   label,
+  subLabel,
   timeLabel,
   title,
   onMoveDown,
@@ -117,6 +118,10 @@ const CalBlock = React.memo(function CalBlock({
   conf: boolean;
   isDragging: boolean;
   label: string;
+  /** Proyecto · Subproyecto — se corta con "…" si no entra, y directamente
+      desaparece (lo tapa el overflow del bloque) si la entrada es tan corta
+      que ni siquiera entra esa segunda línea. */
+  subLabel: string;
   timeLabel: string;
   title: string;
   onMoveDown: (e: React.MouseEvent, entry: TimeEntry) => void;
@@ -140,8 +145,11 @@ const CalBlock = React.memo(function CalBlock({
       onContextMenu={(ev) => onContext(ev, entry)}
       title={title}
     >
-      {label}
-      <span className="t"> {timeLabel}</span>
+      <div className="cal-block-title">
+        {label}
+        <span className="t"> {timeLabel}</span>
+      </div>
+      {subLabel && <div className="cal-block-sub">{subLabel}</div>}
       <span className="rsz" onMouseDown={(ev) => onResizeDown(ev, entry)} />
     </div>
   );
@@ -613,12 +621,19 @@ export function CalendarPage() {
                     const top = ((e.start - H0 * 60) / 60) * PX_H;
                     const height = Math.max(18, ((e.end - e.start) / 60) * PX_H - 2);
                     const p = state.projects.find((x) => x.id === e.projectId);
+                    const sp = state.subProjects.find((x) => x.id === e.subProjectId);
+                    // Proyecto y subproyecto: si ya hay descripción (título de la
+                    // tarjeta) van los dos en la segunda línea; si la descripción
+                    // está vacía y el proyecto ya pasó a ser el título, en la
+                    // segunda línea solo va el subproyecto (para no repetirlo).
+                    const label = e.description || p?.name || "Registro";
+                    const subLabel = e.description ? [p?.name, sp?.name].filter(Boolean).join(" · ") : (sp?.name ?? "");
                     const conf = conflictIds.has(raw.id);
                     const lane = isDragging ? { col: 0, cols: 1 } : lanes?.get(raw.id) ?? { col: 0, cols: 1 };
                     const left = `calc(${(lane.col / lane.cols) * 100}% + 3px)`;
                     const width = `calc(${(1 / lane.cols) * 100}% - 6px)`;
                     const timeLabel = `${minToHM(e.start)}–${minToHM(e.end)}`;
-                    const title = `${e.description} · ${timeLabel}${tz2 ? ` (${tz2Short}: ${minToHM((((e.start + tzDiff) % 1440) + 1440) % 1440)}–${minToHM((((e.end + tzDiff) % 1440) + 1440) % 1440)})` : ""}`;
+                    const title = `${label}${subLabel ? ` (${subLabel})` : ""} · ${timeLabel}${tz2 ? ` (${tz2Short}: ${minToHM((((e.start + tzDiff) % 1440) + 1440) % 1440)}–${minToHM((((e.end + tzDiff) % 1440) + 1440) % 1440)})` : ""}`;
                     return (
                       <CalBlock
                         key={raw.id}
@@ -630,7 +645,8 @@ export function CalendarPage() {
                         background={p?.color ?? "var(--accent)"}
                         conf={conf}
                         isDragging={isDragging}
-                        label={e.description || p?.name || "Registro"}
+                        label={label}
+                        subLabel={subLabel}
                         timeLabel={timeLabel}
                         title={title}
                         onMoveDown={onBlockMoveDown}
