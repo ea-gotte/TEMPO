@@ -464,7 +464,10 @@ export function CalendarPage() {
           todavía pendiente de la aprobación del admin de Microsoft 365 —
           (derecha), separados en su propio renglón para no amontonarlos
           todos junto a las pestañas de vista. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+      {/* .page-sub trae un margin-top negativo (-14px) pensado para pegarse
+          directo al .page-head; este renglón intermedio necesita compensarlo
+          con más margen abajo, si no queda pegado contra el texto de abajo. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
         <button className="btn btn-secondary btn-sm" onClick={() => shift(-1)} aria-label="Anterior"><Icon name="arrow-left" size={14} /></button>
         <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
         <button className="btn btn-secondary btn-sm" onClick={() => shift(1)} aria-label="Siguiente"><Icon name="arrow-right" size={14} /></button>
