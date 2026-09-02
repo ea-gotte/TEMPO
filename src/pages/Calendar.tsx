@@ -129,6 +129,13 @@ const CalBlock = React.memo(function CalBlock({
   onEdit: (entry: TimeEntry) => void;
   onContext: (e: React.MouseEvent, entry: TimeEntry) => void;
 }) {
+  // Cuántas líneas de texto entran realmente en el alto de ESTA tarjeta (ver
+  // .cal-block-text en styles.css: 10px / line-height 1.25 = 12.5px por
+  // línea, menos los 4px de padding vertical del bloque). Si sobra alto,
+  // el título + proyecto/subproyecto pueden saltar de línea para completarse
+  // en vez de cortarse; si no entran todas, "-webkit-line-clamp" corta la
+  // última línea visible con "…" automáticamente.
+  const maxLines = Math.max(1, Math.floor((height - 4) / 12.5));
   return (
     <div
       className={`cal-block ${conf ? "overlap" : ""}`}
@@ -145,11 +152,10 @@ const CalBlock = React.memo(function CalBlock({
       onContextMenu={(ev) => onContext(ev, entry)}
       title={title}
     >
-      <div className="cal-block-title">
-        {label}
-        <span className="t"> {timeLabel}</span>
+      <div className="cal-block-text" style={{ WebkitLineClamp: maxLines }}>
+        {label} <span className="t">{timeLabel}</span>
+        {subLabel && <> · <span className="cal-block-sub-inline">{subLabel}</span></>}
       </div>
-      {subLabel && <div className="cal-block-sub">{subLabel}</div>}
       <span className="rsz" onMouseDown={(ev) => onResizeDown(ev, entry)} />
     </div>
   );

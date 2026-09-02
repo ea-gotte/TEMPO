@@ -326,20 +326,19 @@ a { color: var(--accent); text-decoration: none; }
 }
 .cal-block:hover { filter: brightness(1.08); box-shadow: var(--shadow-md); }
 .cal-block:active { cursor: grabbing; }
-/* Título (descripción o proyecto) + horario: una sola línea, se corta con
-   "…" si no entra en el ancho del carril. */
-.cal-block-title {
-  font-size: 10px; font-weight: 600; line-height: 1.2;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+/* Título (descripción o proyecto) + horario + proyecto/subproyecto: un solo
+   bloque de texto que SALTA DE LÍNEA si hay alto disponible para completarse
+   (en vez de cortarse apenas no entra en el ancho); "-webkit-line-clamp"
+   (calculado en JS según el alto real de la tarjeta, ver CalBlock) limita
+   cuántas líneas se llegan a mostrar y corta la última con "…" si sobra
+   texto sin lugar. */
+.cal-block-text {
+  font-size: 10px; font-weight: 600; line-height: 1.25;
+  white-space: normal; overflow-wrap: break-word;
+  display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
 }
 .cal-block .t { opacity: 0.85; font-weight: 500; font-size: 9px; }
-/* Proyecto · Subproyecto: segunda línea, más chica y tenue; en una tarjeta
-   de 15 min directamente no entra y el overflow del bloque la tapa entera —
-   no hay espacio para forzarla. */
-.cal-block-sub {
-  font-size: 8.5px; font-weight: 500; line-height: 1.2; opacity: 0.85; margin-top: 1px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
+.cal-block-sub-inline { opacity: 0.85; font-weight: 500; font-size: 9px; }
 .cal-block.overlap { outline: 2px solid var(--danger); }
 .cal-block .rsz { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
 
