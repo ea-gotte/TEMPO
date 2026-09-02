@@ -6,6 +6,7 @@ import { EntryModal } from "../components/EntryModal";
 import { ContextMenu, DateField, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { supabase } from "../supabase";
+import { msalConfigured, getConnectedAccount, connectMicrosoft, disconnectMicrosoft, fetchTeamsEvents, type TeamsEvent } from "../msal";
 
 const H0 = 0; // primera hora visible (día completo)
 const H1 = 24; // última hora
@@ -207,12 +208,93 @@ export function CalendarPage() {
   }, [tz2, anchor, baseTz]);
   const tz2Short = TZ_OPTIONS.find((t) => t.id === tz2)?.short ?? "";
   const baseShort = TZ_OPTIONS.find((t) => t.id === baseTz)?.short ?? "LOC";
+  // Conexión personal con Microsoft (Outlook/Teams): ver msal.ts. Cada quien
+  // conecta la suya desde acá; es de solo lectura y vive en su propio navegador.
+  const [msAccount, setMsAccount] = useState(() => getConnectedAccount());
+  const [msBusy, setMsBusy] = useState(false);
+  const [teamsEvents, setTeamsEvents] = useState<TeamsEvent[]>([]);
+  const [teamsError, setTeamsError] = useState<string | null>(null);
+
   const ws = weekStart(anchor);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(ws, i)), [ws]);
   // Memoizado: `[anchor]` es un array nuevo en cada render si no se memoiza, lo
   // que rompía los useMemo de abajo que dependen de esta lista (se invalidaban
   // en cada mousemove del arrastre en vez de solo cuando cambian los datos).
   const visibleDays = useMemo(() => (view === "dia" ? [anchor] : weekDays), [view, anchor, weekDays]);
+
+  // Trae las reuniones de Teams del rango visible cada vez que cambia (solo en
+  // día/semana, que son las vistas con grilla horaria). Se re-pide siempre que
+  // cambia el rango porque no hay caché propia — Graph responde rápido y así
+  // nunca se muestra un rango viejo por accidente.
+  React.useEffect(() => {
+    if (!msAccount || (view !== "dia" && view !== "semana")) {
+      setTeamsEvents([]);
+      return;
+    }
+    let cancelled = false;
+    setTeamsError(null);
+    fetchTeamsEvents(visibleDays[0], visibleDays[visibleDays.length - 1])
+      .then((evts) => { if (!cancelled) setTeamsEvents(evts); })
+      .catch((err) => { if (!cancelled) setTeamsError(err?.message ?? "No se pudieron traer las reuniones de Teams."); });
+    return () => { cancelled = true; };
+  }, [msAccount, view, visibleDays]);
+
+  async function connectMs() {
+    setMsBusy(true);
+    setTeamsError(null);
+    try {
+      const account = await connectMicrosoft();
+      setMsAccount(account);
+      toast(`Cuenta de Microsoft conectada: ${account.username}`);
+    } catch (err: any) {
+      toast(err?.message ?? "No se pudo conectar la cuenta de Microsoft.");
+    } finally {
+      setMsBusy(false);
+    }
+  }
+
+  async function disconnectMs() {
+    await disconnectMicrosoft();
+    setMsAccount(null);
+    setTeamsEvents([]);
+    toast("Cuenta de Microsoft desconectada.");
+  }
+
+  // Convierte un instante UTC a fecha+minutos "de pared" en un huso horario dado,
+  // reutilizando tzOffsetMin (ya definido arriba) — mismo truco: desplazar el
+  // timestamp y releerlo con los getters UTC para no aplicar el huso del navegador encima.
+  function toZonedDateMinutes(isoUtc: string, tz: string): { date: string; min: number } {
+    const utcDate = new Date(isoUtc);
+    const offset = tzOffsetMin(tz, utcDate);
+    const local = new Date(utcDate.getTime() + offset * 60000);
+    const date = `${local.getUTCFullYear()}-${String(local.getUTCMonth() + 1).padStart(2, "0")}-${String(local.getUTCDate()).padStart(2, "0")}`;
+    const min = local.getUTCHours() * 60 + local.getUTCMinutes();
+    return { date, min };
+  }
+
+  const teamsByDay = useMemo(() => {
+    const map = new Map<string, { event: TeamsEvent; startMin: number; endMin: number }[]>();
+    for (const ev of teamsEvents) {
+      if (ev.isAllDay || !ev.start || !ev.end) continue;
+      const start = toZonedDateMinutes(ev.start, baseTz);
+      const end = toZonedDateMinutes(ev.end, baseTz);
+      if (start.date !== end.date) continue; // cruza medianoche: se omite en esta primera versión
+      if (!map.has(start.date)) map.set(start.date, []);
+      map.get(start.date)!.push({ event: ev, startMin: start.min, endMin: Math.max(end.min, start.min + 15) });
+    }
+    return map;
+  }, [teamsEvents, baseTz]);
+
+  const allDayTeamsByDay = useMemo(() => {
+    const map = new Map<string, TeamsEvent[]>();
+    for (const ev of teamsEvents) {
+      if (!ev.isAllDay || !ev.start) continue;
+      const { date } = toZonedDateMinutes(ev.start, baseTz);
+      if (!map.has(date)) map.set(date, []);
+      map.get(date)!.push(ev);
+    }
+    return map;
+  }, [teamsEvents, baseTz]);
 
   const entries = useMemo(() => state.entries.filter((e) => e.userId === me), [state.entries, me]);
 
@@ -414,6 +496,21 @@ export function CalendarPage() {
           </>
         )}
       </div>
+      {msalConfigured && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12.5 }}>
+          {msAccount ? (
+            <>
+              <span className="badge acc"><Icon name="plug" size={11} /> Teams: {msAccount.username}</span>
+              <button className="btn btn-ghost btn-sm" onClick={disconnectMs}>Desconectar</button>
+            </>
+          ) : (
+            <button className="btn btn-secondary btn-sm" onClick={connectMs} disabled={msBusy}>
+              <Icon name="plug" size={13} /> {msBusy ? "Conectando…" : "Conectar Microsoft (Teams)"}
+            </button>
+          )}
+          {teamsError && <span style={{ color: "var(--danger)" }}>{teamsError}</span>}
+        </div>
+      )}
       <p className="page-sub">
         {view === "mes"
           ? monthLabel(anchor)
@@ -461,6 +558,7 @@ export function CalendarPage() {
           <div className="cal-days" style={view === "dia" ? { gridTemplateColumns: "1fr" } : undefined}>
             {visibleDays.map((day) => {
               const dayMin = entries.filter((e) => e.date === day).reduce((acc, e) => acc + (e.end - e.start), 0);
+              const allDay = allDayTeamsByDay.get(day) ?? [];
               return (
                 <div key={`h-${day}`} className={`cal-day-head ${day === today() ? "today" : ""}`}>
                   {dayLabel(day, { weekday: "short" })}
@@ -468,6 +566,22 @@ export function CalendarPage() {
                   <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", marginTop: 2, display: "block" }}>
                     {fmtDur(dayMin)}
                   </span>
+                  {allDay.map((ev) => (
+                    <a
+                      key={ev.id}
+                      href={ev.webLink || undefined}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={ev.subject}
+                      style={{
+                        display: "block", marginTop: 3, fontSize: 10, fontWeight: 600, color: "#5b5fc7",
+                        background: "#5b5fc71a", borderRadius: 4, padding: "1px 4px", whiteSpace: "nowrap",
+                        overflow: "hidden", textOverflow: "ellipsis", textDecoration: "none",
+                      }}
+                    >
+                      <Icon name="plug" size={9} /> {ev.subject}
+                    </a>
+                  ))}
                 </div>
               );
             })}
@@ -514,6 +628,30 @@ export function CalendarPage() {
                         onEdit={setModal}
                         onContext={onBlockContext}
                       />
+                    );
+                  })}
+                  {/* Reuniones de Teams: solo lectura, en una franja angosta a la
+                      derecha para no chocar con los registros de horas. */}
+                  {(teamsByDay.get(day) ?? []).map(({ event, startMin, endMin }) => {
+                    const top = ((startMin - H0 * 60) / 60) * PX_H;
+                    const height = Math.max(14, ((endMin - startMin) / 60) * PX_H - 2);
+                    return (
+                      <a
+                        key={event.id}
+                        href={event.webLink || undefined}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(ev) => ev.stopPropagation()}
+                        title={`${event.subject} · ${minToHM(startMin)}–${minToHM(endMin)}${event.location ? ` · ${event.location}` : ""}`}
+                        style={{
+                          position: "absolute", top, height, right: 2, width: "22%", minWidth: 40,
+                          background: "#5b5fc733", border: "1px dashed #5b5fc7", borderRadius: 4,
+                          padding: "1px 3px", fontSize: 9.5, fontWeight: 600, color: "#5b5fc7",
+                          overflow: "hidden", textDecoration: "none", zIndex: 5,
+                        }}
+                      >
+                        {event.subject}
+                      </a>
                     );
                   })}
                 </div>
