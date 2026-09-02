@@ -457,6 +457,14 @@ export function CalendarPage() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Navegación de fecha (izquierda) y controles secundarios de la vista
+          horaria — huso horario y, más discreto, la conexión con Microsoft,
+          todavía pendiente de la aprobación del admin de Microsoft 365 —
+          (derecha), separados en su propio renglón para no amontonarlos
+          todos junto a las pestañas de vista. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         <button className="btn btn-secondary btn-sm" onClick={() => shift(-1)} aria-label="Anterior"><Icon name="arrow-left" size={14} /></button>
         <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
         <button className="btn btn-secondary btn-sm" onClick={() => shift(1)} aria-label="Siguiente"><Icon name="arrow-right" size={14} /></button>
@@ -464,6 +472,7 @@ export function CalendarPage() {
         <div style={{ width: 150 }}>
           <DateField value={anchor} onChange={setAnchor} />
         </div>
+        <span className="spacer" />
         {(view === "dia" || view === "semana") && (
           <>
             <select
@@ -493,24 +502,22 @@ export function CalendarPage() {
                 <option key={t.id} value={t.id}>+ {t.label}</option>
               ))}
             </select>
+            {msalConfigured && (
+              msAccount ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span className="badge acc" title={msAccount.username}><Icon name="plug" size={11} /> Teams</span>
+                  <button className="btn btn-ghost btn-sm" onClick={disconnectMs}>Desconectar</button>
+                </span>
+              ) : (
+                <button className="btn btn-ghost btn-sm" onClick={connectMs} disabled={msBusy} title="Pendiente de aprobación del administrador de Microsoft 365">
+                  <Icon name="plug" size={13} /> {msBusy ? "Conectando…" : "Conectar Microsoft"}
+                </button>
+              )
+            )}
           </>
         )}
+        {teamsError && <span style={{ color: "var(--danger)", fontSize: 12.5 }}>{teamsError}</span>}
       </div>
-      {msalConfigured && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12.5 }}>
-          {msAccount ? (
-            <>
-              <span className="badge acc"><Icon name="plug" size={11} /> Teams: {msAccount.username}</span>
-              <button className="btn btn-ghost btn-sm" onClick={disconnectMs}>Desconectar</button>
-            </>
-          ) : (
-            <button className="btn btn-secondary btn-sm" onClick={connectMs} disabled={msBusy}>
-              <Icon name="plug" size={13} /> {msBusy ? "Conectando…" : "Conectar Microsoft (Teams)"}
-            </button>
-          )}
-          {teamsError && <span style={{ color: "var(--danger)" }}>{teamsError}</span>}
-        </div>
-      )}
       <p className="page-sub">
         {view === "mes"
           ? monthLabel(anchor)
