@@ -170,17 +170,15 @@ export function Projects() {
                         <span className={`badge ${p.status === "activo" ? "ok" : p.status === "completado" ? "acc" : ""}`}>{p.status}</span>
                       </td>
                       <td>
-                        <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                          {p.memberIds.map((id) => {
-                            const u = state.users.find((x) => x.id === id);
-                            return u ? <Avatar key={id} name={u.name} size={20} /> : null;
-                          })}
-                          {p.memberIds.length === 0 && (
-                            <span style={{ fontSize: 11, color: "var(--warning)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                              <Icon name="alert" size={11} /> Sin equipo asignado
-                            </span>
-                          )}
-                        </div>
+                        {p.memberIds.length === 0 ? (
+                          <span style={{ fontSize: 11, color: "var(--warning)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            <Icon name="alert" size={11} /> Sin equipo asignado
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 11.5, color: "var(--text-3)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            <Icon name="users" size={12} /> {p.memberIds.length} persona{p.memberIds.length !== 1 ? "s" : ""}
+                          </span>
+                        )}
                       </td>
                       <td>
                         <button className="btn btn-secondary btn-sm" onClick={() => setEditMembersOf(p)}>
@@ -318,13 +316,13 @@ export function Projects() {
                           {state.subProjects.filter((sp) => sp.projectId === p.id).length} subproyectos: {state.subProjects.filter((sp) => sp.projectId === p.id).map((sp) => sp.name).join(", ")}
                         </div>
                       )}
-                      <div style={{ display: "flex", gap: 3, marginTop: 5 }}>
-                        {p.memberIds.map((id) => {
-                          const u = state.users.find((x) => x.id === id);
-                          return u ? <Avatar key={id} name={u.name} size={20} /> : null;
-                        })}
-                        {p.memberIds.length === 0 && (
+                      <div style={{ marginTop: 5 }}>
+                        {p.memberIds.length === 0 ? (
                           <span style={{ fontSize: 11, color: "var(--warning)", display: "inline-flex", alignItems: "center", gap: 4 }}><Icon name="alert" size={11} /> Sin equipo asignado</span>
+                        ) : (
+                          <span style={{ fontSize: 11.5, color: "var(--text-3)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            <Icon name="users" size={12} /> {p.memberIds.length} persona{p.memberIds.length !== 1 ? "s" : ""}
+                          </span>
                         )}
                       </div>
                     </td>
