@@ -27,7 +27,7 @@ export function EntryModal({
   const [favorite, setFavorite] = useState(initial?.favorite ?? false);
   const [recurring, setRecurring] = useState<TimeEntry["recurring"]>(initial?.recurring ?? null);
 
-  const subProjects = state.subProjects.filter((sp) => sp.projectId === projectId);
+  const subProjects = state.subProjects.filter((sp) => sp.projectId === projectId).sort((a, b) => a.name.localeCompare(b.name));
 
   const candidate: TimeEntry = useMemo(
     () => ({

@@ -290,7 +290,7 @@ export function Admin() {
             <div className="field">
               <label>País (calendario de feriados)</label>
               <select className="select" value={c.country} onChange={(e) => setC({ ...c, country: e.target.value })}>
-                {["Argentina", "Chile", "Uruguay", "México", "España", "Colombia", "Perú"].map((p) => (
+                {["Argentina", "Chile", "Colombia", "España", "México", "Perú", "Uruguay"].map((p) => (
                   <option key={p}>{p}</option>
                 ))}
               </select>
@@ -298,7 +298,7 @@ export function Admin() {
             <div className="field">
               <label>Zona horaria</label>
               <select className="select" value={c.timezone} onChange={(e) => setC({ ...c, timezone: e.target.value })}>
-                {["America/Argentina/Buenos_Aires", "America/Santiago", "America/Montevideo", "America/Mexico_City", "Europe/Madrid", "America/Bogota", "America/Lima"].map((z) => (
+                {["America/Argentina/Buenos_Aires", "America/Bogota", "America/Lima", "America/Mexico_City", "America/Montevideo", "America/Santiago", "Europe/Madrid"].map((z) => (
                   <option key={z}>{z}</option>
                 ))}
               </select>
@@ -306,7 +306,7 @@ export function Admin() {
             <div className="field">
               <label>Moneda</label>
               <select className="select" value={c.currency} onChange={(e) => setC({ ...c, currency: e.target.value })}>
-                {["USD", "ARS", "EUR", "CLP", "UYU", "MXN"].map((m) => (
+                {["ARS", "CLP", "EUR", "MXN", "USD", "UYU"].map((m) => (
                   <option key={m}>{m}</option>
                 ))}
               </select>

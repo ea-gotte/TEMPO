@@ -166,7 +166,7 @@ export function Reports() {
               <label>Persona</label>
               <select className="select" value={userFilterRaw} onChange={(e) => setUserFilter(e.target.value)}>
                 <option value="">Todas</option>
-                {state.users.map((u) => (
+                {[...state.users].sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
@@ -176,7 +176,7 @@ export function Reports() {
             <label>Cliente</label>
             <select className="select" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
               <option value="">Todos</option>
-              {state.clients.map((c) => (
+              {[...state.clients].sort((a, b) => a.name.localeCompare(b.name)).map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
@@ -185,7 +185,7 @@ export function Reports() {
             <label>Proyecto</label>
             <select className="select" value={projectFilter} onChange={(e) => { setProjectFilter(e.target.value); setSubProjectFilter(""); }}>
               <option value="">Todos</option>
-              {visibleProjects(state, state.currentUserId).map((p) => (
+              {[...visibleProjects(state, state.currentUserId)].sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
@@ -195,7 +195,7 @@ export function Reports() {
               <label>Subproyecto</label>
               <select className="select" value={subProjectFilter} onChange={(e) => setSubProjectFilter(e.target.value)}>
                 <option value="">Todos</option>
-                {state.subProjects.filter((sp) => sp.projectId === projectFilter).map((sp) => (
+                {state.subProjects.filter((sp) => sp.projectId === projectFilter).sort((a, b) => a.name.localeCompare(b.name)).map((sp) => (
                   <option key={sp.id} value={sp.id}>{sp.name}</option>
                 ))}
               </select>

@@ -59,14 +59,14 @@ type View = "dia" | "semana" | "mes" | "timeline";
 /** Husos horarios adicionales disponibles para la vista de calendario */
 const TZ_OPTIONS = [
   { id: "America/Argentina/Buenos_Aires", label: "Argentina (Buenos Aires)", short: "ARG" },
-  { id: "Europe/Madrid", label: "España (Madrid)", short: "ESP" },
   { id: "America/Santiago", label: "Chile (Santiago)", short: "CHI" },
-  { id: "America/Mexico_City", label: "México (CDMX)", short: "MEX" },
   { id: "America/Bogota", label: "Colombia (Bogotá)", short: "COL" },
-  { id: "America/Caracas", label: "Venezuela (Caracas)", short: "VEN" },
-  { id: "America/Lima", label: "Perú (Lima)", short: "PER" },
   { id: "America/New_York", label: "EE. UU. (Nueva York)", short: "NY" },
+  { id: "Europe/Madrid", label: "España (Madrid)", short: "ESP" },
+  { id: "America/Mexico_City", label: "México (CDMX)", short: "MEX" },
+  { id: "America/Lima", label: "Perú (Lima)", short: "PER" },
   { id: "UTC", label: "UTC", short: "UTC" },
+  { id: "America/Caracas", label: "Venezuela (Caracas)", short: "VEN" },
 ];
 
 /** Offset (min) de una zona horaria respecto de UTC en un instante dado */
@@ -189,6 +189,9 @@ export function CalendarPage() {
   // justo después del mouseup — como el estado de drag ya se limpió, ese click caía
   // sobre la celda vacía y abría "Nuevo registro" sin que se pidiera. Este ref lo frena.
   const justDraggedRef = useRef(false);
+  // Filtro "solo superpuestos": oculta las entradas que no chocan con
+  // ninguna otra ese día, para encontrar rápido qué hay que reacomodar.
+  const [onlyOverlaps, setOnlyOverlaps] = useState(false);
 
   // Al abrir la vista de día/semana, posicionar el scroll en la mañana
   React.useEffect(() => {
@@ -208,9 +211,12 @@ export function CalendarPage() {
   const canPickOthers = canSeeAll || isSupervisor;
   const downline = useMemo(() => (isSupervisor ? getDownlineIds(me, state.users) : new Set<string>()), [isSupervisor, me, state.users]);
   const pickableUsers = useMemo(() => {
-    if (canSeeAll) return state.users.filter((u) => u.active);
-    if (isSupervisor) return state.users.filter((u) => u.active && (u.id === me || downline.has(u.id)));
-    return [meUser];
+    const list = canSeeAll
+      ? state.users.filter((u) => u.active)
+      : isSupervisor
+        ? state.users.filter((u) => u.active && (u.id === me || downline.has(u.id)))
+        : [meUser];
+    return [...list].sort((a, b) => a.name.localeCompare(b.name));
   }, [canSeeAll, isSupervisor, state.users, me, downline, meUser]);
   const [viewUserId, setViewUserId] = useState(me);
   const effectiveUserId = canPickOthers && pickableUsers.some((u) => u.id === viewUserId) ? viewUserId : me;
@@ -345,14 +351,6 @@ export function CalendarPage() {
   // todo `entries` por cada bloque visible) y con el navegador ocupado en eso la
   // tarjeta arrastrada se quedaba pegada un instante en la posición vieja antes
   // de "saltar" a la nueva — el parpadeo/lag que se reportó.
-  const dayLanes = useMemo(() => {
-    const map = new Map<string, Map<string, { col: number; cols: number }>>();
-    for (const day of visibleDays) {
-      map.set(day, layoutOverlaps(entries.filter((e) => e.date === day)));
-    }
-    return map;
-  }, [entries, visibleDays]);
-
   const conflictIds = useMemo(() => {
     const set = new Set<string>();
     for (const e of entries) {
@@ -360,6 +358,18 @@ export function CalendarPage() {
     }
     return set;
   }, [entries]);
+
+  const dayLanes = useMemo(() => {
+    // Con el filtro "solo superpuestos" activo, los carriles se calculan solo
+    // entre las entradas que quedan visibles — si no, las que chocan quedan
+    // con columnas vacías en el medio (el hueco que dejan las que se ocultan).
+    const visibleEntries = onlyOverlaps ? entries.filter((e) => conflictIds.has(e.id)) : entries;
+    const map = new Map<string, Map<string, { col: number; cols: number }>>();
+    for (const day of visibleDays) {
+      map.set(day, layoutOverlaps(visibleEntries.filter((e) => e.date === day)));
+    }
+    return map;
+  }, [entries, visibleDays, onlyOverlaps, conflictIds]);
 
   function shift(n: number) {
     if (view === "mes") {
@@ -535,6 +545,13 @@ export function CalendarPage() {
         <div style={{ width: 150 }}>
           <DateField value={anchor} onChange={setAnchor} />
         </div>
+        <button
+          className={`btn btn-sm ${onlyOverlaps ? "btn-primary" : "btn-secondary"}`}
+          onClick={() => setOnlyOverlaps((v) => !v)}
+          title="Mostrar solo las entradas que se superponen en el tiempo, para reacomodarlas"
+        >
+          <Icon name="alert" size={13} /> Solo superpuestos{conflictIds.size > 0 ? ` (${conflictIds.size})` : ""}
+        </button>
         <span className="spacer" />
         {(view === "dia" || view === "semana") && (
           <>
@@ -661,7 +678,9 @@ export function CalendarPage() {
               );
             })}
             {visibleDays.map((day) => {
-              const dayEntries = entries.filter((e) => e.date === day || (drag && dragged(state.entries.find((x) => x.id === drag.entryId)!).date === day && drag.entryId === e.id));
+              const dayEntries = entries
+                .filter((e) => e.date === day || (drag && dragged(state.entries.find((x) => x.id === drag.entryId)!).date === day && drag.entryId === e.id))
+                .filter((e) => !onlyOverlaps || conflictIds.has(e.id) || drag?.entryId === e.id);
               // Carriles precalculados (ver dayLanes más arriba): no dependen de
               // `drag`, así que arrastrar una tarjeta no dispara ningún recálculo
               // acá — solo cambia el estilo del bloque que se está moviendo.
@@ -755,7 +774,9 @@ export function CalendarPage() {
           ))}
           {monthCells.map((day) => {
             const inMonth = parseISO(day).getMonth() === parseISO(anchor).getMonth();
-            const dayEntries = entries.filter((e) => e.date === day);
+            const allDayEntries = entries.filter((e) => e.date === day);
+            const hasConflict = allDayEntries.some((e) => conflictIds.has(e.id));
+            const dayEntries = onlyOverlaps ? allDayEntries.filter((e) => conflictIds.has(e.id)) : allDayEntries;
             const total = dayEntries.reduce((a, e) => a + (e.end - e.start), 0);
             return (
               <div
@@ -765,9 +786,14 @@ export function CalendarPage() {
                   setAnchor(day);
                   setView("dia");
                 }}
-                style={{ cursor: "pointer" }}
+                style={{ cursor: "pointer", opacity: onlyOverlaps && !hasConflict ? 0.35 : undefined }}
               >
                 <span className={`num ${day === today() ? "today" : ""}`}>{parseISO(day).getDate()}</span>
+                {hasConflict && (
+                  <span className="month-evt" style={{ background: "var(--danger-soft)", color: "var(--danger)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <Icon name="alert" size={10} /> Superpuesto
+                  </span>
+                )}
                 {total > 0 && (
                   <span className="month-evt" style={{ background: "var(--accent-soft)", color: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 4 }}>
                     <Icon name="timer" size={10} /> {fmtDur(total)}
@@ -792,9 +818,10 @@ export function CalendarPage() {
         <div className="card card-pad">
           <div className="card-title">Timeline semanal — {dayLabel(ws)} a {dayLabel(addDays(ws, 6))}</div>
           {weekDays.map((day) => {
-            const dayEntries = entries.filter((e) => e.date === day);
+            const allDayEntries = entries.filter((e) => e.date === day);
+            const dayEntries = onlyOverlaps ? allDayEntries.filter((e) => conflictIds.has(e.id)) : allDayEntries;
             return (
-              <div className="tl-row" key={day}>
+              <div className="tl-row" key={day} style={{ opacity: onlyOverlaps && dayEntries.length === 0 ? 0.35 : undefined }}>
                 <span style={{ fontSize: 12.5, fontWeight: 600, textTransform: "capitalize" }}>
                   {dayLabel(day, { weekday: "long", day: "numeric" })}
                 </span>
@@ -803,6 +830,7 @@ export function CalendarPage() {
                     const p = state.projects.find((x) => x.id === e.projectId);
                     const left = ((e.start - H0 * 60) / ((H1 - H0) * 60)) * 100;
                     const width = ((e.end - e.start) / ((H1 - H0) * 60)) * 100;
+                    const conf = conflictIds.has(e.id);
                     return (
                       <span
                         key={e.id}
@@ -810,6 +838,7 @@ export function CalendarPage() {
                         style={{
                           left: `${clamp(left, 0, 100)}%`, width: `${clamp(width, 1, 100)}%`, background: p?.color ?? "var(--accent)",
                           cursor: canEdit ? "pointer" : "default",
+                          outline: conf ? "2px solid var(--danger)" : undefined,
                         }}
                         title={`${e.description} · ${minToHM(e.start)}–${minToHM(e.end)}`}
                         onDoubleClick={() => canEdit && setModal(e)}

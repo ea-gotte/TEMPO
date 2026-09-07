@@ -138,7 +138,7 @@ export function Team() {
               <th>
                 <select className="select" value={fSupervisor} onChange={(e) => setFSupervisor(e.target.value)} onClick={(e) => e.stopPropagation()}>
                   <option value="">Todos</option>
-                  {state.users.filter((u) => u.role !== "usuario").map((u) => (
+                  {state.users.filter((u) => u.role !== "usuario").sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
                     <option key={u.id} value={u.id}>{u.name}</option>
                   ))}
                 </select>
@@ -381,7 +381,7 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
           <label>Supervisor</label>
           <select className="select" value={supervisorId} onChange={(e) => setSupervisorId(e.target.value)}>
             <option value="">— Sin supervisor —</option>
-            {state.users.filter((u) => u.role !== "usuario" && u.id !== user?.id).map((u) => (
+            {state.users.filter((u) => u.role !== "usuario" && u.id !== user?.id).sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </select>

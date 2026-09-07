@@ -733,7 +733,7 @@ export function TimeEntriesImportPanel() {
                       onChange={(e) => e.target.value && updateRow(v.row.id, { userId: e.target.value })}
                     >
                       <option value="">{v.row.personName ? `${v.row.personName} (no encontrado)` : "Elegir persona…"}</option>
-                      {state.users.map((u) => (
+                      {[...state.users].sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
                         <option key={u.id} value={u.id}>{u.name}</option>
                       ))}
                     </select>
@@ -763,14 +763,15 @@ export function TimeEntriesImportPanel() {
                       }}
                     >
                       <option value="">{v.row.projectRaw ? `${v.row.projectRaw} (sin match)` : "Sin proyecto — elegir…"}</option>
-                      {state.projects.map((p) => (
+                      {[...state.projects].sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
                         <option key={p.id} value={`p:${p.id}`}>{p.name}</option>
                       ))}
-                      {state.subProjects.map((sp) => (
-                        <option key={sp.id} value={`s:${sp.id}`}>
-                          {state.projects.find((p) => p.id === sp.projectId)?.name} / {sp.name}
-                        </option>
-                      ))}
+                      {[...state.subProjects]
+                        .map((sp) => ({ sp, label: `${state.projects.find((p) => p.id === sp.projectId)?.name ?? ""} / ${sp.name}` }))
+                        .sort((a, b) => a.label.localeCompare(b.label))
+                        .map(({ sp, label }) => (
+                          <option key={sp.id} value={`s:${sp.id}`}>{label}</option>
+                        ))}
                     </select>
                   ),
               },

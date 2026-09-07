@@ -41,7 +41,7 @@ export function ProfessionalProfile() {
         <span className="spacer" />
         {canPickOthers && (
           <select className="select" value={userId} onChange={(e) => setUserId(e.target.value)} style={{ maxWidth: 220 }}>
-            {state.users.filter((u) => u.active).map((u) => (
+            {state.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </select>

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { hashHue, initials, normText } from "../utils";
 import { Icon, type IconName } from "./Icon";
 
@@ -170,7 +170,11 @@ export function ProjectSelect({
     return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, []);
 
-  const filtered = query.trim() ? projects.filter((p) => normText(p.name).includes(normText(query))) : projects;
+  // Ordenado alfabéticamente acá (no en cada lugar que arma la lista de
+  // proyectos) para que este selector quede siempre ordenado sin importar
+  // el orden en el que venga la prop.
+  const sorted = useMemo(() => [...projects].sort((a, b) => a.name.localeCompare(b.name)), [projects]);
+  const filtered = query.trim() ? sorted.filter((p) => normText(p.name).includes(normText(query))) : sorted;
 
   return (
     <div ref={wrapRef} style={{ position: "relative" }}>

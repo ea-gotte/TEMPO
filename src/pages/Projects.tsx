@@ -195,7 +195,7 @@ export function Projects() {
 
         {editMembersOf && (
           <MembersPickerModal
-            users={state.users.filter((u) => u.active)}
+            users={state.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name))}
             selected={editMembersOf.memberIds}
             onSave={(ids) => saveMembersOnly(editMembersOf, ids)}
             onClose={() => setEditMembersOf(null)}
@@ -231,7 +231,7 @@ export function Projects() {
             <div className="field" style={{ width: 180 }}>
               <select className="select" value={fMember} onChange={(e) => setFMember(e.target.value)}>
                 <option value="">Equipo: todos</option>
-                {state.users.filter((u) => u.active).map((u) => (
+                {state.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
@@ -265,7 +265,7 @@ export function Projects() {
                 <th>
                   <select className="select" value={fClient} onChange={(e) => setFClient(e.target.value)} onClick={(e) => e.stopPropagation()}>
                     <option value="">Todos</option>
-                    {state.clients.map((c) => (
+                    {[...state.clients].sort((a, b) => a.name.localeCompare(b.name)).map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
@@ -284,9 +284,9 @@ export function Projects() {
                   <select className="select" value={fActivity} onChange={(e) => setFActivity(e.target.value)} onClick={(e) => e.stopPropagation()}>
                     <option value="">Todas</option>
                     <option value="__none__">Sin asignar</option>
-                    {state.flightCategories.map((cat) => (
+                    {[...state.flightCategories].sort((a, b) => a.name.localeCompare(b.name)).map((cat) => (
                       <optgroup key={cat.id} label={cat.name}>
-                        {state.flightActivities.filter((a) => a.categoryId === cat.id).map((a) => (
+                        {state.flightActivities.filter((a) => a.categoryId === cat.id).sort((a, b) => a.name.localeCompare(b.name)).map((a) => (
                           <option key={a.id} value={a.id}>{a.name}</option>
                         ))}
                       </optgroup>
@@ -353,10 +353,11 @@ export function Projects() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         <option value="">— Sin asignar —</option>
-                        {state.flightCategories.map((cat) => (
+                        {[...state.flightCategories].sort((a, b) => a.name.localeCompare(b.name)).map((cat) => (
                           <optgroup key={cat.id} label={cat.name}>
                             {state.flightActivities
                               .filter((a) => a.categoryId === cat.id && (a.active || a.id === p.flightActivityId))
+                              .sort((a, b) => a.name.localeCompare(b.name))
                               .map((a) => (
                                 <option key={a.id} value={a.id}>{a.name}{a.active ? "" : " (inactiva)"}</option>
                               ))}
@@ -498,7 +499,7 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
   );
   const [memberIds, setMemberIds] = useState<string[]>(project?.memberIds ?? [state.currentUserId]);
   const [showMembers, setShowMembers] = useState(false);
-  const activeUsers = state.users.filter((u) => u.active);
+  const activeUsers = state.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name));
   const selectedMembers = memberIds.map((id) => activeUsers.find((u) => u.id === id)).filter((u): u is (typeof activeUsers)[number] => Boolean(u));
 
   // Si hay subproyectos, el total del proyecto se ajusta a la suma de lo pactado por etapa
@@ -552,7 +553,7 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
         <div className="field">
           <label>Cliente</label>
           <select className="select" value={clientId} onChange={(e) => setClientId(e.target.value)}>
-            {state.clients.map((c) => (
+            {[...state.clients].sort((a, b) => a.name.localeCompare(b.name)).map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
@@ -593,10 +594,11 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
             <option value="">— Sin asignar —</option>
             {state.flightCategories
               .filter((cat) => cat.active)
+              .sort((a, b) => a.name.localeCompare(b.name))
               .map((cat) => {
-                const acts = state.flightActivities.filter(
-                  (a) => a.categoryId === cat.id && (a.active || a.id === flightActivityId),
-                );
+                const acts = state.flightActivities
+                  .filter((a) => a.categoryId === cat.id && (a.active || a.id === flightActivityId))
+                  .sort((a, b) => a.name.localeCompare(b.name));
                 if (acts.length === 0) return null;
                 return (
                   <optgroup key={cat.id} label={cat.name}>
