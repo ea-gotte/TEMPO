@@ -7,6 +7,7 @@ import { ContextMenu, DateField, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { supabase } from "../supabase";
 import { msalConfigured, getConnectedAccount, connectMicrosoft, disconnectMicrosoft, fetchTeamsEvents, type TeamsEvent } from "../msal";
+import { getDownlineIds } from "../compliance";
 
 const H0 = 0; // primera hora visible (día completo)
 const H1 = 24; // última hora
@@ -108,6 +109,7 @@ const CalBlock = React.memo(function CalBlock({
   onResizeDown,
   onEdit,
   onContext,
+  canEdit,
 }: {
   entry: TimeEntry;
   top: number;
@@ -128,6 +130,9 @@ const CalBlock = React.memo(function CalBlock({
   onResizeDown: (e: React.MouseEvent, entry: TimeEntry) => void;
   onEdit: (entry: TimeEntry) => void;
   onContext: (e: React.MouseEvent, entry: TimeEntry) => void;
+  /** false cuando se está viendo el calendario de otra persona: nada de
+      arrastrar, redimensionar, editar ni el menú contextual. */
+  canEdit: boolean;
 }) {
   // Cuántas líneas de texto entran realmente en el alto de ESTA tarjeta (ver
   // .cal-block-text en styles.css: 10px / line-height 1.25 = 12.5px por
@@ -141,6 +146,7 @@ const CalBlock = React.memo(function CalBlock({
       className={`cal-block ${conf ? "overlap" : ""}`}
       style={{
         top, height, left, width, right: "auto", background,
+        cursor: canEdit ? undefined : "default",
         ...(isDragging ? { zIndex: 30, boxShadow: "var(--shadow-md)" } : null),
       }}
       onMouseDown={(ev) => onMoveDown(ev, entry)}
@@ -156,7 +162,7 @@ const CalBlock = React.memo(function CalBlock({
         {label} <span className="t">{timeLabel}</span>
         {subLabel && <> · <span className="cal-block-sub-inline">{subLabel}</span></>}
       </div>
-      <span className="rsz" onMouseDown={(ev) => onResizeDown(ev, entry)} />
+      {canEdit && <span className="rsz" onMouseDown={(ev) => onResizeDown(ev, entry)} />}
     </div>
   );
 });
@@ -194,7 +200,26 @@ export function CalendarPage() {
   const me = state.currentUserId;
   const meUser = state.users.find((u) => u.id === me)!;
 
-  // Configuración de husos guardada por usuario
+  // Ver el calendario de otra persona (nunca editarlo): admin y gerente
+  // pueden elegir a cualquiera; el supervisor, solo a quienes tiene por
+  // debajo en su cadena de mando (directa o indirecta, ver compliance.ts).
+  const canSeeAll = meUser.role === "admin" || meUser.role === "gerente";
+  const isSupervisor = meUser.role === "supervisor";
+  const canPickOthers = canSeeAll || isSupervisor;
+  const downline = useMemo(() => (isSupervisor ? getDownlineIds(me, state.users) : new Set<string>()), [isSupervisor, me, state.users]);
+  const pickableUsers = useMemo(() => {
+    if (canSeeAll) return state.users.filter((u) => u.active);
+    if (isSupervisor) return state.users.filter((u) => u.active && (u.id === me || downline.has(u.id)));
+    return [meUser];
+  }, [canSeeAll, isSupervisor, state.users, me, downline, meUser]);
+  const [viewUserId, setViewUserId] = useState(me);
+  const effectiveUserId = canPickOthers && pickableUsers.some((u) => u.id === viewUserId) ? viewUserId : me;
+  const viewUser = state.users.find((u) => u.id === effectiveUserId) ?? meUser;
+  // Solo se puede arrastrar, redimensionar, crear o borrar en el propio calendario.
+  const canEdit = effectiveUserId === me;
+
+  // Configuración de husos: siempre la propia, sin importar de quién sea el
+  // calendario que se está mirando.
   const baseTz = meUser.calendarTz ?? state.company.timezone;
   const tz2 = meUser.calendarTz2 ?? "";
 
@@ -241,7 +266,9 @@ export function CalendarPage() {
   // cambia el rango porque no hay caché propia — Graph responde rápido y así
   // nunca se muestra un rango viejo por accidente.
   React.useEffect(() => {
-    if (!msAccount || (view !== "dia" && view !== "semana")) {
+    // Las reuniones de Teams son siempre las MÍAS — no tiene sentido
+    // mezclarlas en el calendario de otra persona.
+    if (!msAccount || !canEdit || (view !== "dia" && view !== "semana")) {
       setTeamsEvents([]);
       return;
     }
@@ -251,7 +278,7 @@ export function CalendarPage() {
       .then((evts) => { if (!cancelled) setTeamsEvents(evts); })
       .catch((err) => { if (!cancelled) setTeamsError(err?.message ?? "No se pudieron traer las reuniones de Teams."); });
     return () => { cancelled = true; };
-  }, [msAccount, view, visibleDays]);
+  }, [msAccount, canEdit, view, visibleDays]);
 
   async function connectMs() {
     setMsBusy(true);
@@ -310,7 +337,7 @@ export function CalendarPage() {
     return map;
   }, [teamsEvents, baseTz]);
 
-  const entries = useMemo(() => state.entries.filter((e) => e.userId === me), [state.entries, me]);
+  const entries = useMemo(() => state.entries.filter((e) => e.userId === effectiveUserId), [state.entries, effectiveUserId]);
 
   // Carriles (superposición) y conflictos: dependen solo de los datos reales,
   // NUNCA de `drag` — así no se recalculan en cada mousemove del arrastre.
@@ -348,20 +375,25 @@ export function CalendarPage() {
   // referencia en cada render — es lo que le permite a React.memo saltarse
   // por completo el re-render de las tarjetas que NO se están arrastrando.
   const onBlockDown = React.useCallback((e: React.MouseEvent, entry: TimeEntry, mode: "move" | "resize") => {
+    if (!canEdit) return;
     e.preventDefault();
     e.stopPropagation();
     const colWidth = (gridRef.current?.querySelector(".cal-col") as HTMLElement)?.offsetWidth ?? 120;
     const next: Drag = { entryId: entry.id, mode, startY: e.clientY, startX: e.clientX, colWidth, orig: entry, dMin: 0, dDay: 0 };
     dragRef.current = next;
     setDrag(next);
-  }, []);
+  }, [canEdit]);
   const onBlockMoveDown = React.useCallback((e: React.MouseEvent, entry: TimeEntry) => onBlockDown(e, entry, "move"), [onBlockDown]);
   const onBlockResizeDown = React.useCallback((e: React.MouseEvent, entry: TimeEntry) => onBlockDown(e, entry, "resize"), [onBlockDown]);
   const onBlockContext = React.useCallback((e: React.MouseEvent, entry: TimeEntry) => {
+    if (!canEdit) return;
     e.preventDefault();
     e.stopPropagation();
     setCtx({ x: e.clientX, y: e.clientY, entry });
-  }, []);
+  }, [canEdit]);
+  const onBlockEdit = React.useCallback((entry: TimeEntry) => {
+    if (canEdit) setModal(entry);
+  }, [canEdit]);
 
   function onMove(e: MouseEvent) {
     const drag = dragRef.current;
@@ -438,6 +470,7 @@ export function CalendarPage() {
   }
 
   function onEmptyClick(day: string, ev: React.MouseEvent) {
+    if (!canEdit) return;
     if (justDraggedRef.current) {
       justDraggedRef.current = false;
       return;
@@ -464,6 +497,19 @@ export function CalendarPage() {
       <div className="page-head">
         <h1>Calendario</h1>
         <span className="spacer" />
+        {canPickOthers && (
+          <select
+            className="select"
+            style={{ maxWidth: 220 }}
+            value={effectiveUserId}
+            onChange={(e) => setViewUserId(e.target.value)}
+            aria-label="Ver calendario de"
+          >
+            {pickableUsers.map((u) => (
+              <option key={u.id} value={u.id}>{u.id === me ? `${u.name} (yo)` : u.name}</option>
+            ))}
+          </select>
+        )}
         <div className="tabs" role="tablist">
           {(["dia", "semana", "mes", "timeline"] as View[]).map((v) => (
             <button key={v} className={view === v ? "active" : ""} onClick={() => setView(v)} role="tab" aria-selected={view === v}>
@@ -519,7 +565,7 @@ export function CalendarPage() {
                 <option key={t.id} value={t.id}>+ {t.label}</option>
               ))}
             </select>
-            {msalConfigured && (
+            {msalConfigured && canEdit && (
               msAccount ? (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                   <span className="badge acc" title={msAccount.username}><Icon name="plug" size={11} /> Teams</span>
@@ -535,13 +581,18 @@ export function CalendarPage() {
         )}
         {teamsError && <span style={{ color: "var(--danger)", fontSize: 12.5 }}>{teamsError}</span>}
       </div>
+      {!canEdit && (
+        <div style={{ marginBottom: 10 }}>
+          <span className="badge warn"><Icon name="eye" size={11} /> Viendo el calendario de {viewUser.name} · Solo lectura</span>
+        </div>
+      )}
       <p className="page-sub">
         {view === "mes"
           ? monthLabel(anchor)
           : view === "dia"
             ? dayLabel(anchor, { weekday: "long", day: "numeric", month: "long" })
             : `Semana del ${dayLabel(ws)} · total ${fmtDur(totalWeek)}`}
-        {" · "}Arrastrá para mover, borde inferior para redimensionar, clic en un hueco para crear.
+        {canEdit && <>{" · "}Arrastrá para mover, borde inferior para redimensionar, clic en un hueco para crear.</>}
       </p>
 
       {(view === "semana" || view === "dia") && (
@@ -657,8 +708,9 @@ export function CalendarPage() {
                         title={title}
                         onMoveDown={onBlockMoveDown}
                         onResizeDown={onBlockResizeDown}
-                        onEdit={setModal}
+                        onEdit={onBlockEdit}
                         onContext={onBlockContext}
+                        canEdit={canEdit}
                       />
                     );
                   })}
@@ -755,9 +807,12 @@ export function CalendarPage() {
                       <span
                         key={e.id}
                         className="tl-seg"
-                        style={{ left: `${clamp(left, 0, 100)}%`, width: `${clamp(width, 1, 100)}%`, background: p?.color ?? "var(--accent)" }}
+                        style={{
+                          left: `${clamp(left, 0, 100)}%`, width: `${clamp(width, 1, 100)}%`, background: p?.color ?? "var(--accent)",
+                          cursor: canEdit ? "pointer" : "default",
+                        }}
                         title={`${e.description} · ${minToHM(e.start)}–${minToHM(e.end)}`}
-                        onDoubleClick={() => setModal(e)}
+                        onDoubleClick={() => canEdit && setModal(e)}
                       />
                     );
                   })}
