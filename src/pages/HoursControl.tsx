@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from "react";
-import { overtimeClaimDeadline, expectedMinutesInRange, useStore } from "../store";
-import { addDays, dayLabel, fmtDur, today, uid, weekStart } from "../utils";
+import { overtimeClaimDeadline, expectedMinutesInRange, overlaps, useStore } from "../store";
+import { addDays, dayLabel, fmtDur, minToHM, today, uid, weekStart } from "../utils";
 import { Avatar, Empty, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { computeHoursIncidents, getDownlineIds, visibleIncidents, type HoursIncident } from "../compliance";
 import { buildForest, buildLayout, teamIds, CARD_W, CARD_H } from "../orgTree";
-import type { User } from "../types";
+import type { TimeEntry, User } from "../types";
 
 const DAY_SHORT = ["L", "M", "X", "J", "V", "S", "D"];
 
@@ -127,7 +127,7 @@ export function HoursControl() {
       </div>
 
       {tab === "cadena" ? (
-        <ComplianceChart incidents={weekIncidents} me={me} allUsers={state.users} />
+        <ComplianceChart incidents={weekIncidents} me={me} allUsers={state.users} entries={state.entries} ws={ws} />
       ) : (
         <>
           <p className="page-sub">
@@ -281,9 +281,51 @@ const ROLE_LABEL: Record<string, string> = { admin: "Admin", gerente: "Gerente",
  * un nivel más por cada 2 días que pase sin resolverse — hasta el
  * responsable que tiene el aviso activo en este momento (marcado en ámbar).
  */
-function ComplianceChart({ incidents, me, allUsers }: { incidents: HoursIncident[]; me: User; allUsers: User[] }) {
+function ComplianceChart({
+  incidents, me, allUsers, entries, ws,
+}: {
+  incidents: HoursIncident[]; me: User; allUsers: User[]; entries: TimeEntry[]; ws: string;
+}) {
   const escalated = incidents.filter((i) => i.escalationLevel > 0 || i.fallbackToAdmins).length;
   const isAdmin = me.role === "admin";
+
+  // Horas superpuestas (dos registros del mismo día que se pisan en el
+  // horario) de la semana elegida — es una advertencia aparte de las
+  // incidencias de carga: alguien puede tener la semana completa y, aun
+  // así, dos registros mal cargados que se cruzan entre sí.
+  const overlapsByUser = useMemo(() => {
+    const weekEnd = addDays(ws, 6);
+    const map = new Map<string, { a: TimeEntry; b: TimeEntry }[]>();
+    const byUser = new Map<string, TimeEntry[]>();
+    for (const e of entries) {
+      if (e.date < ws || e.date > weekEnd) continue;
+      if (!byUser.has(e.userId)) byUser.set(e.userId, []);
+      byUser.get(e.userId)!.push(e);
+    }
+    for (const [userId, userEntries] of byUser) {
+      const pairs: { a: TimeEntry; b: TimeEntry }[] = [];
+      const seen = new Set<string>();
+      for (const e of userEntries) {
+        for (const c of overlaps(userEntries, e)) {
+          const key = [e.id, c.id].sort().join("|");
+          if (seen.has(key)) continue;
+          seen.add(key);
+          pairs.push({ a: e, b: c });
+        }
+      }
+      if (pairs.length > 0) map.set(userId, pairs);
+    }
+    return map;
+  }, [entries, ws]);
+
+  function overlapTooltip(pairs: { a: TimeEntry; b: TimeEntry }[]): string {
+    return pairs
+      .map(({ a, b }) => {
+        const label = (e: TimeEntry) => `"${e.description || "sin descripción"}" ${minToHM(e.start)}–${minToHM(e.end)}`;
+        return `${dayLabel(a.date)}: ${label(a)} se superpone con ${label(b)}`;
+      })
+      .join("\n");
+  }
 
   // Equipo España se ve en el organigrama (para tener el panorama completo de
   // la cadena de mando), pero queda exento: no usa TEMPO para cargar horas,
@@ -351,6 +393,9 @@ function ComplianceChart({ incidents, me, allUsers }: { incidents: HoursIncident
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)" }}>
             <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--surface-3)", border: "1px solid var(--border-strong)" }} /> Equipo España (exento)
           </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)" }}>
+            <Icon name="alert" size={13} style={{ color: "var(--warning)" }} /> Horas superpuestas esa semana (pasá el mouse para ver cuál)
+          </span>
         </div>
 
         {nodes.length === 0 ? (
@@ -379,6 +424,7 @@ function ComplianceChart({ incidents, me, allUsers }: { incidents: HoursIncident
                 const status = n.user.team === "espana"
                   ? "status-exento"
                   : failingIds.has(n.user.id) ? "status-red" : onPathIds.has(n.user.id) ? "status-amber" : "status-ok";
+                const overlapPairs = overlapsByUser.get(n.user.id);
                 return (
                   <div
                     key={n.user.id}
@@ -391,6 +437,18 @@ function ComplianceChart({ incidents, me, allUsers }: { incidents: HoursIncident
                       <div className="org-name">{n.user.name}</div>
                       <div className="org-role">{ROLE_LABEL[n.user.role] ?? n.user.role}</div>
                     </div>
+                    {overlapPairs && (
+                      <span
+                        title={overlapTooltip(overlapPairs)}
+                        style={{
+                          position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%",
+                          background: "var(--warning)", color: "#fff", display: "grid", placeItems: "center",
+                          boxShadow: "var(--shadow-sm)", cursor: "help",
+                        }}
+                      >
+                        <Icon name="alert" size={11} />
+                      </span>
+                    )}
                   </div>
                 );
               })}
