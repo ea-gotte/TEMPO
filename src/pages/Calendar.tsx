@@ -192,13 +192,27 @@ export function CalendarPage() {
   // Filtro "solo superpuestos": oculta las entradas que no chocan con
   // ninguna otra ese día, para encontrar rápido qué hay que reacomodar.
   const [onlyOverlaps, setOnlyOverlaps] = useState(false);
+  // Minuto al que hay que desplazar el scroll una vez que el nuevo
+  // día/semana ya se renderizó (ver toggleOnlyOverlaps más abajo).
+  const [scrollTarget, setScrollTarget] = useState<number | null>(null);
 
   // Al abrir la vista de día/semana, posicionar el scroll en la mañana
+  // (salvo que haya un scrollTarget pendiente, ver el efecto de abajo).
   React.useEffect(() => {
-    if (view === "dia" || view === "semana") {
+    if ((view === "dia" || view === "semana") && scrollTarget == null) {
       scrollRef.current?.scrollTo({ top: SCROLL_TO * PX_H });
     }
   }, [view]);
+
+  // Se declara DESPUÉS del efecto de arriba a propósito: si los dos corren
+  // en el mismo render (p. ej. al cambiar de "mes" a "día" con un salto al
+  // último superpuesto), React ejecuta los efectos en orden de declaración,
+  // así que este corre último y su scroll es el que queda.
+  React.useEffect(() => {
+    if (scrollTarget == null) return;
+    scrollRef.current?.scrollTo({ top: Math.max(0, (scrollTarget / 60) * PX_H - 120), behavior: "smooth" });
+    setScrollTarget(null);
+  }, [scrollTarget, anchor, view]);
 
   const me = state.currentUserId;
   const meUser = state.users.find((u) => u.id === me)!;
@@ -380,6 +394,22 @@ export function CalendarPage() {
     else setAnchor(addDays(anchor, n * 7));
   }
 
+  // Al activar el filtro, además de filtrar salta directo al último (más
+  // reciente) registro superpuesto: cambia la fecha, pasa a vista Día (da
+  // más lugar por tarjeta para reacomodar que Semana) y desplaza el scroll
+  // hasta su horario — así no hay que salir a buscarlo a mano.
+  function toggleOnlyOverlaps() {
+    const next = !onlyOverlaps;
+    setOnlyOverlaps(next);
+    if (!next) return;
+    const conflictEntries = entries.filter((e) => conflictIds.has(e.id));
+    if (conflictEntries.length === 0) return;
+    const last = [...conflictEntries].sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start).pop()!;
+    setAnchor(last.date);
+    if (view !== "dia" && view !== "semana") setView("dia");
+    setScrollTarget(last.start);
+  }
+
   /* ---------- drag & drop ---------- */
   // Estables (useCallback) para que los props de CalBlock no cambien de
   // referencia en cada render — es lo que le permite a React.memo saltarse
@@ -547,8 +577,8 @@ export function CalendarPage() {
         </div>
         <button
           className={`btn btn-sm ${onlyOverlaps ? "btn-primary" : "btn-secondary"}`}
-          onClick={() => setOnlyOverlaps((v) => !v)}
-          title="Mostrar solo las entradas que se superponen en el tiempo, para reacomodarlas"
+          onClick={toggleOnlyOverlaps}
+          title="Mostrar solo las entradas que se superponen en el tiempo y saltar a la más reciente, para reacomodarlas"
         >
           <Icon name="alert" size={13} /> Solo superpuestos{conflictIds.size > 0 ? ` (${conflictIds.size})` : ""}
         </button>
