@@ -10,11 +10,17 @@ export const COLORS = ["#5b6cff", "#12b5a5", "#f5a524", "#f0446c", "#8b5cf6", "#
 export function Projects() {
   const { state, dispatch } = useStore();
   const toast = useToast();
+  const me = state.users.find((u) => u.id === state.currentUserId)!;
+  // El supervisor solo administra la membresía de SUS proyectos (donde él
+  // mismo participa) — ni crea/elimina proyectos ni toca presupuesto,
+  // cliente, estado, etc. Ver el branch de retorno más abajo.
+  const isSupervisorOnly = me.role === "supervisor";
   const [tab, setTab] = useState<"proyectos" | "clientes" | "etiquetas">("proyectos");
   const [editProject, setEditProject] = useState<Project | "new" | null>(null);
   const [deleteProject, setDeleteProject] = useState<Project | null>(null);
   const [editClient, setEditClient] = useState<Client | "new" | null>(null);
   const [deleteClient, setDeleteClient] = useState<Client | null>(null);
+  const [editMembersOf, setEditMembersOf] = useState<Project | null>(null);
 
   const [fQuery, setFQuery] = useState("");
   const [fClient, setFClient] = useState("");
@@ -111,6 +117,94 @@ export function Projects() {
     dispatch({ type: "audit", action: "Cliente eliminado", detail: deleteClient.name });
     toast(`Cliente "${deleteClient.name}" eliminado.`);
     setDeleteClient(null);
+  }
+
+  function saveMembersOnly(project: Project, ids: string[]) {
+    dispatch({ type: "patch", patch: { projects: state.projects.map((p) => (p.id === project.id ? { ...p, memberIds: ids } : p)) } });
+    dispatch({ type: "audit", action: "Miembros de proyecto modificados", detail: project.name });
+    toast("Equipo del proyecto actualizado.");
+  }
+
+  // Vista acotada para supervisor: solo sus propios proyectos (donde él
+  // mismo es miembro), y solo puede tocar la membresía — nada de crear,
+  // eliminar, ni editar presupuesto/cliente/estado/color.
+  if (isSupervisorOnly) {
+    const myProjects = state.projects.filter((p) => p.memberIds.includes(me.id));
+    return (
+      <>
+        <div className="page-head">
+          <h1>Mis proyectos</h1>
+        </div>
+        <p className="page-sub">
+          Proyectos donde formás parte del equipo — podés agregar o quitar personas.
+        </p>
+
+        {myProjects.length === 0 ? (
+          <div className="card card-pad">
+            <Empty icon="folder" text="Sin proyectos" sub="Todavía no estás asignado a ningún proyecto." />
+          </div>
+        ) : (
+          <div className="card" style={{ overflowX: "auto" }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Proyecto</th>
+                  <th>Cliente</th>
+                  <th>Estado</th>
+                  <th>Equipo</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {myProjects.map((p) => {
+                  const client = state.clients.find((c) => c.id === p.clientId);
+                  return (
+                    <tr key={p.id}>
+                      <td>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 600 }}>
+                          <Dot color={p.color} /> {p.name}
+                        </div>
+                      </td>
+                      <td>{client?.name ?? "—"}</td>
+                      <td>
+                        <span className={`badge ${p.status === "activo" ? "ok" : p.status === "completado" ? "acc" : ""}`}>{p.status}</span>
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                          {p.memberIds.map((id) => {
+                            const u = state.users.find((x) => x.id === id);
+                            return u ? <Avatar key={id} name={u.name} size={20} /> : null;
+                          })}
+                          {p.memberIds.length === 0 && (
+                            <span style={{ fontSize: 11, color: "var(--warning)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              <Icon name="alert" size={11} /> Sin equipo asignado
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <button className="btn btn-secondary btn-sm" onClick={() => setEditMembersOf(p)}>
+                          <Icon name="users" size={13} /> Miembros
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {editMembersOf && (
+          <MembersPickerModal
+            users={state.users.filter((u) => u.active)}
+            selected={editMembersOf.memberIds}
+            onSave={(ids) => saveMembersOnly(editMembersOf, ids)}
+            onClose={() => setEditMembersOf(null)}
+          />
+        )}
+      </>
+    );
   }
 
   return (

@@ -10,8 +10,10 @@ import { supabase } from "../supabase";
 /** Páginas visibles para cualquier rol, incluido "usuario" (vista básica) */
 export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "profile", "absences", "corp", "feedback"];
 
-/** Además de las básicas, el supervisor solo ve Control de horas (acotado a su equipo) */
-const SUPERVISOR_EXTRA_PAGES: PageKey[] = ["control"];
+/** Además de las básicas, el supervisor ve Control de horas (acotado a su
+ * equipo) y Proyectos — ahí solo administra la membresía de los proyectos
+ * donde él mismo participa (ver Projects.tsx), nada más. */
+const SUPERVISOR_EXTRA_PAGES: PageKey[] = ["control", "projects"];
 
 /**
  * Equipo España: acceso principalmente de consulta — perfil profesional
@@ -232,7 +234,8 @@ export function Shell({
                 }}
               >
                 <span className="ico"><Icon name={it.ico} size={17} /></span>
-                {it.label}
+                {/* El supervisor solo administra sus propios proyectos (ver Projects.tsx), no todo el catálogo */}
+                {it.key === "projects" && me.role === "supervisor" ? "Mis proyectos" : it.label}
                 {it.key === "absences" && pending > 0 && <span className="count">{pending}</span>}
                 {it.key === "control" && isApprover && otPending > 0 && <span className="count">{otPending}</span>}
               </button>
