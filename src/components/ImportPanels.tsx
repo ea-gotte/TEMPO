@@ -871,6 +871,76 @@ export function TimeEntriesImportPanel() {
   );
 }
 
+/** Recorre TODOS los registros de horas ya cargados (no solo los de un archivo)
+ * y agrega a cada proyecto, como miembro, a cualquier persona que tenga horas
+ * cargadas ahí y todavía no figure en su equipo — típico de proyectos creados
+ * por una importación vieja que no cargó el equipo. */
+export function SyncProjectMembersPanel() {
+  const { state, dispatch } = useStore();
+  const toast = useToast();
+
+  const missingCount = useMemo(() => {
+    const byProject = new Map<string, Set<string>>();
+    for (const e of state.entries) {
+      if (!e.projectId) continue;
+      if (!byProject.has(e.projectId)) byProject.set(e.projectId, new Set());
+      byProject.get(e.projectId)!.add(e.userId);
+    }
+    let count = 0;
+    for (const p of state.projects) {
+      const withEntries = byProject.get(p.id);
+      if (!withEntries) continue;
+      for (const uid of withEntries) if (!p.memberIds.includes(uid)) count++;
+    }
+    return count;
+  }, [state.entries, state.projects]);
+
+  function sync() {
+    const byProject = new Map<string, Set<string>>();
+    for (const e of state.entries) {
+      if (!e.projectId) continue;
+      if (!byProject.has(e.projectId)) byProject.set(e.projectId, new Set());
+      byProject.get(e.projectId)!.add(e.userId);
+    }
+    let added = 0;
+    let touched = 0;
+    const projects = state.projects.map((p) => {
+      const withEntries = byProject.get(p.id);
+      if (!withEntries) return p;
+      const missing = [...withEntries].filter((uid) => !p.memberIds.includes(uid));
+      if (missing.length === 0) return p;
+      added += missing.length;
+      touched += 1;
+      return { ...p, memberIds: [...p.memberIds, ...missing] };
+    });
+    if (added === 0) {
+      toast("Ya está todo sincronizado — nadie para agregar.");
+      return;
+    }
+    dispatch({ type: "patch", patch: { projects } });
+    dispatch({
+      type: "audit",
+      action: "Equipos de proyecto sincronizados con horas cargadas",
+      detail: `${added} persona(s) agregadas en ${touched} proyecto(s)`,
+    });
+    toast(`${added} persona${added !== 1 ? "s" : ""} agregada${added !== 1 ? "s" : ""} en ${touched} proyecto${touched !== 1 ? "s" : ""}.`);
+  }
+
+  return (
+    <div className="card card-pad" style={{ marginBottom: 14 }}>
+      <div className="card-title">Sincronizar equipos de proyecto con horas cargadas</div>
+      <p style={{ fontSize: 12.5, color: "var(--text-2)", marginBottom: 10 }}>
+        Agrega, en cada proyecto, a cualquier persona que ya tenga horas cargadas ahí y todavía no figure en su equipo
+        — pasa sobre todos los registros ya existentes, no hace falta volver a importar nada. Útil sobre todo después
+        de una importación vieja que no cargó el equipo de los proyectos que fue creando.
+      </p>
+      <button className="btn btn-secondary" onClick={sync} disabled={missingCount === 0}>
+        <Icon name="users" size={14} /> {missingCount > 0 ? `Agregar ${missingCount} persona(s) a sus proyectos` : "Nada para sincronizar"}
+      </button>
+    </div>
+  );
+}
+
 /* ============================== Perfil profesional (formulario externo) ============================== */
 
 /** "6 años" / "1.5" / "3 años aprox" / "2 y medio" -> 6 / 1.5 / 3 / 2.5.
