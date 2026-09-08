@@ -15,7 +15,16 @@ export function EntryModal({
   const { state, dispatch } = useStore();
   const toast = useToast();
   const isEdit = Boolean(initial?.id);
-  const myProjects = visibleProjects(state, state.currentUserId);
+  const visible = visibleProjects(state, state.currentUserId);
+  // El proyecto que el registro ya tenía asignado tiene que verse en el
+  // selector aunque la persona no figure en su equipo (memberIds) — por
+  // ejemplo, proyectos creados por una importación de horas que no cargó
+  // el equipo. Si no, al editar un registro viejo el campo aparece vacío
+  // aunque el registro sí tenga un proyecto asignado.
+  const assignedProject = state.projects.find((p) => p.id === initial?.projectId);
+  const myProjects = assignedProject && !visible.some((p) => p.id === assignedProject.id)
+    ? [...visible, assignedProject]
+    : visible;
 
   const [projectId, setProjectId] = useState<string>(initial?.projectId ?? myProjects[0]?.id ?? "");
   const [subProjectId, setSubProjectId] = useState<string>(initial?.subProjectId ?? "");

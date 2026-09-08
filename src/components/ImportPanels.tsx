@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
-import type { AppState, Jornada, ProfessionalEntry, ProfessionalProfile, ProjectStatus, Role, TimeEntry, User } from "../types";
+import type { AppState, Jornada, ProfessionalEntry, ProfessionalProfile, Project, ProjectStatus, Role, TimeEntry, User } from "../types";
 import { addDays, downloadFile, fmtYearsSince, normText, parseCSV, parseDMY, toCSV, today, uid, yearsAgoISO } from "../utils";
 import { Icon } from "./Icon";
 import { useToast } from "./ui";
@@ -633,6 +633,49 @@ export function TimeEntriesImportPanel() {
 
   const withStatus = useMemo(() => rows.map((row) => ({ row, ...rowStatus(row, state) })), [rows, state.entries]);
 
+  // Nombres de proyecto que vinieron en el archivo pero no existen todavía en
+  // Clientes y proyectos (uno por nombre distinto, aunque aparezca en varias filas).
+  const missingProjectNames = useMemo(() => {
+    const map = new Map<string, string>(); // normText -> nombre tal como vino en el archivo
+    for (const { row, status } of withStatus) {
+      if (status === "error" || !row.projectRaw || row.projectMatched) continue;
+      const key = normText(row.projectRaw);
+      if (!map.has(key)) map.set(key, row.projectRaw.trim());
+    }
+    return map;
+  }, [withStatus]);
+
+  /** Da de alta en Clientes y proyectos cada nombre de proyecto que apareció en el
+   * archivo y todavía no existe, y vincula automáticamente las filas correspondientes.
+   * También los da de alta ya con el equipo (todas las personas que cargaron horas
+   * a ese proyecto en el archivo) — si no, el proyecto queda sin nadie asignado y
+   * esas mismas personas después no ven el proyecto al editar su propio registro. */
+  function createMissingProjects() {
+    if (missingProjectNames.size === 0) return;
+    const baseCount = state.projects.length;
+    const newProjects: Project[] = [...missingProjectNames.entries()].map(([key, name], i) => {
+      const memberIds = [...new Set(
+        withStatus
+          .filter(({ row }) => row.userId && normText(row.projectRaw) === key)
+          .map(({ row }) => row.userId as string),
+      )];
+      return {
+        id: uid(), clientId: null, name, color: COLORS[(baseCount + i) % COLORS.length],
+        status: "activo", budgetHours: null, memberIds, flightActivityId: null,
+      };
+    });
+    dispatch({ type: "patch", patch: { projects: [...state.projects, ...newProjects] } });
+    dispatch({ type: "audit", action: "Proyectos creados desde importación de horas", detail: newProjects.map((p) => p.name).join(", ") });
+    setRows((prev) =>
+      prev.map((r) => {
+        if (!r.projectRaw || r.projectMatched) return r;
+        const np = newProjects.find((p) => normText(p.name) === normText(r.projectRaw));
+        return np ? { ...r, projectId: np.id, subProjectId: null, projectMatched: true } : r;
+      }),
+    );
+    toast(`${newProjects.length} proyecto${newProjects.length !== 1 ? "s" : ""} creado${newProjects.length !== 1 ? "s" : ""} y vinculado${newProjects.length !== 1 ? "s" : ""} en Clientes y proyectos.`);
+  }
+
   async function apply() {
     const valid = withStatus.filter((v) => v.status === "nuevo").map((v) => v.row);
     if (valid.length === 0) return;
@@ -701,7 +744,7 @@ export function TimeEntriesImportPanel() {
       )}
       {rows.length > 0 && !fileError && (
         <>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "8px 0" }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: "8px 0" }}>
             {filters.map((f) => (
               <button
                 key={f.key}
@@ -712,6 +755,11 @@ export function TimeEntriesImportPanel() {
                 {f.label} ({f.count})
               </button>
             ))}
+            {missingProjectNames.size > 0 && (
+              <button className="btn btn-secondary btn-sm" onClick={createMissingProjects}>
+                <Icon name="plus" size={13} /> Agregar {missingProjectNames.size} proyecto{missingProjectNames.size !== 1 ? "s" : ""} que falta{missingProjectNames.size !== 1 ? "n" : ""} en Clientes y proyectos
+              </button>
+            )}
           </div>
           <PreviewTable
             rows={visible}
@@ -755,7 +803,26 @@ export function TimeEntriesImportPanel() {
                         const val = e.target.value;
                         if (!val) return;
                         const [kind, id] = val.split(":");
-                        if (kind === "p") updateRow(v.row.id, { projectId: id, subProjectId: null, projectMatched: true });
+                        if (kind === "n") {
+                          const name = v.row.projectRaw.trim();
+                          const memberIds = [...new Set(
+                            withStatus
+                              .filter((x) => x.row.userId && normText(x.row.projectRaw) === normText(name))
+                              .map((x) => x.row.userId as string),
+                          )];
+                          const np: Project = {
+                            id: uid(), clientId: null, name, color: COLORS[state.projects.length % COLORS.length],
+                            status: "activo", budgetHours: null, memberIds, flightActivityId: null,
+                          };
+                          dispatch({ type: "patch", patch: { projects: [...state.projects, np] } });
+                          dispatch({ type: "audit", action: "Proyecto creado desde importación de horas", detail: name });
+                          setRows((prev) =>
+                            prev.map((r) => (!r.projectMatched && normText(r.projectRaw) === normText(name)
+                              ? { ...r, projectId: np.id, subProjectId: null, projectMatched: true }
+                              : r)),
+                          );
+                          toast(`Proyecto "${name}" creado y vinculado.`);
+                        } else if (kind === "p") updateRow(v.row.id, { projectId: id, subProjectId: null, projectMatched: true });
                         else {
                           const sp = state.subProjects.find((x) => x.id === id);
                           updateRow(v.row.id, { projectId: sp?.projectId ?? null, subProjectId: id, projectMatched: true });
@@ -763,6 +830,7 @@ export function TimeEntriesImportPanel() {
                       }}
                     >
                       <option value="">{v.row.projectRaw ? `${v.row.projectRaw} (sin match)` : "Sin proyecto — elegir…"}</option>
+                      {v.row.projectRaw && <option value="n:1">+ Crear "{v.row.projectRaw}" en Clientes y proyectos</option>}
                       {[...state.projects].sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
                         <option key={p.id} value={`p:${p.id}`}>{p.name}</option>
                       ))}
