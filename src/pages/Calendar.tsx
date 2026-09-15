@@ -244,15 +244,20 @@ export function CalendarPage() {
   const tz2 = meUser.calendarTz2 ?? "";
 
   // Línea de "ahora" en la grilla de Día/Semana: se recalcula cada minuto y
-  // toma el huso "Base" elegido arriba (no el del navegador) — usa el mismo
-  // toZonedDateMinutes() que ya posiciona las reuniones de Teams, para que
-  // los dos usen exactamente la misma conversión de huso horario.
+  // usa la hora local del dispositivo (no el huso "Base"), porque los
+  // registros de horas (e.date/e.start/e.end) y today() se guardan y
+  // calculan igual, con la hora cruda del navegador — el selector "Base"
+  // solo se usa para posicionar las reuniones de Teams. Usar acá el mismo
+  // criterio que el resto de la grilla es lo que la mantiene sincronizada.
   const [nowTick, setNowTick] = useState(() => Date.now());
   React.useEffect(() => {
     const id = setInterval(() => setNowTick(Date.now()), 60000);
     return () => clearInterval(id);
   }, []);
-  const nowInBase = useMemo(() => toZonedDateMinutes(new Date(nowTick).toISOString(), baseTz), [nowTick, baseTz]);
+  const nowInBase = useMemo(() => {
+    const d = new Date(nowTick);
+    return { date: isoDate(d), min: d.getHours() * 60 + d.getMinutes() };
+  }, [nowTick]);
 
   function savePref(field: "calendarTz" | "calendarTz2", value: string) {
     dispatch({
