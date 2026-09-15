@@ -196,20 +196,6 @@ export function CalendarPage() {
   // día/semana ya se renderizó (ver toggleOnlyOverlaps más abajo).
   const [scrollTarget, setScrollTarget] = useState<number | null>(null);
 
-  // Línea de "ahora" en la grilla de Día/Semana: minutos desde medianoche en
-  // hora local, recalculado cada minuto para que la línea se vaya moviendo sola.
-  const [nowMin, setNowMin] = useState(() => {
-    const d = new Date();
-    return d.getHours() * 60 + d.getMinutes();
-  });
-  React.useEffect(() => {
-    const id = setInterval(() => {
-      const d = new Date();
-      setNowMin(d.getHours() * 60 + d.getMinutes());
-    }, 60000);
-    return () => clearInterval(id);
-  }, []);
-
   // Al abrir la vista de día/semana, posicionar el scroll en la mañana
   // (salvo que haya un scrollTarget pendiente, ver el efecto de abajo).
   React.useEffect(() => {
@@ -256,6 +242,17 @@ export function CalendarPage() {
   // calendario que se está mirando.
   const baseTz = meUser.calendarTz ?? state.company.timezone;
   const tz2 = meUser.calendarTz2 ?? "";
+
+  // Línea de "ahora" en la grilla de Día/Semana: se recalcula cada minuto y
+  // toma el huso "Base" elegido arriba (no el del navegador) — usa el mismo
+  // toZonedDateMinutes() que ya posiciona las reuniones de Teams, para que
+  // los dos usen exactamente la misma conversión de huso horario.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  React.useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 60000);
+    return () => clearInterval(id);
+  }, []);
+  const nowInBase = useMemo(() => toZonedDateMinutes(new Date(nowTick).toISOString(), baseTz), [nowTick, baseTz]);
 
   function savePref(field: "calendarTz" | "calendarTz2", value: string) {
     dispatch({
@@ -801,10 +798,10 @@ export function CalendarPage() {
                       </a>
                     );
                   })}
-                  {/* Línea de "ahora": solo en la columna de hoy, a la hora local
-                      actual — se recalcula sola cada minuto (ver nowMin arriba). */}
-                  {day === today() && (
-                    <div className="now-line" style={{ top: ((nowMin - H0 * 60) / 60) * PX_H }} />
+                  {/* Línea de "ahora": solo en la columna que es "hoy" en el huso
+                      Base elegido — se recalcula sola cada minuto (ver nowInBase arriba). */}
+                  {day === nowInBase.date && (
+                    <div className="now-line" style={{ top: ((nowInBase.min - H0 * 60) / 60) * PX_H }} />
                   )}
                 </div>
               );
