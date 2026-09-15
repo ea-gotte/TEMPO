@@ -196,6 +196,20 @@ export function CalendarPage() {
   // día/semana ya se renderizó (ver toggleOnlyOverlaps más abajo).
   const [scrollTarget, setScrollTarget] = useState<number | null>(null);
 
+  // Línea de "ahora" en la grilla de Día/Semana: minutos desde medianoche en
+  // hora local, recalculado cada minuto para que la línea se vaya moviendo sola.
+  const [nowMin, setNowMin] = useState(() => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  });
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      const d = new Date();
+      setNowMin(d.getHours() * 60 + d.getMinutes());
+    }, 60000);
+    return () => clearInterval(id);
+  }, []);
+
   // Al abrir la vista de día/semana, posicionar el scroll en la mañana
   // (salvo que haya un scrollTarget pendiente, ver el efecto de abajo).
   React.useEffect(() => {
@@ -787,6 +801,11 @@ export function CalendarPage() {
                       </a>
                     );
                   })}
+                  {/* Línea de "ahora": solo en la columna de hoy, a la hora local
+                      actual — se recalcula sola cada minuto (ver nowMin arriba). */}
+                  {day === today() && (
+                    <div className="now-line" style={{ top: ((nowMin - H0 * 60) / 60) * PX_H }} />
+                  )}
                 </div>
               );
             })}

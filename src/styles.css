@@ -310,6 +310,16 @@ a { color: var(--accent); text-decoration: none; }
 .cal-col { position: relative; border-left: 1px solid var(--border); }
 .cal-cell { height: 56px; border-bottom: 1px solid var(--border); transition: background 0.1s ease; }
 .cal-cell:hover { background: var(--surface-2); }
+/* Línea de "ahora": un punto pegado al borde izquierdo de la columna de hoy
+   y una línea sólida que la cruza, a la altura de la hora local actual. */
+.now-line {
+  position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--accent);
+  z-index: 8; pointer-events: none;
+}
+.now-line::before {
+  content: ""; position: absolute; left: -5px; top: -5px;
+  width: 10px; height: 10px; border-radius: 50%; background: var(--accent);
+}
 .cal-block {
   /* Alto mínimo de una tarjeta = 18px (ver Calendar.tsx, Math.max(18, ...)),
      es decir el de una entrada de 15 min. El padding vertical (2px arriba y

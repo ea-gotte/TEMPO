@@ -699,7 +699,17 @@ async function fetchAllRows<T = any>(table: string, pageSize = 1000): Promise<{ 
   const rows: T[] = [];
   let from = 0;
   for (;;) {
-    const { data, error } = await supabase.from(table).select("*").range(from, from + pageSize - 1);
+    let result = await supabase.from(table).select("*").range(from, from + pageSize - 1);
+    // Reintenta un par de veces ante un error transitorio (p. ej. un 500 pasajero
+    // del lado de Supabase) antes de darse por vencido — si no, un hipo de red de
+    // un instante hacía que esta página se devolviera vacía, y quien llama (ver
+    // fetchEntriesAndAbsences) reemplazaba los datos ya cargados por "0 registros"
+    // como si se hubieran perdido, cuando en realidad seguían intactos en la base.
+    for (let attempt = 0; result.error && attempt < 2; attempt++) {
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      result = await supabase.from(table).select("*").range(from, from + pageSize - 1);
+    }
+    const { data, error } = result;
     if (error) return { data: rows, error };
     if (!data || data.length === 0) break;
     rows.push(...(data as T[]));
@@ -773,22 +783,28 @@ async function fetchEntriesAndAbsences(
   // pisaría un cambio más reciente con uno viejo (se veía como "la tarjeta
   // vuelve a su posición y después se corrige").
   if (!isCurrent()) return;
-  dispatch({ type: "syncEntries", entries: (entryRows || []).map(fromEntryRow) });
-  dispatch({ type: "syncAbsences", absences: (absenceRows || []).map(fromAbsenceRow) });
-  dispatch({ type: "syncHolidays", holidays: (holidayRows || []).map(fromHolidayRow) });
-  dispatch({ type: "syncClients", clients: (clientRows || []).map(fromClientRow) });
-  dispatch({ type: "syncProjects", projects: (projectRows || []).map(fromProjectRow) });
-  dispatch({ type: "syncSubProjects", subProjects: (subProjectRows || []).map(fromSubProjectRow) });
-  dispatch({ type: "syncOvertime", overtime: (overtimeRows || []).map(fromOvertimeRow) });
-  dispatch({ type: "syncAudit", audit: (auditRows || []).map(fromAuditRow) });
-  dispatch({ type: "syncCorpEvents", corpEvents: (corpEventRows || []).map(fromCorpEventRow) });
-  dispatch({ type: "syncNotifications", notifications: (notificationRows || []).map(fromNotificationRow) });
-  dispatch({ type: "syncFlightCategories", flightCategories: (flightCategoryRows || []).map(fromFlightCategoryRow) });
-  dispatch({ type: "syncFlightActivities", flightActivities: (flightActivityRows || []).map(fromFlightActivityRow) });
-  dispatch({ type: "syncProfessionalProfiles", professionalProfiles: (profileRows || []).map(fromProfessionalProfileRow) });
-  dispatch({ type: "syncSurveys", surveys: (surveyRows || []).map(fromSurveyRow) });
-  dispatch({ type: "syncSurveyResponses", surveyResponses: (surveyResponseRows || []).map(fromSurveyResponseRow) });
-  dispatch({ type: "syncFeedbackItems", feedbackItems: (feedbackItemRows || []).map(fromFeedbackItemRow) });
+  // Cada sync se manda SOLO si esa tabla en particular no dio error: si una
+  // falló (incluso después de los reintentos de fetchAllRows), se deja como
+  // estaba en vez de reemplazarla por una lista vacía — antes, un error
+  // transitorio en una sola tabla (p. ej. time_entries) hacía que todo lo ya
+  // cargado desapareciera de golpe de la pantalla, aunque siguiera intacto
+  // en la base; con el próximo refetch que sí funcione se pone al día solo.
+  if (!entriesErr) dispatch({ type: "syncEntries", entries: (entryRows || []).map(fromEntryRow) });
+  if (!absencesErr) dispatch({ type: "syncAbsences", absences: (absenceRows || []).map(fromAbsenceRow) });
+  if (!holidaysErr) dispatch({ type: "syncHolidays", holidays: (holidayRows || []).map(fromHolidayRow) });
+  if (!clientsErr) dispatch({ type: "syncClients", clients: (clientRows || []).map(fromClientRow) });
+  if (!projectsErr) dispatch({ type: "syncProjects", projects: (projectRows || []).map(fromProjectRow) });
+  if (!subProjectsErr) dispatch({ type: "syncSubProjects", subProjects: (subProjectRows || []).map(fromSubProjectRow) });
+  if (!overtimeErr) dispatch({ type: "syncOvertime", overtime: (overtimeRows || []).map(fromOvertimeRow) });
+  if (!auditErr) dispatch({ type: "syncAudit", audit: (auditRows || []).map(fromAuditRow) });
+  if (!corpEventsErr) dispatch({ type: "syncCorpEvents", corpEvents: (corpEventRows || []).map(fromCorpEventRow) });
+  if (!notificationsErr) dispatch({ type: "syncNotifications", notifications: (notificationRows || []).map(fromNotificationRow) });
+  if (!flightCategoriesErr) dispatch({ type: "syncFlightCategories", flightCategories: (flightCategoryRows || []).map(fromFlightCategoryRow) });
+  if (!flightActivitiesErr) dispatch({ type: "syncFlightActivities", flightActivities: (flightActivityRows || []).map(fromFlightActivityRow) });
+  if (!profilesErr) dispatch({ type: "syncProfessionalProfiles", professionalProfiles: (profileRows || []).map(fromProfessionalProfileRow) });
+  if (!surveysErr) dispatch({ type: "syncSurveys", surveys: (surveyRows || []).map(fromSurveyRow) });
+  if (!surveyResponsesErr) dispatch({ type: "syncSurveyResponses", surveyResponses: (surveyResponseRows || []).map(fromSurveyResponseRow) });
+  if (!feedbackItemsErr) dispatch({ type: "syncFeedbackItems", feedbackItems: (feedbackItemRows || []).map(fromFeedbackItemRow) });
   if (settingsRow) {
     dispatch({
       type: "syncSettings",
