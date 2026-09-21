@@ -192,9 +192,6 @@ function FormacionTab({ userId, canEdit }: { userId: string; canEdit: boolean })
         onUpdate={(id, patch) => updateEntry("courses", id, patch)}
         onRemove={(id) => removeEntry("courses", id)}
       />
-      {canEdit && (
-        <div style={{ marginBottom: 8 }}><LinkHowTo /></div>
-      )}
       {canEdit && PDF_UPLOAD_ENABLED && (
         <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: -4 }}>
           Certificados en PDF adjuntos: {fmtMB(usedBytes)} de {fmtMB(MAX_PER_PERSON_BYTES)} · máximo {fmtMB(MAX_PDF_BYTES)} por archivo.
@@ -250,33 +247,20 @@ function EntryList({
 }) {
   // Orden cronológico automático por año. Lo que todavía no tiene año queda al
   // final (así una fila recién agregada no salta de lugar mientras se completa).
-  const [newestFirst, setNewestFirst] = useState(true);
   const sorted = useMemo(() => {
     const withIdx = entries.map((e, i) => ({ e, i }));
     withIdx.sort((a, b) => {
       const ya = validYear(a.e.year), yb = validYear(b.e.year);
-      if (ya && yb && a.e.year !== b.e.year) return newestFirst ? b.e.year! - a.e.year! : a.e.year! - b.e.year!;
+      if (ya && yb && a.e.year !== b.e.year) return b.e.year! - a.e.year!;
       if (ya !== yb) return ya ? -1 : 1;
       return a.i - b.i;
     });
     return withIdx.map((x) => x.e);
-  }, [entries, newestFirst]);
+  }, [entries]);
 
   return (
     <div className="card card-pad" style={{ marginBottom: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-        <div className="card-title" style={{ margin: 0 }}>{label}</div>
-        <span className="spacer" />
-        {entries.length > 1 && (
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => setNewestFirst((v) => !v)}
-            title="Las filas se ordenan solas por año; acá se elige el sentido"
-          >
-            <Icon name="clock" size={13} /> {newestFirst ? "Más recientes primero" : "Más antiguos primero"}
-          </button>
-        )}
-      </div>
+      <div className="card-title">{label}</div>
       {entries.length === 0 && <p style={{ fontSize: 12.5, color: "var(--text-3)" }}>Todavía no hay nada cargado.</p>}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {sorted.map((e) => (
