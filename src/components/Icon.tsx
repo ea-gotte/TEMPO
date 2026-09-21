@@ -9,7 +9,7 @@ export type IconName =
   | "dashboard" | "trending-up" | "folder" | "users" | "user"
   | "check-circle" | "briefcase" | "building" | "building-columns" | "settings"
   | "plug" | "search" | "bell" | "moon" | "sun" | "power" | "menu" | "x"
-  | "plus" | "play" | "stop" | "pencil" | "copy" | "trash" | "star"
+  | "plus" | "play" | "pause" | "stop" | "pencil" | "copy" | "trash" | "star"
   | "scale" | "flame" | "check" | "x-circle" | "alert" | "arrow-right"
   | "arrow-left" | "paperclip" | "globe" | "party" | "cake" | "graduation"
   | "home" | "laptop" | "thermometer" | "lock" | "mail" | "message"
@@ -44,6 +44,7 @@ const P: Record<IconName, React.ReactNode> = {
   x: (<><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>),
   plus: (<><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></>),
   play: (<polygon points="6 3 20 12 6 21 6 3" />),
+  pause: (<><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></>),
   stop: (<rect x="5" y="5" width="14" height="14" rx="2" />),
   pencil: (<><path d="M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></>),
   copy: (<><rect x="8" y="8" width="14" height="14" rx="2" /><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2" /></>),

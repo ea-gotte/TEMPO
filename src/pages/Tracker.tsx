@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useStore, overlaps, visibleProjects } from "../store";
+import { useStore, overlaps, visibleProjects, timerActiveMs } from "../store";
 import type { TimeEntry, RunningTimer } from "../types";
 import { addDays, fmtDur, fmtHM, minToHM, today, uid, dayLabel } from "../utils";
 import { EntryModal } from "../components/EntryModal";
@@ -16,7 +16,7 @@ function useNow(active: boolean) {
 }
 
 function elapsed(t: RunningTimer): string {
-  const s = Math.floor((Date.now() - t.startedAt) / 1000);
+  const s = Math.floor(timerActiveMs(t) / 1000);
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
@@ -32,7 +32,7 @@ export function Tracker() {
   const [modal, setModal] = useState<Partial<TimeEntry> | null>(null);
   const [ctx, setCtx] = useState<{ x: number; y: number; entry: TimeEntry } | null>(null);
 
-  useNow(state.timers.length > 0);
+  useNow(state.timers.some((t) => !t.paused));
 
   const me = state.currentUserId;
   const myEntries = useMemo(
@@ -121,15 +121,29 @@ export function Tracker() {
           {state.timers.map((t) => {
             const p = proj(t.projectId);
             return (
-              <div className="running-timer" key={t.id}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--danger)", animation: "pulse 1s infinite" }} />
+              <div className="running-timer" key={t.id} style={t.paused ? { borderStyle: "solid", opacity: 0.92 } : undefined}>
+                <span
+                  style={{
+                    width: 8, height: 8, borderRadius: "50%",
+                    background: t.paused ? "var(--warning)" : "var(--danger)",
+                    animation: t.paused ? undefined : "pulse 1s infinite",
+                  }}
+                />
                 <strong style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {t.description || "Sin descripción"}
                 </strong>
                 {p && (
                   <span className="proj" style={{ color: p.color, fontWeight: 600, fontSize: 12.5 }}>● {p.name}</span>
                 )}
-                <span className="timer-clock">{elapsed(t)}</span>
+                {t.paused && <span className="badge warn">En pausa</span>}
+                <span className="timer-clock" style={t.paused ? { color: "var(--text-3)" } : undefined}>{elapsed(t)}</span>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => dispatch({ type: t.paused ? "resumeTimer" : "pauseTimer", id: t.id })}
+                  title={t.paused ? "Reanudar: el tiempo en pausa no se cuenta" : "Pausar: el tiempo en pausa no se cuenta"}
+                >
+                  <Icon name={t.paused ? "play" : "pause"} size={13} /> {t.paused ? "Reanudar" : "Pausar"}
+                </button>
                 <button className="btn btn-ghost btn-sm" onClick={() => dispatch({ type: "stopTimer", id: t.id, discard: true })}>
                   Descartar
                 </button>

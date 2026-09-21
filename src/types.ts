@@ -71,6 +71,12 @@ export interface ProfessionalEntry {
   year?: number;
   /** Link al certificado/archivo (ej. Google Drive), si vino de una importación */
   fileUrl?: string;
+  /** Ruta del PDF del certificado en el bucket privado "certificados" (Supabase Storage) */
+  filePath?: string;
+  /** Nombre original del PDF subido, para mostrarlo */
+  fileName?: string;
+  /** Tamaño en bytes del PDF subido (para llevar la cuenta del cupo por persona) */
+  fileSize?: number;
 }
 
 export interface ProfessionalProfile {
@@ -201,7 +207,11 @@ export interface RunningTimer {
   subProjectId: ID | null;
   description: string;
   tagIds: ID[];
-  startedAt: number; // epoch ms
+  /** Inicio (epoch ms) del tramo en curso; al reanudar de una pausa se actualiza */
+  startedAt: number;
+  /** Tramos ya cerrados por una pausa (epoch ms). Cada uno termina siendo un registro. */
+  segments?: { from: number; to: number }[];
+  /** En pausa: el tramo en curso ya está cerrado dentro de `segments` */
   paused?: boolean;
 }
 

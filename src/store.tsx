@@ -16,7 +16,9 @@ type Action =
   | { type: "deleteEntry"; id: string }
   | { type: "addEntries"; entries: TimeEntry[] }
   | { type: "startTimer"; timer: RunningTimer }
-  | { type: "stopTimer"; id: string; discard?: boolean; entry?: TimeEntry }
+  | { type: "pauseTimer"; id: string }
+  | { type: "resumeTimer"; id: string }
+  | { type: "stopTimer"; id: string; discard?: boolean; entries?: TimeEntry[] }
   | { type: "addAbsence"; absence: AbsenceRequest }
   | { type: "resolveAbsence"; id: string; status: "Aprobado" | "Rechazado"; comment: string; by: string }
   | { type: "updateAbsence"; absence: AbsenceRequest }
@@ -54,25 +56,48 @@ type Action =
       tags: Tag[];
     };
 
-/** Construye el registro que resulta de detener un cronómetro (compartido con la sincronización a Supabase) */
-function buildStoppedEntry(t: RunningTimer, currentUserId: string): TimeEntry {
-  const now = new Date();
-  const started = new Date(t.startedAt);
-  const sameDay = isoDate(started);
-  const startMin = started.getHours() * 60 + started.getMinutes();
-  const endMinRaw = isoDate(now) === sameDay ? now.getHours() * 60 + now.getMinutes() : 24 * 60 - 1;
-  const endMin = Math.max(endMinRaw, startMin + 1);
-  return {
-    id: uid(),
-    userId: currentUserId,
-    projectId: t.projectId,
-    subProjectId: t.subProjectId,
-    description: t.description,
-    tagIds: t.tagIds,
-    date: sameDay,
-    start: startMin,
-    end: endMin,
-  };
+/** Milisegundos trabajados de un cronómetro: los tramos cerrados por pausas más el
+ * tramo en curso (si no está en pausa). */
+export function timerActiveMs(t: RunningTimer, now = Date.now()): number {
+  const closed = (t.segments ?? []).reduce((sum, s) => sum + (s.to - s.from), 0);
+  return closed + (t.paused ? 0 : Math.max(0, now - t.startedAt));
+}
+
+/** Construye los registros que resultan de detener un cronómetro (compartido con la
+ * sincronización a Supabase). Cada tramo trabajado entre pausas es un registro, así el
+ * tiempo en pausa no se cuenta y el calendario muestra las horas reales. Los tramos que
+ * quedan pegados o se pisan por el redondeo a minutos se unen en uno solo. */
+function buildStoppedEntries(t: RunningTimer, currentUserId: string): TimeEntry[] {
+  const now = Date.now();
+  const segs = [...(t.segments ?? [])];
+  if (!t.paused) segs.push({ from: t.startedAt, to: now });
+
+  const entries: TimeEntry[] = [];
+  for (const seg of segs) {
+    const started = new Date(seg.from);
+    const ended = new Date(seg.to);
+    const date = isoDate(started);
+    const start = started.getHours() * 60 + started.getMinutes();
+    const endRaw = isoDate(ended) === date ? ended.getHours() * 60 + ended.getMinutes() : 24 * 60 - 1;
+    const end = Math.max(endRaw, start + 1);
+    const prev = entries[entries.length - 1];
+    if (prev && prev.date === date && start <= prev.end) {
+      prev.end = Math.max(prev.end, end);
+      continue;
+    }
+    entries.push({
+      id: uid(),
+      userId: currentUserId,
+      projectId: t.projectId,
+      subProjectId: t.subProjectId,
+      description: t.description,
+      tagIds: t.tagIds,
+      date,
+      start,
+      end,
+    });
+  }
+  return entries;
 }
 
 function withAudit(s: AppState, action: string, detail: string): AppState {
@@ -186,13 +211,26 @@ function baseReducer(s: AppState, a: Action): AppState {
       return withAudit({ ...s, entries: [...s.entries, ...a.entries] }, "Registros copiados", `${a.entries.length} registros`);
     case "startTimer":
       return withAudit({ ...s, timers: [...s.timers, a.timer] }, "Cronómetro iniciado", a.timer.description || "(sin descripción)");
+    case "pauseTimer": {
+      const now = Date.now();
+      return {
+        ...s,
+        timers: s.timers.map((t) =>
+          t.id === a.id && !t.paused
+            ? { ...t, paused: true, segments: [...(t.segments ?? []), { from: t.startedAt, to: now }] }
+            : t,
+        ),
+      };
+    }
+    case "resumeTimer":
+      return { ...s, timers: s.timers.map((t) => (t.id === a.id && t.paused ? { ...t, paused: false, startedAt: Date.now() } : t)) };
     case "stopTimer": {
       const t = s.timers.find((x) => x.id === a.id);
       if (!t) return s;
       const rest = s.timers.filter((x) => x.id !== a.id);
       if (a.discard) return withAudit({ ...s, timers: rest }, "Cronómetro descartado", t.description || "");
-      const entry = a.entry ?? buildStoppedEntry(t, s.currentUserId);
-      return withAudit({ ...s, timers: rest, entries: [...s.entries, entry] }, "Cronómetro detenido", t.description || "");
+      const built = a.entries ?? buildStoppedEntries(t, s.currentUserId);
+      return withAudit({ ...s, timers: rest, entries: [...s.entries, ...built] }, "Cronómetro detenido", t.description || "");
     }
     case "addAbsence": {
       const withAbsence = { ...s, absences: [a.absence, ...s.absences] };
@@ -948,8 +986,8 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
       return error?.message ?? null;
     }
     case "stopTimer": {
-      if (a.discard || !a.entry) return null;
-      const { error } = await supabase.from("time_entries").insert(toEntryRow(a.entry));
+      if (a.discard || !a.entries || a.entries.length === 0) return null;
+      const { error } = await supabase.from("time_entries").insert(a.entries.map(toEntryRow));
       return error?.message ?? null;
     }
     case "addAbsence": {
@@ -1259,9 +1297,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const syncedDispatch = useCallback<React.Dispatch<Action>>(
     (a) => {
       let finalAction = a;
-      if (a.type === "stopTimer" && !a.discard && !a.entry) {
+      if (a.type === "stopTimer" && !a.discard && !a.entries) {
         const t = state.timers.find((x) => x.id === a.id);
-        if (t) finalAction = { ...a, entry: buildStoppedEntry(t, state.currentUserId) };
+        if (t) finalAction = { ...a, entries: buildStoppedEntries(t, state.currentUserId) };
       }
       dispatch(finalAction);
       syncActionToSupabase(finalAction, state).then((errMsg) => {
