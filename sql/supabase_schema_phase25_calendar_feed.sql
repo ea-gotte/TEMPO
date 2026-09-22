@@ -21,3 +21,7 @@ create policy "calendar_feeds_own" on public.calendar_feeds
   with check (user_id = auth.uid());
 
 grant select, insert, update, delete on public.calendar_feeds to authenticated;
+
+-- La función de borde `calendar-feed` lee la tabla con el rol de servicio, que
+-- en tablas nuevas necesita el permiso explícito.
+grant select on public.calendar_feeds, public.time_entries, public.profiles, public.projects, public.sub_projects, public.app_settings to service_role;

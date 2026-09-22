@@ -6,11 +6,22 @@
 //
 //   GET https://<proyecto>.supabase.co/functions/v1/calendar-feed?token=<token>
 //
-// Los horarios salen como hora "flotante" (sin huso): TEMPO guarda cada registro
-// con la hora tal como se cargó, y cada calendario la muestra igual en su propio huso.
+// TEMPO guarda cada registro con la hora "de pared" tal como se cargó, sin huso. Se la
+// interpreta en el huso Base del Calendario de la persona (profiles.calendar_tz, o el de
+// la empresa) y se envía a Google en UTC, para que la convierta bien a su propio huso.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+// Clave con permisos de servicio: la nueva "secret key" del proyecto si existe
+// (SUPABASE_SECRET_KEYS) y, si no, la clave heredada service_role.
+function serviceKey(): string {
+  try {
+    const keys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}");
+    if (keys.default) return keys.default;
+  } catch { /* se usa la clave heredada */ }
+  return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+}
+
+const supabase = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey());
 
 const DAYS_BACK = 180; // cuántos días hacia atrás incluye el calendario
 const PAGE = 1000;
@@ -38,29 +49,51 @@ function fold(line: string): string {
   return out + cur;
 }
 
-function dt(date: string, min: number): string {
-  let d = date;
-  let m = min;
-  if (m >= 1440) {
-    const t = new Date(`${date}T00:00:00Z`);
-    t.setUTCDate(t.getUTCDate() + 1);
-    d = t.toISOString().slice(0, 10);
-    m -= 1440;
+// Diferencia (ms) entre la hora "de pared" de un huso y UTC en un instante dado.
+function tzOffsetMs(tz: string, utcMs: number): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(new Date(utcMs));
+  const g = (t: string) => Number(parts.find((p) => p.type === t)!.value);
+  const asUtc = Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute"), g("second"));
+  return asUtc - Math.floor(utcMs / 1000) * 1000;
+}
+
+// Fecha + minutos de pared en `tz` -> instante UTC en formato iCal (YYYYMMDDTHHMMSSZ).
+// Date.UTC absorbe solo los minutos >= 1440 (pasan al día siguiente).
+function wallToUtc(date: string, min: number, tz: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const wall = Date.UTC(y, m - 1, d, 0, min, 0);
+  let utc = wall - tzOffsetMs(tz, wall);
+  utc = wall - tzOffsetMs(tz, utc); // segunda pasada: cambios de horario de verano
+  return new Date(utc).toISOString().replace(/[-:]/g, "").replace(/.d{3}/, "");
+}
+
+function validTz(tz: unknown): string | null {
+  if (typeof tz !== "string" || !tz) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz;
+  } catch {
+    return null;
   }
-  const hh = String(Math.floor(m / 60)).padStart(2, "0");
-  const mm = String(m % 60).padStart(2, "0");
-  return `${d.replaceAll("-", "")}T${hh}${mm}00`;
 }
 
 Deno.serve(async (req) => {
   const token = new URL(req.url).searchParams.get("token") ?? "";
   if (!/^[a-f0-9]{32,128}$/i.test(token)) return new Response("Not found", { status: 404 });
 
-  const { data: feed } = await supabase.from("calendar_feeds").select("user_id").eq("token", token).maybeSingle();
+  const { data: feed, error: feedErr } = await supabase.from("calendar_feeds").select("user_id").eq("token", token).maybeSingle();
+  if (feedErr) return new Response(`Error al leer el enlace: ${feedErr.message}`, { status: 500 });
   if (!feed) return new Response("Not found", { status: 404 });
 
   const userId: string = feed.user_id;
-  const { data: prof } = await supabase.from("profiles").select("name").eq("id", userId).maybeSingle();
+  const { data: prof, error: profErr } = await supabase.from("profiles").select("name, calendar_tz").eq("id", userId).maybeSingle();
+  if (profErr) return new Response(`Error al leer el perfil: ${profErr.message}`, { status: 500 });
+  const { data: settings, error: setErr } = await supabase.from("app_settings").select("company").eq("id", "global").maybeSingle();
+  if (setErr) return new Response(`Error al leer la configuración: ${setErr.message}`, { status: 500 });
+  const tz = validTz(prof?.calendar_tz) ?? validTz(settings?.company?.timezone) ?? "UTC";
 
   const since = new Date(Date.now() - DAYS_BACK * 86400000).toISOString().slice(0, 10);
   const entries: any[] = [];
@@ -73,7 +106,7 @@ Deno.serve(async (req) => {
       .order("date")
       .order("start_min")
       .range(from, from + PAGE - 1);
-    if (error) return new Response("Error", { status: 500 });
+    if (error) return new Response(`Error al leer los registros: ${error.message}`, { status: 500 });
     entries.push(...(data ?? []));
     if (!data || data.length < PAGE) break;
   }
@@ -83,11 +116,13 @@ Deno.serve(async (req) => {
   const projectName = new Map<string, string>();
   const subName = new Map<string, string>();
   if (projectIds.length) {
-    const { data } = await supabase.from("projects").select("id, name").in("id", projectIds);
+    const { data, error } = await supabase.from("projects").select("id, name").in("id", projectIds);
+    if (error) return new Response(`Error al leer los proyectos: ${error.message}`, { status: 500 });
     for (const p of data ?? []) projectName.set(p.id, p.name);
   }
   if (subIds.length) {
-    const { data } = await supabase.from("sub_projects").select("id, name").in("id", subIds);
+    const { data, error } = await supabase.from("sub_projects").select("id, name").in("id", subIds);
+    if (error) return new Response(`Error al leer los subproyectos: ${error.message}`, { status: 500 });
     for (const s of data ?? []) subName.set(s.id, s.name);
   }
 
@@ -116,8 +151,8 @@ Deno.serve(async (req) => {
       "BEGIN:VEVENT",
       `UID:${e.id}@tempo`,
       `DTSTAMP:${stamp}`,
-      `DTSTART:${dt(e.date, e.start_min)}`,
-      `DTEND:${dt(e.date, e.end_min)}`,
+      `DTSTART:${wallToUtc(e.date, e.start_min, tz)}`,
+      `DTEND:${wallToUtc(e.date, e.end_min, tz)}`,
       `SUMMARY:${esc(summary)}`,
       ...(detail ? [`DESCRIPTION:${esc(detail)}`] : []),
       "TRANSP:TRANSPARENT",

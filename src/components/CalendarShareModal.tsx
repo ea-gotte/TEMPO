@@ -12,7 +12,7 @@ function newToken(): string {
 /** Enlace privado de suscripción (iCal) al calendario de horas de la persona, para
  * verlo en Google Calendar u otros. El token es la llave: regenerarlo invalida el
  * enlace anterior. La función `calendar-feed` de Supabase es la que lo sirve. */
-export function CalendarShareModal({ userId, onClose }: { userId: string; onClose: () => void }) {
+export function CalendarShareModal({ userId, baseLabel, onClose }: { userId: string; baseLabel: string; onClose: () => void }) {
   const toast = useToast();
   const [token, setToken] = useState<string | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -113,6 +113,10 @@ export function CalendarShareModal({ userId, onClose }: { userId: string; onClos
 
           <ul style={{ fontSize: 12.5, color: "var(--text-2)", margin: "0 0 12px", paddingLeft: 18, display: "flex", flexDirection: "column", gap: 3 }}>
             <li>Muestra tus registros de horas de los últimos 180 días y los futuros, con proyecto y descripción.</li>
+            <li>
+              Las horas se toman en tu huso <strong>Base</strong> de TEMPO ({baseLabel}) y Google las convierte al huso de tu cuenta.
+              Si no coinciden, cambiá el huso “Base” del Calendario al que usás para cargar tus horas.
+            </li>
             <li>Google actualiza los calendarios por URL cada varias horas (a veces hasta 24 h): no es instantáneo.</li>
             <li>Los eventos figuran como “disponible” para no bloquear tu agenda.</li>
             <li>Quien tenga el enlace puede ver tus registros. Si se filtra, tocá “Regenerar”: el anterior deja de funcionar.</li>

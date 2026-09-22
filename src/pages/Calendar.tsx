@@ -917,7 +917,13 @@ export function CalendarPage() {
       )}
 
       {modal && <EntryModal initial={modal} onClose={() => setModal(null)} />}
-      {shareOpen && <CalendarShareModal userId={me} onClose={() => setShareOpen(false)} />}
+      {shareOpen && (
+        <CalendarShareModal
+          userId={me}
+          baseLabel={TZ_OPTIONS.find((t) => t.id === baseTz)?.label ?? baseTz}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
 
       {linkMenu && (
         <ContextMenu
