@@ -175,6 +175,7 @@ export function CalendarPage() {
   const [anchor, setAnchor] = useState(today());
   const [modal, setModal] = useState<Partial<TimeEntry> | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [linkMenu, setLinkMenu] = useState<{ x: number; y: number } | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [ctx, setCtx] = useState<{ x: number; y: number; entry: TimeEntry } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -603,10 +604,15 @@ export function CalendarPage() {
         {canEdit && (
           <button
             className="btn btn-secondary btn-sm"
-            onClick={() => setShareOpen(true)}
-            title="Compartir tu calendario y vincularlo con Google Calendar"
+            onClick={(ev) => {
+              ev.stopPropagation();
+              const r = ev.currentTarget.getBoundingClientRect();
+              setLinkMenu({ x: r.left, y: r.bottom + 4 });
+            }}
+            aria-haspopup="menu"
+            title="Compartir el calendario con Google Calendar o conectar Microsoft (Teams)"
           >
-            <Icon name="share-2" size={13} /> Compartir / Google Calendar
+            <Icon name="plug" size={13} /> Vincular calendarios ▾
           </button>
         )}
         <span className="spacer" />
@@ -639,18 +645,6 @@ export function CalendarPage() {
                 <option key={t.id} value={t.id}>+ {t.label}</option>
               ))}
             </select>
-            {msalConfigured && canEdit && (
-              msAccount ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <span className="badge acc" title={msAccount.username}><Icon name="plug" size={11} /> Teams</span>
-                  <button className="btn btn-ghost btn-sm" onClick={disconnectMs}>Desconectar</button>
-                </span>
-              ) : (
-                <button className="btn btn-ghost btn-sm" onClick={connectMs} disabled={msBusy} title="Pendiente de aprobación del administrador de Microsoft 365">
-                  <Icon name="plug" size={13} /> {msBusy ? "Conectando…" : "Conectar Microsoft"}
-                </button>
-              )
-            )}
           </>
         )}
         {teamsError && <span style={{ color: "var(--danger)", fontSize: 12.5 }}>{teamsError}</span>}
@@ -924,6 +918,24 @@ export function CalendarPage() {
 
       {modal && <EntryModal initial={modal} onClose={() => setModal(null)} />}
       {shareOpen && <CalendarShareModal userId={me} onClose={() => setShareOpen(false)} />}
+
+      {linkMenu && (
+        <ContextMenu
+          x={linkMenu.x}
+          y={linkMenu.y}
+          onClose={() => setLinkMenu(null)}
+          items={[
+            { label: "Compartir / Google Calendar", ico: "share-2", onClick: () => setShareOpen(true) },
+            ...(msalConfigured
+              ? [
+                  msAccount
+                    ? { label: `Desconectar Microsoft (${msAccount.username})`, ico: "plug" as const, onClick: disconnectMs }
+                    : { label: msBusy ? "Conectando Microsoft…" : "Conectar Microsoft (Teams)", ico: "plug" as const, onClick: () => { if (!msBusy) connectMs(); } },
+                ]
+              : []),
+          ]}
+        />
+      )}
 
       {ctx && (
         <ContextMenu
