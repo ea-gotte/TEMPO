@@ -8,6 +8,7 @@ import { Icon } from "../components/Icon";
 import { supabase } from "../supabase";
 import { msalConfigured, getConnectedAccount, connectMicrosoft, disconnectMicrosoft, fetchTeamsEvents, type TeamsEvent } from "../msal";
 import { getDownlineIds } from "../compliance";
+import { CalendarShareModal } from "../components/CalendarShareModal";
 
 const H0 = 0; // primera hora visible (día completo)
 const H1 = 24; // última hora
@@ -173,6 +174,7 @@ export function CalendarPage() {
   const [view, setView] = useState<View>("semana");
   const [anchor, setAnchor] = useState(today());
   const [modal, setModal] = useState<Partial<TimeEntry> | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [ctx, setCtx] = useState<{ x: number; y: number; entry: TimeEntry } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -598,6 +600,15 @@ export function CalendarPage() {
         >
           <Icon name="alert" size={13} /> Solo superpuestos{conflictIds.size > 0 ? ` (${conflictIds.size})` : ""}
         </button>
+        {canEdit && (
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => setShareOpen(true)}
+            title="Compartir tu calendario y vincularlo con Google Calendar"
+          >
+            <Icon name="share-2" size={13} /> Compartir / Google Calendar
+          </button>
+        )}
         <span className="spacer" />
         {(view === "dia" || view === "semana") && (
           <>
@@ -912,6 +923,7 @@ export function CalendarPage() {
       )}
 
       {modal && <EntryModal initial={modal} onClose={() => setModal(null)} />}
+      {shareOpen && <CalendarShareModal userId={me} onClose={() => setShareOpen(false)} />}
 
       {ctx && (
         <ContextMenu
