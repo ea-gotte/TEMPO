@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
-import type { AppState, Jornada, ProfessionalEntry, ProfessionalProfile, Project, ProjectStatus, Role, TimeEntry, User } from "../types";
-import { addDays, downloadFile, fmtYearsSince, normText, parseCSV, parseDMY, toCSV, today, uid, yearsAgoISO } from "../utils";
+import type { AppState, Jornada, OvertimeRequest, ProfessionalEntry, ProfessionalProfile, Project, ProjectStatus, Role, TimeEntry, User } from "../types";
+import { addDays, downloadFile, fmtYearsSince, normText, parseCSV, parseDMY, toCSV, today, uid, weekStart, yearsAgoISO } from "../utils";
 import { Icon } from "./Icon";
 import { useToast } from "./ui";
 import { COLORS } from "../pages/Projects";
@@ -936,6 +936,108 @@ export function SyncProjectMembersPanel() {
       </p>
       <button className="btn btn-secondary" onClick={sync} disabled={missingCount === 0}>
         <Icon name="users" size={14} /> {missingCount > 0 ? `Agregar ${missingCount} persona(s) a sus proyectos` : "Nada para sincronizar"}
+      </button>
+    </div>
+  );
+}
+
+/** Minutos de un día completo de trabajo para esta persona — mismo criterio que
+ * usa el resto de la app (compensationMinutes en store.tsx) para convertir
+ * días en minutos. */
+function dailyMinutesOf(u: User): number {
+  return u.jornada === "media" ? 4 * 60 : (u.weeklyHours * 60) / Math.max(1, u.workDays.length);
+}
+
+/** Carga manual, persona por persona, del saldo de días compensatorios (festivos o
+ * fines de semana trabajados, menos recuperados) que se venía llevando afuera de
+ * TEMPO — por ejemplo en una planilla de Excel. No crea ningún mecanismo nuevo:
+ * arma un registro de horas extra ya aprobado, que es exactamente lo que
+ * overtimeBalance() (store.tsx) ya suma para mostrar "horas extra disponibles"
+ * al pedir una ausencia de Compensación de horas. Pensada para usarse una vez por
+ * persona al arrancar, pero no tiene ningún límite que impida repetirla si hace
+ * falta un ajuste más adelante. */
+export function CompDaysBalancePanel() {
+  const { state, dispatch } = useStore();
+  const toast = useToast();
+  const activeUsers = useMemo(
+    () => state.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name)),
+    [state.users],
+  );
+  const [userId, setUserId] = useState(activeUsers[0]?.id ?? "");
+  const [days, setDays] = useState("");
+  const [note, setNote] = useState("");
+
+  const user = state.users.find((u) => u.id === userId);
+  const daysNum = Number(days.replace(",", "."));
+  const valid = Boolean(user) && Number.isFinite(daysNum) && daysNum > 0;
+  const minutes = user && valid ? Math.round(daysNum * dailyMinutesOf(user)) : 0;
+
+  function cargar() {
+    if (!user || !valid) return;
+    const o: OvertimeRequest = {
+      id: uid(),
+      userId: user.id,
+      // Una semana atrás para no mezclarse en la tabla de Control de horas con
+      // la semana en curso; el saldo lo suma igual sin importar la fecha.
+      weekStart: weekStart(addDays(today(), -7)),
+      minutes,
+      status: "Aprobado",
+      createdAt: today(),
+      resolvedBy: state.currentUserId,
+      resolvedAt: today(),
+      supervisorComment: note.trim() || `Saldo cargado a mano: ${daysNum} día(s).`,
+    };
+    dispatch({ type: "addOvertime", o });
+    dispatch({
+      type: "audit",
+      action: "Saldo de días compensatorios cargado a mano",
+      detail: `${user.name}: ${daysNum} día(s)`,
+    });
+    toast(`Cargado: ${user.name} suma ${daysNum} día(s) a su saldo disponible.`);
+    setDays("");
+    setNote("");
+  }
+
+  return (
+    <div className="card card-pad" style={{ marginBottom: 14 }}>
+      <div className="card-title">Cargar saldo de días compensatorios</div>
+      <p style={{ fontSize: 12.5, color: "var(--text-2)", marginBottom: 10 }}>
+        Para arrancar a alguien con el saldo que ya tenía afuera de TEMPO (por ejemplo en una planilla). Queda como horas
+        extra ya aprobadas: la persona la ve al pedir una ausencia de <strong>Compensación de horas</strong>, con el mismo
+        vencimiento a 1 año que las demás. Solo admite días a favor — si alguien debe días, se resuelve a mano con esa
+        persona.
+      </p>
+      <div className="form-grid">
+        <div className="field">
+          <label>Persona</label>
+          <select className="select" value={userId} onChange={(e) => setUserId(e.target.value)}>
+            {activeUsers.map((u) => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label>Días a favor</label>
+          <input
+            type="number" className="input" min="0.5" step="0.5" placeholder="Ej: 18.5"
+            value={days} onChange={(e) => setDays(e.target.value)}
+          />
+        </div>
+        <div className="field" style={{ gridColumn: "1 / -1" }}>
+          <label>Nota (opcional)</label>
+          <input
+            className="input" placeholder="Ej: Saldo acumulado 2025-2026 según planilla de vacaciones"
+            value={note} onChange={(e) => setNote(e.target.value)}
+          />
+        </div>
+      </div>
+      {user && valid && (
+        <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 4 }}>
+          Equivale a {minutes} minutos para {user.name} (jornada {user.jornada === "media" ? "media" : "completa"}).
+        </p>
+      )}
+      <button className="btn btn-secondary" style={{ marginTop: 10 }} onClick={cargar} disabled={!valid}>
+        <Icon name="plus" size={14} /> Cargar saldo
       </button>
     </div>
   );
