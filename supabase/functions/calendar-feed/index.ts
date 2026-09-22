@@ -67,7 +67,7 @@ function wallToUtc(date: string, min: number, tz: string): string {
   const wall = Date.UTC(y, m - 1, d, 0, min, 0);
   let utc = wall - tzOffsetMs(tz, wall);
   utc = wall - tzOffsetMs(tz, utc); // segunda pasada: cambios de horario de verano
-  return new Date(utc).toISOString().replace(/[-:]/g, "").replace(/.d{3}/, "");
+  return new Date(utc).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 }
 
 function validTz(tz: unknown): string | null {
