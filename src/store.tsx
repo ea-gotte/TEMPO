@@ -1418,7 +1418,7 @@ export function visibleProjects(state: AppState, userId: string) {
 }
 
 /** Días hábiles del usuario dentro de un rango de fechas (inclusive), excluyendo feriados */
-function countWorkDays(from: string, to: string, workDays: number[], holidays?: Set<string>): number {
+export function countWorkDays(from: string, to: string, workDays: number[], holidays?: Set<string>): number {
   let count = 0;
   const d = new Date(from + "T00:00:00");
   const end = new Date(to + "T00:00:00");

@@ -1,9 +1,10 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
-import type { AppState, Jornada, OvertimeRequest, ProfessionalEntry, ProfessionalProfile, Project, ProjectStatus, Role, TimeEntry, User } from "../types";
-import { addDays, downloadFile, fmtYearsSince, normText, parseCSV, parseDMY, toCSV, today, uid, weekStart, yearsAgoISO } from "../utils";
+import type { AbsenceRequest, AppState, OvertimeRequest, ProfessionalEntry, ProfessionalProfile, Project, TimeEntry, User } from "../types";
+import { addDays, fmtYearsSince, normText, parseCSV, parseDMY, today, uid, weekStart, yearsAgoISO } from "../utils";
+import { countWorkDays, holidayDateSet } from "../store";
 import { Icon } from "./Icon";
-import { useToast } from "./ui";
+import { Modal, useToast } from "./ui";
 import { COLORS } from "../pages/Projects";
 
 function findCol(header: string[], aliases: string[]): number {
@@ -19,409 +20,6 @@ function readFileText(file: File): Promise<string> {
   });
 }
 
-/* ============================== Cuentas ============================== */
-
-interface AccountRow {
-  rowNum: number;
-  name: string;
-  email: string;
-  role: Role;
-  weeklyHours: number;
-  hireDate: string;
-  password?: string;
-  supervisorEmail?: string;
-  status: "nuevo" | "actualizado";
-  error?: string;
-}
-
-function parseAccountsCSV(text: string, state: AppState): { rows: AccountRow[]; headerError?: string } {
-  const table = parseCSV(text);
-  if (table.length < 2) return { rows: [], headerError: "El archivo no tiene filas de datos." };
-  const header = table[0].map(normText);
-  const iName = findCol(header, ["nombre", "name", "nombre completo", "full name"]);
-  const iEmail = findCol(header, ["email", "correo", "e-mail", "correo electronico"]);
-  if (iName === -1 || iEmail === -1) {
-    return { rows: [], headerError: "El archivo debe tener al menos columnas de Nombre y Email." };
-  }
-  const iRole = findCol(header, ["rol", "role"]);
-  const iHours = findCol(header, ["horas semanales", "horas", "weekly hours", "hours"]);
-  const iHire = findCol(header, ["fecha de ingreso", "fecha ingreso", "hire date", "start date", "fecha de inicio"]);
-  const iPass = findCol(header, ["clave", "password", "contrasena", "contraseña"]);
-  const iSup = findCol(header, ["supervisor", "manager", "reporta a"]);
-
-  const rows: AccountRow[] = [];
-  for (let r = 1; r < table.length; r++) {
-    const cols = table[r];
-    const name = (cols[iName] ?? "").trim();
-    const email = (cols[iEmail] ?? "").trim();
-    if (!name && !email) continue;
-
-    let error: string | undefined;
-    if (!name) error = "Falta el nombre.";
-    else if (!email || !/^\S+@\S+\.\S+$/.test(email)) error = "Email inválido o vacío.";
-
-    const roleRaw = iRole >= 0 ? normText(cols[iRole] ?? "") : "";
-    let role: Role = "usuario";
-    if (roleRaw.includes("admin")) role = "admin";
-    else if (roleRaw.includes("gerente") || roleRaw.includes("gerencia") || roleRaw.includes("manager")) role = "gerente";
-    else if (roleRaw.includes("supervis")) role = "supervisor";
-
-    const weeklyHours = iHours >= 0 && cols[iHours] ? Number(cols[iHours]) || state.company.defaultWeeklyHours : state.company.defaultWeeklyHours;
-    const hireRaw = iHire >= 0 ? (cols[iHire] ?? "").trim() : "";
-    const hireDate = (hireRaw && parseDMY(hireRaw)) || today();
-
-    const existing = state.users.find((u) => normText(u.email) === normText(email));
-
-    rows.push({
-      rowNum: r + 1,
-      name,
-      email,
-      role,
-      weeklyHours,
-      hireDate,
-      password: iPass >= 0 ? (cols[iPass] ?? "").trim() || undefined : undefined,
-      supervisorEmail: iSup >= 0 ? (cols[iSup] ?? "").trim() || undefined : undefined,
-      status: existing ? "actualizado" : "nuevo",
-      error,
-    });
-  }
-  return { rows };
-}
-
-export function AccountsImportPanel() {
-  const { state, dispatch } = useStore();
-  const toast = useToast();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [rows, setRows] = useState<AccountRow[]>([]);
-  const [fileError, setFileError] = useState("");
-  const [fileName, setFileName] = useState("");
-
-  async function onPick(file: File | undefined) {
-    if (!file) return;
-    setFileName(file.name);
-    const text = await readFileText(file);
-    const { rows: parsed, headerError } = parseAccountsCSV(text, state);
-    setFileError(headerError ?? "");
-    setRows(parsed);
-  }
-
-  function downloadTemplate() {
-    const csv = toCSV([
-      ["Nombre", "Email", "Rol", "Horas semanales", "Fecha de ingreso", "Clave", "Supervisor"],
-      ["Juan Pérez", "juan.perez@empresa.com", "empleado", "40", "01/03/2024", "", "carla@quantia.com"],
-    ]);
-    downloadFile("plantilla-cuentas.csv", csv, "text/csv;charset=utf-8");
-  }
-
-  function apply() {
-    const valid = rows.filter((r) => !r.error);
-    if (valid.length === 0) return;
-
-    const users = [...state.users];
-
-    for (const row of valid) {
-      const jornada: Jornada = row.weeklyHours >= 35 ? "completa" : "media";
-      const existingIdx = users.findIndex((u) => normText(u.email) === normText(row.email));
-      if (existingIdx >= 0) {
-        const prev = users[existingIdx];
-        users[existingIdx] = {
-          ...prev,
-          name: row.name,
-          role: row.role,
-          weeklyHours: row.weeklyHours,
-          jornada,
-          hireDate: row.hireDate,
-          password: row.password || prev.password,
-        };
-      } else {
-        const newUser: User = {
-          id: uid(),
-          name: row.name,
-          email: row.email,
-          password: row.password || `${row.name.split(" ")[0].toLowerCase()}123`,
-          role: row.role,
-          team: "latam",
-          jornada,
-          supervisorId: null,
-          weeklyHours: row.weeklyHours,
-          workDays: [1, 2, 3, 4, 5],
-          dayStart: state.company.defaultDayStart,
-          dayEnd: state.company.defaultDayEnd,
-          birthday: "1990-01-01",
-          hireDate: row.hireDate,
-          active: true,
-          online: false,
-        };
-        users.push(newUser);
-      }
-    }
-    // Segunda pasada: resolver supervisor por email (puede referenciar a alguien recién creado)
-    for (const row of valid) {
-      if (!row.supervisorEmail) continue;
-      const sup = users.find((u) => normText(u.email) === normText(row.supervisorEmail!));
-      if (!sup) continue;
-      const idx = users.findIndex((u) => normText(u.email) === normText(row.email));
-      if (idx >= 0) users[idx] = { ...users[idx], supervisorId: sup.id };
-    }
-
-    dispatch({ type: "patch", patch: { users } });
-    dispatch({ type: "audit", action: "Importación de cuentas", detail: `${valid.length} cuentas procesadas desde ${fileName}` });
-    toast(`${valid.length} cuenta${valid.length !== 1 ? "s" : ""} importada${valid.length !== 1 ? "s" : ""}.`);
-    setRows([]);
-    setFileName("");
-    if (inputRef.current) inputRef.current.value = "";
-  }
-
-  const validCount = rows.filter((r) => !r.error).length;
-  const newCount = rows.filter((r) => !r.error && r.status === "nuevo").length;
-  const errorCount = rows.filter((r) => r.error).length;
-
-  return (
-    <ImportCard
-      title="Cuentas (usuarios)"
-      description="Columnas reconocidas: Nombre, Email, Rol, Horas semanales, Fecha de ingreso (dd/mm/aaaa), Clave y Supervisor (email). Se matchea por email: si ya existe, se actualiza."
-      onDownloadTemplate={downloadTemplate}
-      inputRef={inputRef}
-      onPick={onPick}
-      fileName={fileName}
-    >
-      {fileError && (
-        <p style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-          <Icon name="alert" size={13} /> {fileError}
-        </p>
-      )}
-      {rows.length > 0 && !fileError && (
-        <>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "8px 0" }}>
-            <span className="badge ok">{newCount} nuevas</span>
-            <span className="badge acc">{validCount - newCount} a actualizar</span>
-            {errorCount > 0 && <span className="badge bad">{errorCount} con error</span>}
-          </div>
-          <PreviewTable
-            rows={rows}
-            columns={[
-              { label: "Fila", render: (r) => r.rowNum },
-              { label: "Nombre", render: (r) => r.name },
-              { label: "Email", render: (r) => r.email },
-              { label: "Rol", render: (r) => r.role },
-              { label: "Ingreso", render: (r) => r.hireDate },
-              {
-                label: "Estado",
-                render: (r) =>
-                  r.error ? (
-                    <span className="badge bad">{r.error}</span>
-                  ) : (
-                    <span className={`badge ${r.status === "nuevo" ? "ok" : "acc"}`}>{r.status}</span>
-                  ),
-              },
-            ]}
-          />
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-            <button className="btn btn-primary" onClick={apply} disabled={validCount === 0}>
-              <Icon name="check" size={14} /> Confirmar importación ({validCount})
-            </button>
-          </div>
-        </>
-      )}
-    </ImportCard>
-  );
-}
-
-/* ============================== Proyectos ============================== */
-
-function mapProjectStatus(raw: string): ProjectStatus {
-  const n = normText(raw);
-  if (!n) return "activo";
-  if (n.includes("pausa") || n.includes("hold")) return "pausado";
-  if (n.includes("complet") || n.includes("done") || n.includes("finish")) return "completado";
-  if (n.includes("archiv")) return "archivado";
-  return "activo";
-}
-
-interface ProjectRow {
-  rowNum: number;
-  name: string;
-  clientName?: string;
-  status: ProjectStatus;
-  budgetHours: number | null;
-  notionUrl?: string;
-  members: string[];
-  unresolvedMembers: string[];
-  status2: "nuevo" | "actualizado";
-  error?: string;
-}
-
-function parseProjectsCSV(text: string, state: AppState): { rows: ProjectRow[]; headerError?: string } {
-  const table = parseCSV(text);
-  if (table.length < 2) return { rows: [], headerError: "El archivo no tiene filas de datos." };
-  const header = table[0].map(normText);
-  const iName = findCol(header, ["proyecto", "nombre", "project", "project name"]);
-  if (iName === -1) return { rows: [], headerError: "El archivo debe tener una columna Proyecto (o Nombre)." };
-  const iClient = findCol(header, ["cliente", "client"]);
-  const iStatus = findCol(header, ["estado", "status"]);
-  const iBudget = findCol(header, ["horas proyectadas", "presupuesto", "budget", "estimated hours", "horas presupuestadas"]);
-  const iNotion = findCol(header, ["notion", "notion url", "link"]);
-  const iMembers = findCol(header, ["miembros", "members", "equipo", "team"]);
-
-  const rows: ProjectRow[] = [];
-  for (let r = 1; r < table.length; r++) {
-    const cols = table[r];
-    const name = (cols[iName] ?? "").trim();
-    if (!name) continue;
-
-    const budgetRaw = iBudget >= 0 ? (cols[iBudget] ?? "").trim() : "";
-    const budgetHours = budgetRaw ? Number(budgetRaw) || null : null;
-
-    const memberEmails = iMembers >= 0 ? (cols[iMembers] ?? "").split(/[;,]/).map((s) => s.trim()).filter(Boolean) : [];
-    const members: string[] = [];
-    const unresolvedMembers: string[] = [];
-    for (const email of memberEmails) {
-      const u = state.users.find((x) => normText(x.email) === normText(email));
-      if (u) members.push(u.id);
-      else unresolvedMembers.push(email);
-    }
-
-    const existing = state.projects.find((p) => normText(p.name) === normText(name));
-
-    rows.push({
-      rowNum: r + 1,
-      name,
-      clientName: iClient >= 0 ? (cols[iClient] ?? "").trim() || undefined : undefined,
-      status: iStatus >= 0 ? mapProjectStatus(cols[iStatus] ?? "") : "activo",
-      budgetHours,
-      notionUrl: iNotion >= 0 ? (cols[iNotion] ?? "").trim() || undefined : undefined,
-      members,
-      unresolvedMembers,
-      status2: existing ? "actualizado" : "nuevo",
-    });
-  }
-  return { rows };
-}
-
-export function ProjectsImportPanel() {
-  const { state, dispatch } = useStore();
-  const toast = useToast();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [rows, setRows] = useState<ProjectRow[]>([]);
-  const [fileError, setFileError] = useState("");
-  const [fileName, setFileName] = useState("");
-
-  async function onPick(file: File | undefined) {
-    if (!file) return;
-    setFileName(file.name);
-    const text = await readFileText(file);
-    const { rows: parsed, headerError } = parseProjectsCSV(text, state);
-    setFileError(headerError ?? "");
-    setRows(parsed);
-  }
-
-  function downloadTemplate() {
-    const csv = toCSV([
-      ["Proyecto", "Cliente", "Estado", "Horas proyectadas", "Notion", "Miembros"],
-      ["Nuevo Proyecto", "Cliente Ejemplo", "activo", "200", "https://notion.so/pagina", "juan.perez@empresa.com;carla@quantia.com"],
-    ]);
-    downloadFile("plantilla-proyectos.csv", csv, "text/csv;charset=utf-8");
-  }
-
-  function apply() {
-    const valid = rows;
-    if (valid.length === 0) return;
-
-    const clients = [...state.clients];
-    const projects = [...state.projects];
-
-    const ensureClient = (name?: string): string | null => {
-      if (!name) return null;
-      const found = clients.find((c) => normText(c.name) === normText(name));
-      if (found) return found.id;
-      const nc = { id: uid(), name, color: COLORS[clients.length % COLORS.length] };
-      clients.push(nc);
-      return nc.id;
-    };
-
-    for (const row of valid) {
-      const clientId = ensureClient(row.clientName);
-      const existingIdx = projects.findIndex((p) => normText(p.name) === normText(row.name));
-      if (existingIdx >= 0) {
-        const prev = projects[existingIdx];
-        projects[existingIdx] = {
-          ...prev,
-          clientId: clientId ?? prev.clientId,
-          status: row.status,
-          budgetHours: row.budgetHours ?? prev.budgetHours,
-          notionUrl: row.notionUrl || prev.notionUrl,
-          memberIds: row.members.length > 0 ? row.members : prev.memberIds,
-        };
-      } else {
-        projects.push({
-          id: uid(),
-          clientId,
-          name: row.name,
-          color: COLORS[projects.length % COLORS.length],
-          status: row.status,
-          budgetHours: row.budgetHours,
-          memberIds: row.members,
-          notionUrl: row.notionUrl,
-          flightActivityId: null,
-        });
-      }
-    }
-
-    const unresolved = valid.flatMap((r) => r.unresolvedMembers);
-    dispatch({ type: "patch", patch: { clients, projects } });
-    dispatch({ type: "audit", action: "Importación de proyectos", detail: `${valid.length} proyectos procesados desde ${fileName}` });
-    toast(
-      `${valid.length} proyecto${valid.length !== 1 ? "s" : ""} importado${valid.length !== 1 ? "s" : ""}.` +
-        (unresolved.length > 0 ? ` ${unresolved.length} miembro(s) no encontrados por email.` : ""),
-    );
-    setRows([]);
-    setFileName("");
-    if (inputRef.current) inputRef.current.value = "";
-  }
-
-  const newCount = rows.filter((r) => r.status2 === "nuevo").length;
-
-  return (
-    <ImportCard
-      title="Proyectos y clientes"
-      description="Columnas reconocidas: Proyecto, Cliente, Estado, Horas proyectadas, Notion, Miembros (emails separados por ; o ,). El cliente se crea automáticamente si no existe; se matchea por nombre de proyecto."
-      onDownloadTemplate={downloadTemplate}
-      inputRef={inputRef}
-      onPick={onPick}
-      fileName={fileName}
-    >
-      {fileError && (
-        <p style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-          <Icon name="alert" size={13} /> {fileError}
-        </p>
-      )}
-      {rows.length > 0 && !fileError && (
-        <>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "8px 0" }}>
-            <span className="badge ok">{newCount} nuevos</span>
-            <span className="badge acc">{rows.length - newCount} a actualizar</span>
-          </div>
-          <PreviewTable
-            rows={rows}
-            columns={[
-              { label: "Fila", render: (r) => r.rowNum },
-              { label: "Proyecto", render: (r) => r.name },
-              { label: "Cliente", render: (r) => r.clientName ?? "—" },
-              { label: "Estado", render: (r) => r.status },
-              { label: "Miembros", render: (r) => (r.unresolvedMembers.length > 0 ? `${r.members.length} ok, ${r.unresolvedMembers.length} no encontrados` : String(r.members.length)) },
-              { label: "Resultado", render: (r) => <span className={`badge ${r.status2 === "nuevo" ? "ok" : "acc"}`}>{r.status2}</span> },
-            ]}
-          />
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-            <button className="btn btn-primary" onClick={apply}>
-              <Icon name="check" size={14} /> Confirmar importación ({rows.length})
-            </button>
-          </div>
-        </>
-      )}
-    </ImportCard>
-  );
-}
 
 /* ============================== Registros de horas (Clockify) ============================== */
 
@@ -948,66 +546,128 @@ function dailyMinutesOf(u: User): number {
   return u.jornada === "media" ? 4 * 60 : (u.weeklyHours * 60) / Math.max(1, u.workDays.length);
 }
 
-/** Carga manual, persona por persona, del saldo de días compensatorios (festivos o
- * fines de semana trabajados, menos recuperados) que se venía llevando afuera de
- * TEMPO — por ejemplo en una planilla de Excel. No crea ningún mecanismo nuevo:
- * arma un registro de horas extra ya aprobado, que es exactamente lo que
- * overtimeBalance() (store.tsx) ya suma para mostrar "horas extra disponibles"
- * al pedir una ausencia de Compensación de horas. Pensada para usarse una vez por
- * persona al arrancar, pero no tiene ningún límite que impida repetirla si hace
- * falta un ajuste más adelante. */
+type SaldoTipo = "festivo" | "vacaciones";
+
+/** Carga manual, persona por persona, de lo que se venía llevando afuera de TEMPO
+ * — por ejemplo en una planilla de Excel. Cada tipo va a su propio registro:
+ * un festivo o fin de semana trabajado arma un registro de horas extra ya
+ * aprobado (lo que overtimeBalance() en store.tsx suma para mostrar "horas
+ * extra disponibles" al pedir Compensación de horas); unas vacaciones arman
+ * una ausencia de tipo Vacaciones ya aprobada, que vacationInfo() descuenta
+ * del período que corresponda según su fecha. No tiene límite de una sola vez:
+ * sirve también para un ajuste puntual más adelante. */
 export function CompDaysBalancePanel() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="card card-pad" style={{ marginBottom: 14 }}>
+      <div className="card-title">Cargar saldo (festivos trabajados o vacaciones)</div>
+      <p style={{ fontSize: 12.5, color: "var(--text-2)", marginBottom: 10 }}>
+        Para arrancar a alguien con lo que ya tenía afuera de TEMPO. Los festivos o fines de semana trabajados quedan
+        como horas extra ya aprobadas; las vacaciones quedan como una ausencia aprobada — cada uno en su propio
+        registro, sin mezclarse.
+      </p>
+      <button className="btn btn-secondary" onClick={() => setOpen(true)}>
+        <Icon name="plus" size={14} /> Cargar saldo
+      </button>
+      {open && <CargarSaldoModal onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+function CargarSaldoModal({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useStore();
   const toast = useToast();
   const activeUsers = useMemo(
     () => state.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name)),
     [state.users],
   );
+  const [tipo, setTipo] = useState<SaldoTipo>("festivo");
   const [userId, setUserId] = useState(activeUsers[0]?.id ?? "");
   const [days, setDays] = useState("");
+  const [dateFrom, setDateFrom] = useState(today());
+  const [dateTo, setDateTo] = useState(today());
   const [note, setNote] = useState("");
 
   const user = state.users.find((u) => u.id === userId);
   const daysNum = Number(days.replace(",", "."));
-  const valid = Boolean(user) && Number.isFinite(daysNum) && daysNum > 0;
-  const minutes = user && valid ? Math.round(daysNum * dailyMinutesOf(user)) : 0;
+  const validFestivo = Boolean(user) && Number.isFinite(daysNum) && daysNum > 0;
+  const minutes = user && validFestivo ? Math.round(daysNum * dailyMinutesOf(user)) : 0;
+
+  const holidays = useMemo(() => holidayDateSet(state), [state.holidays]);
+  const vacDays = user
+    ? countWorkDays(dateFrom, dateTo, user.jornada === "media" ? [1, 2, 3, 4, 5] : user.workDays, holidays)
+    : 0;
+  const validVacaciones = Boolean(user) && Boolean(dateFrom) && Boolean(dateTo) && dateTo >= dateFrom && vacDays > 0;
+
+  const valid = tipo === "festivo" ? validFestivo : validVacaciones;
 
   function cargar() {
     if (!user || !valid) return;
-    const o: OvertimeRequest = {
-      id: uid(),
-      userId: user.id,
-      // Una semana atrás para no mezclarse en la tabla de Control de horas con
-      // la semana en curso; el saldo lo suma igual sin importar la fecha.
-      weekStart: weekStart(addDays(today(), -7)),
-      minutes,
-      status: "Aprobado",
-      createdAt: today(),
-      resolvedBy: state.currentUserId,
-      resolvedAt: today(),
-      supervisorComment: note.trim() || `Saldo cargado a mano: ${daysNum} día(s).`,
-    };
-    dispatch({ type: "addOvertime", o });
-    dispatch({
-      type: "audit",
-      action: "Saldo de días compensatorios cargado a mano",
-      detail: `${user.name}: ${daysNum} día(s)`,
-    });
-    toast(`Cargado: ${user.name} suma ${daysNum} día(s) a su saldo disponible.`);
-    setDays("");
-    setNote("");
+    if (tipo === "festivo") {
+      const o: OvertimeRequest = {
+        id: uid(),
+        userId: user.id,
+        // Una semana atrás para no mezclarse en la tabla de Control de horas con
+        // la semana en curso; el saldo lo suma igual sin importar la fecha.
+        weekStart: weekStart(addDays(today(), -7)),
+        minutes,
+        status: "Aprobado",
+        createdAt: today(),
+        resolvedBy: state.currentUserId,
+        resolvedAt: today(),
+        supervisorComment: note.trim() || `Saldo cargado a mano: ${daysNum} día(s) de festivo/FDS trabajado.`,
+      };
+      dispatch({ type: "addOvertime", o });
+      dispatch({
+        type: "audit",
+        action: "Saldo de festivo/FDS cargado a mano",
+        detail: `${user.name}: ${daysNum} día(s)`,
+      });
+      toast(`Cargado: ${user.name} suma ${daysNum} día(s) de festivo/FDS trabajado.`);
+    } else {
+      const absence: AbsenceRequest = {
+        id: uid(),
+        userId: user.id,
+        type: "Vacaciones",
+        dateFrom,
+        dateTo,
+        reason: note.trim() || "Vacaciones cargadas a mano (saldo previo a TEMPO)",
+        attachments: [],
+        status: "Aprobado",
+        createdAt: today(),
+        resolvedBy: state.currentUserId,
+        resolvedAt: today(),
+      };
+      dispatch({ type: "addAbsence", absence });
+      dispatch({
+        type: "audit",
+        action: "Vacaciones cargadas a mano",
+        detail: `${user.name}: ${dateFrom} a ${dateTo} (${vacDays} día(s) hábiles)`,
+      });
+      toast(`Cargado: ${user.name} suma ${vacDays} día(s) de vacaciones (${dateFrom} a ${dateTo}).`);
+    }
+    onClose();
   }
 
   return (
-    <div className="card card-pad" style={{ marginBottom: 14 }}>
-      <div className="card-title">Cargar saldo de días compensatorios</div>
-      <p style={{ fontSize: 12.5, color: "var(--text-2)", marginBottom: 10 }}>
-        Para arrancar a alguien con el saldo que ya tenía afuera de TEMPO (por ejemplo en una planilla). Queda como horas
-        extra ya aprobadas: la persona la ve al pedir una ausencia de <strong>Compensación de horas</strong>, con el mismo
-        vencimiento a 1 año que las demás. Solo admite días a favor — si alguien debe días, se resuelve a mano con esa
-        persona.
-      </p>
+    <Modal
+      title="Cargar saldo"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={cargar} disabled={!valid}>Cargar</button>
+        </>
+      }
+    >
       <div className="form-grid">
+        <div className="field">
+          <label>Tipo</label>
+          <select className="select" value={tipo} onChange={(e) => setTipo(e.target.value as SaldoTipo)}>
+            <option value="festivo">Festivo o fin de semana trabajado</option>
+            <option value="vacaciones">Vacaciones</option>
+          </select>
+        </div>
         <div className="field">
           <label>Persona</label>
           <select className="select" value={userId} onChange={(e) => setUserId(e.target.value)}>
@@ -1016,30 +676,58 @@ export function CompDaysBalancePanel() {
             ))}
           </select>
         </div>
-        <div className="field">
+      </div>
+
+      {tipo === "festivo" ? (
+        <div className="field" style={{ marginTop: 10 }}>
           <label>Días a favor</label>
           <input
             type="number" className="input" min="0.5" step="0.5" placeholder="Ej: 18.5"
             value={days} onChange={(e) => setDays(e.target.value)}
           />
+          {user && validFestivo && (
+            <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 4 }}>
+              Equivale a {minutes} minutos para {user.name} (jornada {user.jornada === "media" ? "media" : "completa"}).
+            </p>
+          )}
+          <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 4 }}>
+            Queda como horas extra ya aprobadas: la persona las ve al pedir una ausencia de <strong>Compensación de
+            horas</strong>, con el mismo vencimiento a 1 año que las demás. Solo admite días a favor — si alguien
+            debe días, se resuelve a mano con esa persona.
+          </p>
         </div>
-        <div className="field" style={{ gridColumn: "1 / -1" }}>
-          <label>Nota (opcional)</label>
-          <input
-            className="input" placeholder="Ej: Saldo acumulado 2025-2026 según planilla de vacaciones"
-            value={note} onChange={(e) => setNote(e.target.value)}
-          />
+      ) : (
+        <div style={{ marginTop: 10 }}>
+          <div className="form-grid">
+            <div className="field">
+              <label>Desde</label>
+              <input type="date" className="input" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); if (dateTo < e.target.value) setDateTo(e.target.value); }} />
+            </div>
+            <div className="field">
+              <label>Hasta</label>
+              <input type="date" className="input" value={dateTo} min={dateFrom} onChange={(e) => setDateTo(e.target.value)} />
+            </div>
+          </div>
+          {user && (
+            <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 4 }}>
+              {vacDays} día{vacDays !== 1 ? "s" : ""} hábil{vacDays !== 1 ? "es" : ""} según el calendario laboral de {user.name}.
+            </p>
+          )}
+          <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 4 }}>
+            Queda como una ausencia de tipo <strong>Vacaciones</strong> ya aprobada, en su propio registro — se
+            descuenta del período de antigüedad al que corresponda la fecha.
+          </p>
         </div>
-      </div>
-      {user && valid && (
-        <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 4 }}>
-          Equivale a {minutes} minutos para {user.name} (jornada {user.jornada === "media" ? "media" : "completa"}).
-        </p>
       )}
-      <button className="btn btn-secondary" style={{ marginTop: 10 }} onClick={cargar} disabled={!valid}>
-        <Icon name="plus" size={14} /> Cargar saldo
-      </button>
-    </div>
+
+      <div className="field" style={{ marginTop: 10 }}>
+        <label>Nota (opcional)</label>
+        <input
+          className="input" placeholder="Ej: Saldo acumulado 2025-2026 según planilla de vacaciones"
+          value={note} onChange={(e) => setNote(e.target.value)}
+        />
+      </div>
+    </Modal>
   );
 }
 
@@ -1230,90 +918,6 @@ export function ProfessionalProfileImportPanel() {
   );
 }
 
-/* ============================== Configuración ============================== */
-
-type ConfigPayload = Pick<AppState, "company" | "rolePermissions" | "leaveTypeConfig">;
-
-function isValidConfig(obj: unknown): obj is ConfigPayload {
-  if (!obj || typeof obj !== "object") return false;
-  const o = obj as Record<string, unknown>;
-  const company = o.company as Record<string, unknown> | undefined;
-  const rp = o.rolePermissions as Record<string, unknown> | undefined;
-  return (
-    Boolean(company) &&
-    typeof company?.name === "string" &&
-    Boolean(rp) &&
-    Array.isArray(rp?.admin) &&
-    Array.isArray(rp?.supervisor) &&
-    Array.isArray(rp?.empleado) &&
-    Array.isArray(o.leaveTypeConfig)
-  );
-}
-
-export function ConfigImportExportPanel() {
-  const { state, dispatch } = useStore();
-  const toast = useToast();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [error, setError] = useState("");
-
-  function exportConfig() {
-    const payload: ConfigPayload = {
-      company: state.company,
-      rolePermissions: state.rolePermissions,
-      leaveTypeConfig: state.leaveTypeConfig,
-    };
-    downloadFile("configuracion-tempo.json", JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
-  }
-
-  async function onPick(file: File | undefined) {
-    if (!file) return;
-    setError("");
-    try {
-      const text = (await readFileText(file)).replace(/^﻿/, "");
-      const parsed = JSON.parse(text);
-      if (!isValidConfig(parsed)) {
-        setError("El archivo no tiene el formato esperado (company, rolePermissions, leaveTypeConfig).");
-        return;
-      }
-      dispatch({ type: "patch", patch: { company: parsed.company, rolePermissions: parsed.rolePermissions, leaveTypeConfig: parsed.leaveTypeConfig } });
-      dispatch({ type: "audit", action: "Configuración importada", detail: `Desde ${file.name}` });
-      toast("Configuración importada: empresa, permisos y tipos de licencia.");
-    } catch {
-      setError("No se pudo leer el archivo. Verificá que sea un JSON válido exportado desde TEMPO.");
-    }
-    if (inputRef.current) inputRef.current.value = "";
-  }
-
-  return (
-    <div className="card card-pad">
-      <div className="card-title">Configuración (permisos, tipos de licencia y empresa)</div>
-      <p style={{ fontSize: 12.5, color: "var(--text-2)", marginBottom: 10 }}>
-        Clockify no exporta permisos ni configuración de roles — este archivo es el formato propio de TEMPO, útil para
-        respaldar la configuración o transferirla entre instancias.
-      </p>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button className="btn btn-secondary" onClick={exportConfig}>
-          <Icon name="download" size={14} /> Exportar configuración
-        </button>
-        <button className="btn btn-secondary" onClick={() => inputRef.current?.click()}>
-          <Icon name="upload" size={14} /> Importar configuración
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".json,application/json"
-          style={{ display: "none" }}
-          onChange={(e) => onPick(e.target.files?.[0])}
-        />
-      </div>
-      {error && (
-        <p style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600, marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
-          <Icon name="alert" size={13} /> {error}
-        </p>
-      )}
-    </div>
-  );
-}
 
 /* ============================== Componentes compartidos ============================== */
 
