@@ -238,8 +238,10 @@ export function CalendarPage() {
   const [viewUserId, setViewUserId] = useState(me);
   const effectiveUserId = canPickOthers && pickableUsers.some((u) => u.id === viewUserId) ? viewUserId : me;
   const viewUser = state.users.find((u) => u.id === effectiveUserId) ?? meUser;
-  // Solo se puede arrastrar, redimensionar, crear o borrar en el propio calendario.
-  const canEdit = effectiveUserId === me;
+  // Solo se puede arrastrar, redimensionar, crear o borrar en el propio calendario
+  // — y Equipo España nunca, ni siquiera en el suyo: su carga de horas es
+  // externa a TEMPO (ver canSeePage en Shell.tsx, ya no se lo oculta la página).
+  const canEdit = meUser.team !== "espana" && effectiveUserId === me;
 
   // Configuración de husos: siempre la propia, sin importar de quién sea el
   // calendario que se está mirando.
@@ -651,7 +653,12 @@ export function CalendarPage() {
       </div>
       {!canEdit && (
         <div style={{ marginBottom: 10 }}>
-          <span className="badge warn"><Icon name="eye" size={11} /> Viendo el calendario de {viewUser.name} · Solo lectura</span>
+          <span className="badge warn">
+            <Icon name="eye" size={11} />{" "}
+            {effectiveUserId === me
+              ? "Solo lectura — la carga de horas de Equipo España es externa a TEMPO"
+              : `Viendo el calendario de ${viewUser.name} · Solo lectura`}
+          </span>
         </div>
       )}
       <p className="page-sub">

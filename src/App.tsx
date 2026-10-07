@@ -45,12 +45,11 @@ function Root() {
   const me = state.users.find((u) => u.id === state.currentUserId);
   if (!me) return null;
   if (me.mustChangePassword) return <ForceChangePassword />;
-  // Si la página actual no está permitida (por rol o por equipo), volver al
-  // calendario — o, si tampoco puede verlo (Equipo España), a su perfil
-  // profesional, que siempre está disponible.
-  const effective = canSeePage(me.role, me.team, page)
+  // Si la página actual no está permitida para el rol, volver al calendario
+  // — o, si tampoco puede verlo, a su perfil profesional, que siempre está disponible.
+  const effective = canSeePage(me.role, page)
     ? page
-    : canSeePage(me.role, me.team, "calendar")
+    : canSeePage(me.role, "calendar")
       ? "calendar"
       : "profile";
   const Page = PAGES[effective];

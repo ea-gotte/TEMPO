@@ -373,7 +373,8 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
           </select>
           {team === "espana" && (
             <span style={{ fontSize: 11, color: "var(--text-3)" }}>
-              Acceso de consulta: perfil profesional y reportes. Un gerente de España conserva la aprobación de ausencias.
+              Ve las mismas pantallas que Equipo LATAM según su rol, pero de solo lectura: no carga horas ni pide
+              ausencias propias, y nunca genera alertas de incumplimiento de carga.
             </span>
           )}
         </div>

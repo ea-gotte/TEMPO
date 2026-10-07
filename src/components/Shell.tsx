@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useStore, vacationInfo } from "../store";
-import type { Role, Team } from "../types";
+import type { Role } from "../types";
 import { dayLabel, fmtDate, today, validatePassword } from "../utils";
 import { myComplianceAlerts } from "../compliance";
 import { Avatar, Modal, useToast } from "./ui";
@@ -16,26 +16,14 @@ export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "r
 const SUPERVISOR_EXTRA_PAGES: PageKey[] = ["control", "projects"];
 
 /**
- * Equipo España: acceso principalmente de consulta — perfil profesional
- * (propio y de terceros) y reportes de horas/actividad, nada del uso diario
- * (registro de tiempo, ausencias propias, administración). El buzón de ideas
- * queda igual para todos (no es una acción administrativa). El gerente de
- * España conserva la facultad de aprobar ausencias como única excepción; su
- * gestión de equipo sigue en las plataformas que ya usa ese equipo, no acá.
- * No cambia el rol de nadie — mismo rol de siempre, acceso más acotado.
- */
-const ESPANA_PAGES: PageKey[] = ["profile", "reports", "feedback"];
-
-/**
  * Admin: todo. Gerente: todo menos Administración. Supervisor: las básicas más
- * Control de horas. Usuario: solo las básicas. Equipo España restringe por
- * encima de todo lo anterior (ver ESPANA_PAGES).
+ * Control de horas. Usuario: solo las básicas. El equipo (España/LATAM) ya no
+ * restringe qué páginas se ven — España ve exactamente lo mismo que LATAM
+ * según su rol; lo que la distingue es que su gestión de equipo sigue en las
+ * plataformas que ya usa (no acá) y por eso es de solo lectura ahí donde
+ * correspondería editar (ver los `canEdit`/`isEspana` de cada página).
  */
-export function canSeePage(role: Role, team: Team, key: PageKey): boolean {
-  if (team === "espana") {
-    if (ESPANA_PAGES.includes(key)) return true;
-    return key === "absences" && role === "gerente";
-  }
+export function canSeePage(role: Role, key: PageKey): boolean {
   if (EMPLOYEE_PAGES.includes(key)) return true;
   if (role === "admin") return true;
   if (role === "gerente") return key !== "admin";
@@ -219,7 +207,7 @@ export function Shell({
           </span>
         </div>
         {NAV.map((sec) => {
-          const items = sec.items.filter((it) => canSeePage(me.role, me.team, it.key));
+          const items = sec.items.filter((it) => canSeePage(me.role, it.key));
           if (items.length === 0) return null;
           return (
           <React.Fragment key={sec.section}>

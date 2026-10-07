@@ -35,6 +35,9 @@ export function Tracker() {
   useNow(state.timers.some((t) => !t.paused));
 
   const me = state.currentUserId;
+  // Equipo España ve su propio historial (si lo tiene) pero no carga nada acá:
+  // su gestión de horas sigue en las plataformas que ya usa, no en TEMPO.
+  const canEdit = state.users.find((u) => u.id === me)?.team !== "espana";
   const myEntries = useMemo(
     () => state.entries.filter((e) => e.userId === me).sort((a, b) => (a.date === b.date ? b.start - a.start : b.date.localeCompare(a.date))),
     [state.entries, me],
@@ -88,10 +91,19 @@ export function Tracker() {
       <div className="page-head">
         <h1>Registro de tiempo</h1>
         <span className="spacer" />
-        <button className="btn btn-secondary" onClick={() => setModal({})}><Icon name="plus" size={15} /> Carga manual</button>
+        {canEdit && (
+          <button className="btn btn-secondary" onClick={() => setModal({})}><Icon name="plus" size={15} /> Carga manual</button>
+        )}
       </div>
 
+      {!canEdit && (
+        <p className="page-sub">
+          <Icon name="eye" size={13} /> Solo lectura — la carga de horas de Equipo España es externa a TEMPO.
+        </p>
+      )}
+
       {/* Barra de cronómetro: máximo 2 clics para iniciar */}
+      {canEdit && (
       <div className="timerbar no-print">
         <input
           className="desc"
@@ -114,6 +126,7 @@ export function Tracker() {
           <Icon name="play" size={15} />
         </button>
       </div>
+      )}
 
       {/* Temporizadores múltiples en curso */}
       {state.timers.length > 0 && (
@@ -165,7 +178,7 @@ export function Tracker() {
       )}
 
       {/* Favoritos: registro en un clic */}
-      {favUnique.length > 0 && (
+      {canEdit && favUnique.length > 0 && (
         <div style={{ marginTop: 14 }}>
           <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><Icon name="star" size={14} /> Favoritos — iniciá con un clic</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -201,13 +214,15 @@ export function Tracker() {
                   {date === today() && <span className="badge acc" style={{ marginLeft: 8 }}>Hoy</span>}
                 </span>
                 <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <button
-                    className="btn btn-ghost btn-sm no-print"
-                    title="Copiar registros al día siguiente hábil"
-                    onClick={() => copyDay(date, addDays(date, 1))}
-                  >
-                    <Icon name="copy" size={13} /> Copiar día
-                  </button>
+                  {canEdit && (
+                    <button
+                      className="btn btn-ghost btn-sm no-print"
+                      title="Copiar registros al día siguiente hábil"
+                      onClick={() => copyDay(date, addDays(date, 1))}
+                    >
+                      <Icon name="copy" size={13} /> Copiar día
+                    </button>
+                  )}
                   <strong style={{ fontFamily: "var(--mono)" }}>{fmtDur(total)}</strong>
                 </span>
               </div>
@@ -218,8 +233,9 @@ export function Tracker() {
                   <div
                     className="entry-row"
                     key={e.id}
-                    onDoubleClick={() => setModal(e)}
+                    onDoubleClick={() => canEdit && setModal(e)}
                     onContextMenu={(ev) => {
+                      if (!canEdit) return;
                       ev.preventDefault();
                       setCtx({ x: ev.clientX, y: ev.clientY, entry: e });
                     }}
@@ -249,7 +265,9 @@ export function Tracker() {
                       {minToHM(e.start)} – {minToHM(e.end)}
                     </span>
                     <span className="dur">{fmtHM(e.end - e.start)}</span>
-                    <button className="btn btn-ghost btn-sm no-print" onClick={() => setModal(e)} aria-label="Editar"><Icon name="pencil" size={14} /></button>
+                    {canEdit && (
+                      <button className="btn btn-ghost btn-sm no-print" onClick={() => setModal(e)} aria-label="Editar"><Icon name="pencil" size={14} /></button>
+                    )}
                   </div>
                 );
               })}
