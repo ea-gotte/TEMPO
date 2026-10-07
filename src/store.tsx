@@ -1158,13 +1158,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             }));
 
             if (!mappedUsers.some((u) => u.id === currentUserId)) {
+              // Sin fila en profiles: rol mínimo. Nunca tomar el rol de user_metadata,
+              // que el propio usuario puede cambiar con auth.updateUser({ data }).
               const meta = session.user.user_metadata || {};
               mappedUsers.push({
                 id: currentUserId,
                 name: meta.name || session.user.email?.split("@")[0] || "Usuario",
                 email: session.user.email || "",
                 password: "",
-                role: (meta.role as any) || "admin",
+                role: "usuario",
                 team: "latam",
                 jornada: (meta.jornada as any) || "completa",
                 supervisorId: null,

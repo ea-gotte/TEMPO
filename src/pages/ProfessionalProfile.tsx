@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
 import type { ProfessionalEntry, ProfessionalProfile as ProfessionalProfileData, Role } from "../types";
-import { fmtDate, fmtYearsSince, today, uid } from "../utils";
+import { fmtDate, fmtYearsSince, safeHttpUrl, today, uid } from "../utils";
 import { computeSkills } from "../skills";
 import { Avatar, useToast } from "../components/ui";
 import { Icon, type IconName } from "../components/Icon";
@@ -92,19 +92,6 @@ const PDF_UPLOAD_ENABLED: boolean = false;
 // alguien solo se coma el cupo de todos. El de 2 MB también lo exige el bucket.
 const MAX_PDF_BYTES = 2 * 1024 * 1024;
 const MAX_PER_PERSON_BYTES = 15 * 1024 * 1024;
-
-/** Devuelve la URL normalizada si es http(s); null si no es un enlace válido.
- * Evita guardar/renderizar esquemas como javascript: en un href. */
-function safeHttpUrl(raw: string): string | null {
-  const text = raw.trim();
-  if (!text) return null;
-  try {
-    const u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(text) ? text : `https://${text}`);
-    return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : null;
-  } catch {
-    return null;
-  }
-}
 
 /** Instrucciones para adjuntar un certificado mediante enlace (mientras no haya subida automática). */
 function LinkHowTo() {

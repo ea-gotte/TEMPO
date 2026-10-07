@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useStore } from "../store";
 import type { Client, Project, ProjectStatus, SubProject } from "../types";
-import { fmtDur, uid } from "../utils";
+import { fmtDur, safeHttpUrl, uid } from "../utils";
 import { Avatar, Dot, Empty, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 
@@ -366,8 +366,8 @@ export function Projects() {
                       </select>
                     </td>
                     <td>
-                      {p.notionUrl ? (
-                        <a href={p.notionUrl} target="_blank" rel="noreferrer" className="badge acc" title={p.notionUrl} onClick={(e) => e.stopPropagation()}>
+                      {p.notionUrl && safeHttpUrl(p.notionUrl) ? (
+                        <a href={safeHttpUrl(p.notionUrl)!} target="_blank" rel="noreferrer" className="badge acc" title={p.notionUrl} onClick={(e) => e.stopPropagation()}>
                           <Icon name="book" size={11} /> Abrir en Notion
                         </a>
                       ) : (
@@ -507,6 +507,11 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
 
   function save() {
     if (!name.trim()) return;
+    const safeNotionUrl = safeHttpUrl(notionUrl);
+    if (notionUrl.trim() && !safeNotionUrl) {
+      toast("El link a Notion tiene que ser una dirección web (https://…).");
+      return;
+    }
     const next: Project = {
       id: project?.id ?? uid(),
       clientId: clientId || null,
@@ -515,7 +520,7 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
       status,
       budgetHours: subProjects.length > 0 ? subProjectsBudgetSum : (budgetHours ? Number(budgetHours) : null),
       memberIds,
-      notionUrl: notionUrl.trim() || undefined,
+      notionUrl: safeNotionUrl ?? undefined,
       flightActivityId: flightActivityId || null,
     };
     const finalSubProjects = subProjects.map((sp) => ({ ...sp, projectId: next.id }));

@@ -6,13 +6,6 @@ import { uid } from "../utils";
 import emailjs from "@emailjs/browser";
 import { supabase, authUrlError } from "../supabase";
 
-const DEMO_PASSWORDS: Record<string, string> = {
-  u1: "Admin123!",
-  u2: "Carla123!",
-  u3: "Martin123!",
-  u4: "Lucia123!",
-};
-
 export function Login() {
   const { state, dispatch } = useStore();
   const toast = useToast();

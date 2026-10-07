@@ -237,6 +237,9 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
   const mustChangePassword = user ? (user.mustChangePassword ?? false) : true;
   const [error, setError] = useState("");
   const [role, setRole] = useState<Role>(user?.role ?? "usuario");
+  // Solo un admin da o quita el rol de administrador (la base lo exige desde la fase 30).
+  const isAdmin = state.users.find((u) => u.id === state.currentUserId)?.role === "admin";
+  const roleLocked = !isAdmin && user?.role === "admin";
   const [team, setTeam] = useState<TeamType>(user?.team ?? "latam");
   const [supervisorId, setSupervisorId] = useState(user?.supervisorId ?? "");
   const [jornada, setJornada] = useState<Jornada>(user?.jornada ?? "completa");
@@ -358,12 +361,13 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
         )}
         <div className="field">
           <label>Rol</label>
-          <select className="select" value={role} onChange={(e) => setRole(e.target.value as Role)}>
+          <select className="select" value={role} onChange={(e) => setRole(e.target.value as Role)} disabled={roleLocked}>
             <option value="usuario">Usuario</option>
             <option value="supervisor">Supervisor</option>
             <option value="gerente">Gerente</option>
-            <option value="admin">Administrador</option>
+            {(isAdmin || roleLocked) && <option value="admin">Administrador</option>}
           </select>
+          {roleLocked && <span style={{ fontSize: 11, color: "var(--text-3)" }}>Solo un administrador puede cambiar el rol de otro administrador.</span>}
         </div>
         <div className="field">
           <label>Equipo de trabajo</label>

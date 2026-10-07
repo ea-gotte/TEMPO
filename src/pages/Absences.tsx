@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useStore, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings } from "../store";
 import type { AbsenceRequest, AbsenceType, Attachment, OvertimeRequest } from "../types";
-import { fmtDate, fmtDur, today, uid } from "../utils";
+import { ATTACHMENT_ACCEPT, attachmentMime, fmtDate, fmtDur, today, uid } from "../utils";
 import { Avatar, Empty, Modal, useToast } from "../components/ui";
 import { Icon, type IconName } from "../components/Icon";
 
@@ -40,10 +40,10 @@ function StatusBadge({ s }: { s: AbsenceRequest["status"] }) {
   return <span className={`badge ${cls}`}>{s}</span>;
 }
 
-/** Convierte un data URL en Blob para poder verlo/descargarlo de forma confiable */
-function dataUrlToBlob(dataUrl: string): Blob {
-  const [head, b64] = dataUrl.split(",");
-  const mime = head.match(/data:([^;]+)/)?.[1] ?? "application/octet-stream";
+/** Convierte un data URL en Blob con el tipo indicado. El tipo lo decide la app
+ * (attachmentMime), nunca el que declara el propio archivo. */
+function dataUrlToBlob(dataUrl: string, mime: string): Blob {
+  const b64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -51,16 +51,21 @@ function dataUrlToBlob(dataUrl: string): Blob {
 }
 
 function AttachmentChip({ f }: { f: Attachment }) {
-  const withBlobUrl = (fn: (url: string) => void) => {
+  // null = tipo no permitido (HTML, SVG...): se puede descargar, pero no abrir.
+  const viewMime = f.url ? attachmentMime(f.name, f.url) : null;
+
+  const withBlobUrl = (mime: string, fn: (url: string) => void) => {
     if (!f.url) return;
-    const url = URL.createObjectURL(dataUrlToBlob(f.url));
+    const url = URL.createObjectURL(dataUrlToBlob(f.url, mime));
     fn(url);
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
 
-  const view = () => withBlobUrl((url) => window.open(url, "_blank", "noopener"));
+  const view = () => {
+    if (viewMime) withBlobUrl(viewMime, (url) => window.open(url, "_blank", "noopener"));
+  };
   const download = () =>
-    withBlobUrl((url) => {
+    withBlobUrl("application/octet-stream", (url) => {
       const a = document.createElement("a");
       a.href = url;
       a.download = f.name;
@@ -75,9 +80,11 @@ function AttachmentChip({ f }: { f: Attachment }) {
       {f.size != null && <span style={{ color: "var(--text-3)" }}>({(f.size / 1024 / 1024).toFixed(1)} MB)</span>}
       {f.url && (
         <>
-          <button className="btn btn-ghost btn-sm" style={{ padding: "0 4px" }} onClick={view} aria-label="Ver" title="Ver">
-            <Icon name="eye" size={12} />
-          </button>
+          {viewMime && (
+            <button className="btn btn-ghost btn-sm" style={{ padding: "0 4px" }} onClick={view} aria-label="Ver" title="Ver">
+              <Icon name="eye" size={12} />
+            </button>
+          )}
           <button className="btn btn-ghost btn-sm" style={{ padding: "0 4px" }} onClick={download} aria-label="Descargar" title="Descargar">
             <Icon name="download" size={12} />
           </button>
@@ -698,7 +705,12 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
 
   function onFiles(list: FileList | null) {
     if (!list) return;
-    const picked = [...list];
+    const all = [...list];
+    const badType = all.filter((f) => !attachmentMime(f.name));
+    if (badType.length > 0) {
+      toast(`Solo se aceptan archivos PDF, PNG o JPG. Se descartó: ${badType.map((f) => f.name).join(", ")}.`);
+    }
+    const picked = all.filter((f) => attachmentMime(f.name));
     const tooBig = picked.filter((f) => f.size > MAX_BYTES);
     if (tooBig.length > 0) {
       toast(`Cada archivo debe pesar 10 MB o menos. Excede: ${tooBig.map((f) => f.name).join(", ")}.`);
@@ -844,8 +856,8 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
         <textarea className="textarea" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Contanos brevemente el motivo…" />
       </div>
       <div className="field">
-        <label>Adjuntos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional — certificados, comprobantes · máx. 10 MB por archivo)</span></label>
-        <input type="file" className="input" multiple onChange={(e) => onFiles(e.target.files)} />
+        <label>Adjuntos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional — certificados, comprobantes · PDF, PNG o JPG · máx. 10 MB por archivo)</span></label>
+        <input type="file" className="input" multiple accept={ATTACHMENT_ACCEPT} onChange={(e) => onFiles(e.target.files)} />
         {files.length > 0 && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
             {files.map((f, i) => (

@@ -144,6 +144,41 @@ export function rangeDates(from: string, to: string): string[] {
   return out;
 }
 
+/** Devuelve la URL normalizada si es http(s); null si no es un enlace válido.
+ * Evita guardar/renderizar esquemas como javascript: en un href. */
+export function safeHttpUrl(raw: string): string | null {
+  const text = raw.trim();
+  if (!text) return null;
+  try {
+    const u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(text) ? text : `https://${text}`);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Adjuntos de ausencias que se aceptan y se pueden abrir en el navegador. Cualquier
+ * otro tipo (HTML, SVG...) se abriría con el origen de TEMPO y podría leer la sesión
+ * de quien lo abre. Lo que no esté en la lista solo se descarga, nunca se abre. */
+const ATTACHMENT_MIME: Record<string, string> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+};
+
+export const ATTACHMENT_ACCEPT = ".pdf,.png,.jpg,.jpeg";
+
+/** Tipo permitido para abrir un adjunto: el declarado en su data URL si está en la
+ * lista y, si no, el de la extensión del nombre. null si ninguno está permitido. */
+export function attachmentMime(name: string, dataUrl?: string): string | null {
+  const allowed = Object.values(ATTACHMENT_MIME);
+  const declared = dataUrl?.match(/^data:([^;,]+)/)?.[1]?.toLowerCase();
+  if (declared && allowed.includes(declared)) return declared;
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  return ATTACHMENT_MIME[ext] ?? null;
+}
+
 export function downloadFile(name: string, content: string, mime = "text/csv;charset=utf-8") {
   const blob = new Blob(["﻿" + content], { type: mime });
   const url = URL.createObjectURL(blob);
