@@ -779,8 +779,10 @@ async function fetchEntriesAndAbsences(
     { data: surveyRows, error: surveysErr },
     { data: surveyResponseRows, error: surveyResponsesErr },
     { data: feedbackItemRows, error: feedbackItemsErr },
+    { data: calendarAbsenceRows, error: calendarAbsencesErr },
   ] = await Promise.all([
     fetchAllRows("time_entries"),
+    // Completas: las propias y, si es staff, las de todos (RLS, fase 31)
     fetchAllRows("absence_requests"),
     fetchAllRows("holidays"),
     fetchAllRows("clients"),
@@ -797,6 +799,8 @@ async function fetchEntriesAndAbsences(
     fetchAllRows("surveys"),
     fetchAllRows("survey_responses"),
     fetchAllRows("feedback_items"),
+    // Las aprobadas de todos, sin motivo, adjuntos ni comentario: para el calendario
+    fetchAllRows("absences_calendar"),
   ]);
   if (entriesErr) console.warn("Error al leer time_entries:", entriesErr);
   if (absencesErr) console.warn("Error al leer absence_requests:", absencesErr);
@@ -815,6 +819,7 @@ async function fetchEntriesAndAbsences(
   if (surveysErr) console.warn("Error al leer surveys:", surveysErr);
   if (surveyResponsesErr) console.warn("Error al leer survey_responses:", surveyResponsesErr);
   if (feedbackItemsErr) console.warn("Error al leer feedback_items:", feedbackItemsErr);
+  if (calendarAbsencesErr) console.warn("Error al leer absences_calendar:", calendarAbsencesErr);
   // Guard contra respuestas fuera de orden: si mientras esta consulta viajaba
   // ida y vuelta se disparó un refetch más nuevo (p.ej. por el propio drag de
   // una tarjeta en Calendario), esta respuesta ya está desactualizada — aplicarla
@@ -828,7 +833,17 @@ async function fetchEntriesAndAbsences(
   // cargado desapareciera de golpe de la pantalla, aunque siguiera intacto
   // en la base; con el próximo refetch que sí funcione se pone al día solo.
   if (!entriesErr) dispatch({ type: "syncEntries", entries: (entryRows || []).map(fromEntryRow) });
-  if (!absencesErr) dispatch({ type: "syncAbsences", absences: (absenceRows || []).map(fromAbsenceRow) });
+  if (!absencesErr) {
+    // Las completas mandan; de la vista se suman solo las que no vinieron completas
+    // (las ajenas, para quien no es staff). Si la vista falla (p. ej. todavía no se
+    // corrió la fase 31) se muestran las que ya devolvió la tabla.
+    const full = (absenceRows || []).map(fromAbsenceRow);
+    const fullIds = new Set(full.map((a) => a.id));
+    const shared = calendarAbsencesErr
+      ? []
+      : (calendarAbsenceRows || []).filter((r: any) => !fullIds.has(r.id)).map(fromAbsenceRow);
+    dispatch({ type: "syncAbsences", absences: [...full, ...shared] });
+  }
   if (!holidaysErr) dispatch({ type: "syncHolidays", holidays: (holidayRows || []).map(fromHolidayRow) });
   if (!clientsErr) dispatch({ type: "syncClients", clients: (clientRows || []).map(fromClientRow) });
   if (!projectsErr) dispatch({ type: "syncProjects", projects: (projectRows || []).map(fromProjectRow) });
