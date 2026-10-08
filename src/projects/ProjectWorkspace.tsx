@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { Suspense, lazy, useEffect, useState } from "react";
 import { Dot, Empty } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { fmtDate } from "../utils";
@@ -15,9 +15,13 @@ import { TasksTab } from "./TasksTab";
 import { MeetingsTab } from "./MeetingsTab";
 import type { Task, WorkEnv } from "./types";
 import { useWork, workActions } from "./workStore";
+import { clearAllBoards } from "./board/boardStore";
 import "./projects.css";
 
-export type Tab = "resumen" | "tareas" | "plan" | "backlog" | "cambios" | "riesgos" | "descubrimiento" | "reuniones";
+// El tablero carga Fabric.js: se descarga recién al abrir la pestaña
+const BoardTab = lazy(() => import("./board/BoardTab"));
+
+export type Tab = "resumen" | "tareas" | "plan" | "backlog" | "cambios" | "riesgos" | "descubrimiento" | "reuniones" | "tablero";
 
 const MODE_LABEL = { planificado: "Planificado", agil: "Ágil", hibrido: "Híbrido" } as const;
 
@@ -25,8 +29,8 @@ export function DemoBanner() {
   return (
     <div className="pw-demo-banner">
       <b>Demo</b>
-      <span>Gestión de proyectos en prueba: las tareas, hitos y roles se guardan solo en este navegador y no se envían a la base de datos.</span>
-      <button className="btn btn-secondary btn-sm" style={{ marginLeft: "auto" }} onClick={() => { if (confirm("¿Restablecer los datos de ejemplo? Se pierden los cambios hechos en la demo.")) workActions.resetDemo(); }}>
+      <span>Gestión de proyectos en prueba: las tareas, hitos, roles y tableros se guardan solo en este navegador y no se envían a la base de datos.</span>
+      <button className="btn btn-secondary btn-sm" style={{ marginLeft: "auto" }} onClick={() => { if (confirm("¿Restablecer los datos de ejemplo? Se pierden los cambios hechos en la demo, incluidos los tableros.")) { workActions.resetDemo(); void clearAllBoards(); } }}>
         Restablecer datos de ejemplo
       </button>
     </div>
@@ -83,6 +87,7 @@ function Workspace({ projectId, onBack, onEditProject }: { projectId: string; on
     { key: "reuniones", label: `Reuniones (${nMeetings})` },
     { key: "cambios", label: `Cambios del cliente${pending ? ` (${pending})` : ""}` },
     { key: "riesgos", label: `Riesgos (${nRisks})` },
+    { key: "tablero", label: "Tablero" },
   ];
   const current: Tab = tabs.some((t) => t.key === tab) ? tab : "resumen";
 
@@ -126,6 +131,11 @@ function Workspace({ projectId, onBack, onEditProject }: { projectId: string; on
       {current === "reuniones" && <MeetingsTab projectId={projectId} perms={perms} />}
       {current === "cambios" && <ChangesTab projectId={projectId} perms={perms} />}
       {current === "riesgos" && <RisksTab projectId={projectId} perms={perms} />}
+      {current === "tablero" && (
+        <Suspense fallback={<div className="card card-pad">Cargando el tablero…</div>}>
+          <BoardTab key={projectId} projectId={projectId} fileLabel={meta?.code || project.name} />
+        </Suspense>
+      )}
     </>
   );
 }
