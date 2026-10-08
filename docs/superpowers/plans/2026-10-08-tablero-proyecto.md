@@ -52,7 +52,7 @@ Condiciones que la spec implica y que las pruebas unitarias no cubren; cada una 
 | `src/projects/board/history.ts` (+ `.test.ts`) | Deshacer/rehacer por instantáneas, con tope de pasos y de tamaño | 2 |
 | `src/projects/board/image.ts` (+ `.test.ts`) | Validar, leer y reducir imágenes | 3 |
 | `src/projects/board/boardStore.ts` (+ `.test.ts`) | IndexedDB: cargar, guardar, borrar todo, validar registro, época | 4 |
-| `src/components/Icon.tsx` (modificar) | 20 iconos nuevos (los usa `tools.ts`) | 5 |
+| `src/components/Icon.tsx` (modificar) | 19 iconos nuevos (los usa `tools.ts`; `image` ya existe) | 5 |
 | `src/projects/board/tools.ts` | Catálogo de herramientas, atajos y paletas | 5 |
 | `src/projects/board/keys.ts` (+ `.test.ts`) | Tecla → acción (puro) y escucha de teclado | 5 |
 | `src/projects/board/shapes.ts` | Propiedades propias, clase `Arrow`, bloqueo, auxiliares, fábricas simples | 6 |
@@ -920,8 +920,8 @@ EOF
 - Test: `src/projects/board/keys.test.ts`
 
 **Interfaces:**
-- Consumes: `IconName` (solo tipo) de `src/components/Icon.tsx`, con los 20 nombres nuevos que agrega esta tarea.
-- Produces (`Icon.tsx`): nombres de icono `mouse-pointer`, `sticky-note`, `square`, `circle`, `diamond`, `arrow-up-right`, `line`, `cloud`, `type`, `image`, `undo`, `redo`, `zoom-in`, `zoom-out`, `maximize`, `minimize`, `unlock`, `bring-front`, `send-back`, `scan`.
+- Consumes: `IconName` (solo tipo) de `src/components/Icon.tsx`, con los 19 nombres nuevos que agrega esta tarea más `image`, que ya existe.
+- Produces (`Icon.tsx`): nombres de icono `mouse-pointer`, `sticky-note`, `square`, `circle`, `diamond`, `arrow-up-right`, `line`, `cloud`, `type`, `undo`, `redo`, `zoom-in`, `zoom-out`, `maximize`, `minimize`, `unlock`, `bring-front`, `send-back`, `scan`.
 - Produces (`tools.ts`):
   - `type Tool = "select" | "hand" | "note" | "rect" | "ellipse" | "diamond" | "arrow" | "line" | "cloud" | "pencil" | "image" | "text"`
   - `type ToolGroup = "nav" | "ideas" | "diagram" | "markup" | "common"`
@@ -943,15 +943,15 @@ Expected: sin salida. Si aparece ` M`, parar y preguntar al usuario.
 En `src/components/Icon.tsx`, reemplazar:
 
 ```ts
-  | "chevron-right" | "eye" | "eye-off" | "map-pin" | "cross" | "sliders" | "upload" | "share-2" | "lightbulb" | "info" | "archive" | "external-link";
+  | "chevron-right" | "eye" | "eye-off" | "map-pin" | "cross" | "sliders" | "upload" | "share-2" | "lightbulb" | "info" | "archive" | "external-link" | "image";
 ```
 
-por:
+por (`image` ya existe desde el commit de Reuniones y se reutiliza):
 
 ```ts
-  | "chevron-right" | "eye" | "eye-off" | "map-pin" | "cross" | "sliders" | "upload" | "share-2" | "lightbulb" | "info" | "archive" | "external-link"
+  | "chevron-right" | "eye" | "eye-off" | "map-pin" | "cross" | "sliders" | "upload" | "share-2" | "lightbulb" | "info" | "archive" | "external-link" | "image"
   // Tablero del proyecto
-  | "mouse-pointer" | "sticky-note" | "square" | "circle" | "diamond" | "arrow-up-right" | "line" | "cloud" | "type" | "image"
+  | "mouse-pointer" | "sticky-note" | "square" | "circle" | "diamond" | "arrow-up-right" | "line" | "cloud" | "type"
   | "undo" | "redo" | "zoom-in" | "zoom-out" | "maximize" | "minimize" | "unlock" | "bring-front" | "send-back" | "scan";
 ```
 
@@ -978,7 +978,6 @@ por:
   line: (<path d="M5 19 19 5" />),
   cloud: (<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />),
   type: (<><polyline points="4 7 4 4 20 4 20 7" /><line x1="9" y1="20" x2="15" y2="20" /><line x1="12" y1="4" x2="12" y2="20" /></>),
-  image: (<><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21" /></>),
   undo: (<><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></>),
   redo: (<><path d="m15 14 5-5-5-5" /><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" /></>),
   "zoom-in": (<><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35M11 8v6M8 11h6" /></>),
@@ -3164,13 +3163,13 @@ const BoardTab = lazy(() => import("./board/BoardTab"));
 (c) Tipo de pestaña. Reemplazar:
 
 ```tsx
-export type Tab = "resumen" | "tareas" | "plan" | "backlog" | "cambios" | "riesgos" | "descubrimiento";
+export type Tab = "resumen" | "tareas" | "plan" | "backlog" | "cambios" | "riesgos" | "descubrimiento" | "reuniones";
 ```
 
 por:
 
 ```tsx
-export type Tab = "resumen" | "tareas" | "plan" | "backlog" | "cambios" | "riesgos" | "descubrimiento" | "tablero";
+export type Tab = "resumen" | "tareas" | "plan" | "backlog" | "cambios" | "riesgos" | "descubrimiento" | "reuniones" | "tablero";
 ```
 
 (d) `DemoBanner`. Reemplazar:
