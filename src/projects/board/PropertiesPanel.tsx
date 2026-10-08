@@ -1,0 +1,77 @@
+import React from "react";
+import type { StylePatch, StyleState } from "./style";
+import { Btn, Swatch } from "./Toolbar";
+import { FILL_COLORS, NOTE_COLORS, PALETTE, STROKE_WIDTHS } from "./tools";
+
+/** Panel derecho (solo con selección). Adaptado de RightSidebar de Figma_Clone (github.com/Lyam0udi/Figma_Clone). */
+
+const FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64];
+
+export interface PanelProps {
+  count: number;
+  style: StyleState;
+  onStyle: (p: StylePatch) => void;
+  onFront: () => void;
+  onBack: () => void;
+  onLock: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="bd-row">
+      <span>{label}</span>
+      <div className="bd-row-ctl">{children}</div>
+    </div>
+  );
+}
+
+export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onDelete }: PanelProps) {
+  const fills = s.kind === "note" ? NOTE_COLORS : FILL_COLORS;
+  const opacity = Math.round(s.opacity * 100);
+  return (
+    <aside className="bd-panel" aria-label="Propiedades de la selección">
+      <div className="bd-panel-title">{count > 1 ? `${count} elementos` : "Propiedades"}</div>
+      {s.fill !== null && (
+        <Row label="Relleno">
+          {fills.map((c) => <Swatch key={c} color={c} on={s.fill === c} onClick={() => onStyle({ fill: c })} />)}
+        </Row>
+      )}
+      {s.stroke !== null && (
+        <Row label={s.strokeLabel}>
+          {PALETTE.map((c) => <Swatch key={c} color={c} on={s.stroke === c} onClick={() => onStyle({ stroke: c })} />)}
+        </Row>
+      )}
+      {s.strokeWidth !== null && (
+        <Row label="Grosor">
+          {STROKE_WIDTHS.map((w) => (
+            <button key={w} type="button" className={`bd-chip${s.strokeWidth === w ? " on" : ""}`} onClick={() => onStyle({ strokeWidth: w })}>{w} px</button>
+          ))}
+        </Row>
+      )}
+      {s.fontSize !== null && (
+        <Row label="Tamaño del texto">
+          <select
+            className="select"
+            value={FONT_SIZES.includes(s.fontSize) ? s.fontSize : ""}
+            onChange={(e) => { const v = Number(e.target.value); if (v) onStyle({ fontSize: v }); }}
+          >
+            {!FONT_SIZES.includes(s.fontSize) && <option value="">{s.fontSize} px (ajustado)</option>}
+            {FONT_SIZES.map((f) => <option key={f} value={f}>{f} px</option>)}
+          </select>
+        </Row>
+      )}
+      <Row label={`Opacidad · ${opacity} %`}>
+        <input type="range" min={10} max={100} step={5} value={opacity} onChange={(e) => onStyle({ opacity: Number(e.target.value) / 100 })} style={{ width: "100%" }} aria-label="Opacidad" />
+      </Row>
+      <div className="bd-actions">
+        <Btn icon="bring-front" label="Traer al frente" onClick={onFront} />
+        <Btn icon="send-back" label="Enviar al fondo" onClick={onBack} />
+        <Btn icon="lock" label="Bloquear (para marcar encima sin moverlo)" onClick={onLock} />
+        <Btn icon="copy" label="Duplicar (Ctrl+D)" onClick={onDuplicate} />
+        <Btn icon="trash" label="Eliminar (Supr)" danger onClick={onDelete} />
+      </div>
+    </aside>
+  );
+}

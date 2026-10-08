@@ -1,0 +1,73 @@
+/* Tablero del proyecto — tokens de styles.css. El lienzo es siempre claro (como un plano). */
+
+.bd-root {
+  display: flex; flex-direction: column; height: calc(100vh - 250px); min-height: 520px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); overflow: hidden;
+}
+.bd-root:fullscreen { height: 100vh; min-height: 0; border: none; border-radius: 0; }
+
+.bd-toolbar-wrap { border-bottom: 1px solid var(--border); background: var(--surface); }
+.bd-toolbar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; flex-wrap: wrap; }
+.bd-group { display: flex; align-items: center; gap: 2px; padding-right: 6px; margin-right: 2px; border-right: 1px solid var(--border); }
+.bd-group:last-child { border-right: none; padding-right: 0; margin-right: 0; }
+.bd-spacer { flex: 1; }
+
+.bd-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+  border: none; border-radius: var(--r-sm); background: transparent; color: var(--text-2); cursor: pointer;
+}
+.bd-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.bd-btn.on { background: var(--accent-soft); color: var(--accent); }
+.bd-btn:disabled { opacity: 0.35; cursor: default; }
+.bd-btn.danger:hover:not(:disabled) { background: var(--danger-soft); color: var(--danger); }
+.bd-btn:focus-visible, .bd-swatch:focus-visible, .bd-chip:focus-visible, .bd-zoom:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.bd-zoom {
+  min-width: 56px; height: 32px; border: none; border-radius: var(--r-sm); background: transparent;
+  color: var(--text-2); font: inherit; font-size: 12.5px; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.bd-zoom:hover { background: var(--surface-2); color: var(--text); }
+
+.bd-subbar {
+  display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--text-2); flex-wrap: wrap;
+}
+.bd-swatch { width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid var(--border-strong); cursor: pointer; }
+.bd-swatch.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.bd-swatch.none { background: linear-gradient(135deg, var(--surface) 45%, var(--danger) 45%, var(--danger) 55%, var(--surface) 55%); }
+.bd-chip {
+  height: 24px; padding: 0 8px; border-radius: 99px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer;
+}
+.bd-chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
+.bd-banner { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--text); flex-wrap: wrap; }
+.bd-banner.warn { background: var(--warning-soft); }
+.bd-banner.error { background: var(--danger-soft); }
+.bd-banner.info { background: var(--accent-soft); }
+
+.bd-stage { position: relative; flex: 1; min-height: 0; }
+.bd-canvas {
+  position: absolute; inset: 0; background-color: #f8f9fb;
+  background-image: radial-gradient(circle, #c9ced8 1px, transparent 1.2px); background-size: 24px 24px;
+}
+.bd-canvas.no-grid { background-image: none; }
+.bd-loading { position: absolute; inset: 0; display: grid; place-items: center; color: #5b6069; font-size: 13px; pointer-events: none; }
+
+.bd-panel {
+  position: absolute; top: 12px; right: 12px; width: 232px; max-height: calc(100% - 24px); overflow: auto;
+  display: flex; flex-direction: column; gap: 10px; padding: 12px; font-size: 12.5px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-md);
+}
+.bd-panel-title { display: flex; align-items: center; gap: 6px; font-weight: 650; color: var(--text); }
+.bd-panel p { margin: 0; color: var(--text-2); line-height: 1.45; }
+.bd-row { display: flex; flex-direction: column; gap: 6px; }
+.bd-row > span { font-size: 11.5px; font-weight: 600; color: var(--text-2); }
+.bd-row-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.bd-row-ctl .select { width: 100%; }
+.bd-actions { display: flex; gap: 2px; padding-top: 8px; border-top: 1px solid var(--border); }
+
+@media (max-width: 720px) {
+  .bd-root { height: calc(100vh - 200px); }
+  .bd-panel { top: auto; bottom: 12px; left: 12px; right: 12px; width: auto; max-height: 45%; }
+}
