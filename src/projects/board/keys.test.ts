@@ -1,0 +1,54 @@
+import { describe, expect, it } from "vitest";
+import { keyToAction, type KeyLike } from "./keys";
+
+const k = (key: string, o: Partial<KeyLike> = {}): KeyLike => ({
+  key, code: "", ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...o,
+});
+const down = (e: KeyLike, editing = false) => keyToAction(e, "down", editing);
+
+describe("keyToAction", () => {
+  it("las letras eligen herramienta (sin importar mayúsculas)", () => {
+    expect(down(k("r"))).toEqual({ type: "tool", tool: "rect" });
+    expect(down(k("N"))).toEqual({ type: "tool", tool: "note" });
+    expect(down(k("h"))).toEqual({ type: "tool", tool: "hand" });
+    expect(down(k("i"))).toEqual({ type: "tool", tool: "image" });
+    expect(down(k("q"))).toBeNull();
+  });
+  it("deshacer y rehacer, con Ctrl o con Cmd", () => {
+    expect(down(k("z", { ctrlKey: true }))).toEqual({ type: "undo" });
+    expect(down(k("Z", { ctrlKey: true, shiftKey: true }))).toEqual({ type: "redo" });
+    expect(down(k("y", { ctrlKey: true }))).toEqual({ type: "redo" });
+    expect(down(k("z", { metaKey: true }))).toEqual({ type: "undo" });
+  });
+  it("copiar, duplicar y seleccionar todo; Ctrl+V lo maneja el evento paste", () => {
+    expect(down(k("c", { ctrlKey: true }))).toEqual({ type: "copy" });
+    expect(down(k("d", { ctrlKey: true }))).toEqual({ type: "duplicate" });
+    expect(down(k("a", { ctrlKey: true }))).toEqual({ type: "selectAll" });
+    expect(down(k("v", { ctrlKey: true }))).toBeNull();
+  });
+  it("Supr y Retroceso borran; Esc sale", () => {
+    expect(down(k("Delete"))).toEqual({ type: "delete" });
+    expect(down(k("Backspace"))).toEqual({ type: "delete" });
+    expect(down(k("Escape"))).toEqual({ type: "escape" });
+  });
+  it("las flechas mueven 1 px, y 10 px con Shift", () => {
+    expect(down(k("ArrowLeft"))).toEqual({ type: "nudge", dx: -1, dy: 0 });
+    expect(down(k("ArrowDown", { shiftKey: true }))).toEqual({ type: "nudge", dx: 0, dy: 10 });
+  });
+  it("Shift+1 ajusta al contenido", () => {
+    expect(down(k("!", { code: "Digit1", shiftKey: true }))).toEqual({ type: "fit" });
+  });
+  it("Espacio: mano temporal mientras se mantiene", () => {
+    expect(down(k(" ", { code: "Space" }))).toEqual({ type: "spaceDown" });
+    expect(keyToAction(k(" ", { code: "Space" }), "up", false)).toEqual({ type: "spaceUp" });
+  });
+  it("mientras se edita un texto no hay atajos (Review Focus 5)", () => {
+    expect(down(k("Delete"), true)).toBeNull();
+    expect(down(k("r"), true)).toBeNull();
+    expect(down(k(" ", { code: "Space" }), true)).toBeNull();
+    expect(down(k("z", { ctrlKey: true }), true)).toBeNull();
+  });
+  it("con Alt no hace nada", () => {
+    expect(down(k("r", { altKey: true }))).toBeNull();
+  });
+});

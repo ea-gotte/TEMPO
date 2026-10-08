@@ -16,7 +16,10 @@ export type IconName =
   | "download" | "printer" | "tag" | "ban" | "hourglass" | "repeat"
   | "book" | "clipboard" | "baby" | "history" | "zap" | "dot" | "circle-half"
   | "hard-hat" | "github" | "puzzle" | "webhook" | "activity" | "hand"
-  | "chevron-right" | "eye" | "eye-off" | "map-pin" | "cross" | "sliders" | "upload" | "share-2" | "lightbulb" | "info" | "archive" | "external-link" | "image";
+  | "chevron-right" | "eye" | "eye-off" | "map-pin" | "cross" | "sliders" | "upload" | "share-2" | "lightbulb" | "info" | "archive" | "external-link" | "image"
+  // Tablero del proyecto
+  | "mouse-pointer" | "sticky-note" | "square" | "circle" | "diamond" | "arrow-up-right" | "line" | "cloud" | "type"
+  | "undo" | "redo" | "zoom-in" | "zoom-out" | "maximize" | "minimize" | "unlock" | "bring-front" | "send-back" | "scan";
 
 const P: Record<IconName, React.ReactNode> = {
   clock: (<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>),
@@ -100,6 +103,26 @@ const P: Record<IconName, React.ReactNode> = {
   archive: (<><rect x="2" y="3" width="20" height="5" rx="1" /><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4" /></>),
   "external-link": (<><path d="M15 3h6v6M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></>),
   lightbulb: (<><path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12.7 3.5 3.5 0 0 1 1.5 2.8V18a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-.5a3.5 3.5 0 0 1 1.5-2.8A7 7 0 0 0 12 2Z" /></>),
+  // Tablero del proyecto
+  "mouse-pointer": (<path d="m4 4 7.07 17 2.51-7.39L21 11.07Z" />),
+  "sticky-note": (<><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5Z" /><path d="M15 3v6h6" /></>),
+  square: (<rect x="3" y="3" width="18" height="18" rx="2" />),
+  circle: (<circle cx="12" cy="12" r="9" />),
+  diamond: (<path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z" />),
+  "arrow-up-right": (<><path d="M7 17 17 7" /><path d="M7 7h10v10" /></>),
+  line: (<path d="M5 19 19 5" />),
+  cloud: (<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />),
+  type: (<><polyline points="4 7 4 4 20 4 20 7" /><line x1="9" y1="20" x2="15" y2="20" /><line x1="12" y1="4" x2="12" y2="20" /></>),
+  undo: (<><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></>),
+  redo: (<><path d="m15 14 5-5-5-5" /><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" /></>),
+  "zoom-in": (<><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35M11 8v6M8 11h6" /></>),
+  "zoom-out": (<><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35M8 11h6" /></>),
+  maximize: (<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />),
+  minimize: (<path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3" />),
+  unlock: (<><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></>),
+  "bring-front": (<><path d="M5 3h14" /><path d="m18 13-6-6-6 6" /><path d="M12 7v14" /></>),
+  "send-back": (<><path d="M12 17V3" /><path d="m6 11 6 6 6-6" /><path d="M19 21H5" /></>),
+  scan: (<><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" /><rect x="8" y="8" width="8" height="8" rx="1" /></>),
 };
 
 export function Icon({
