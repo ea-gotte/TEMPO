@@ -7,16 +7,17 @@ import { FieldFilterBar, FieldsModal } from "./FieldControls";
 import { fieldsForProject, filterActive, matchesFilter, type FieldFilter } from "./fields";
 import { defaultMilestone, type Perms } from "./logic";
 import { TaskModal, type TaskDraft } from "./Modals";
+import { useTaskMenu } from "./TaskMenu";
 import { KanbanView, TableView } from "./TaskViews";
 import type { Task, TaskPriority, TaskStatus } from "./types";
 import { useWork, workActions } from "./workStore";
 
-type ViewKey = "tabla" | "kanban";
+type ViewKey = "kanban" | "tabla";
 const VIEWS: { key: ViewKey; label: string }[] = [
-  { key: "tabla", label: "Tabla" },
   { key: "kanban", label: "Kanban" },
+  { key: "tabla", label: "Tabla" },
 ];
-const VIEW_KEY = "tempo-proyectos-vista-tareas-v2";
+const VIEW_KEY = "tempo-proyectos-vista-tareas-v3";
 const ARCHIVED_KEY = "tempo-proyectos-ver-archivadas";
 const colsKey = (projectId: string) => `tempo-proyectos-columnas-${projectId}`;
 
@@ -25,7 +26,7 @@ function loadView(): ViewKey {
     const v = localStorage.getItem(VIEW_KEY) as ViewKey | null;
     if (v && VIEWS.some((x) => x.key === v)) return v;
   } catch { /* sin preferencia guardada */ }
-  return "tabla";
+  return "kanban";
 }
 
 function loadCols(projectId: string): string[] | null {
@@ -131,8 +132,10 @@ export function TasksTab({ projectId, perms, initialDraft, onConsume }: { projec
     toast("Tarea creada.");
   }
 
+  const menu = useTaskMenu({ perms, onEdit: (t) => setModal(t) });
   const viewProps = {
     tasks, projectId, perms, columns, showEmpty: !filtersOn,
+    onContext: menu.open,
     onOpen: (t: Task) => setModal(t),
     onNew: (partial: Partial<Task>) => setModal({ projectId, ...partial }),
   };
@@ -233,6 +236,7 @@ export function TasksTab({ projectId, perms, initialDraft, onConsume }: { projec
           onClose={() => setModal(null)}
         />
       )}
+      {menu.element}
       {showFields && <FieldsModal projectId={projectId} defs={defs} isStaff={perms.isStaff} onClose={() => setShowFields(false)} />}
     </>
   );

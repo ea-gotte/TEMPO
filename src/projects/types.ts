@@ -71,9 +71,14 @@ export interface Milestone {
   name: string;
   description: string;
   ownerId: ID | null;
-  /** Inicio del plazo (para el Gantt); la fecha del hito es su fin */
+  /** Inicio PLANIFICADO del plazo; la fecha del hito (dueDate) es su fin planificado */
   startDate?: string | null;
   dueDate: string | null;
+  /** Fechas REALES (para comparar con las planificadas): se completan solas al pasar a En curso / Cumplido */
+  actualStart?: string | null;
+  actualEnd?: string | null;
+  /** Predecesores (fin → inicio): si uno se atrasa, este se corre */
+  dependsOn?: ID[];
   status: PlanStatus;
   /** Puerta de decisión: se revisa lo aprendido y se decide cómo seguir */
   isGate?: boolean;
@@ -90,9 +95,14 @@ export interface Deliverable {
   name: string;
   description: string;
   ownerId: ID | null;
-  /** Inicio del plazo (para el Gantt); la fecha de entrega es su fin */
+  /** Inicio PLANIFICADO del plazo; la fecha de entrega (dueDate) es su fin planificado */
   startDate?: string | null;
   dueDate: string | null;
+  /** Fechas REALES (para comparar con las planificadas): se completan solas al pasar a En curso / Cumplido */
+  actualStart?: string | null;
+  actualEnd?: string | null;
+  /** Predecesores (fin → inicio): si uno se atrasa, este se corre */
+  dependsOn?: ID[];
   status: PlanStatus;
 }
 
@@ -250,7 +260,32 @@ export interface Baseline {
   changeRequestId: ID | null;
 }
 
+/** Imagen adjunta a una reunión. En la demo va dentro del navegador (data URL, ya reducida); en producción iría a Supabase Storage. */
+export interface MeetingImage {
+  id: ID;
+  name: string;
+  src: string;
+}
+
+/** Reunión del proyecto: notas, asistentes e imágenes (pizarra, croquis, capturas). */
+export interface Meeting {
+  id: ID;
+  projectId: ID;
+  title: string;
+  /** Fecha de la reunión (ISO) */
+  date: string;
+  /** Asistentes del equipo */
+  attendeeIds: ID[];
+  /** Otros asistentes (cliente, terceros), texto libre */
+  guests: string;
+  notes: string;
+  images: MeetingImage[];
+  createdBy: ID | null;
+  createdAt: string;
+}
+
 export interface WorkData {
+  meetings: Meeting[];
   sprints: Sprint[];
   changes: ChangeRequest[];
   risks: Risk[];

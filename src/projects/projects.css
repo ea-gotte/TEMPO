@@ -250,3 +250,81 @@ button.pw-chev:hover { background: var(--surface-3); color: var(--text); }
 .pw-plan-table .pw-tr-ms td { background: var(--surface-2); font-weight: 650; }
 .pw-plan-table .pw-tr-ms:hover td, .pw-plan-table .pw-tr-del:hover td, .pw-plan-table .pw-tr-task:hover td { background: var(--accent-soft); }
 .pw-plan-table .pw-tr-task td { font-size: 12.5px; }
+
+/* ---------- Dependencias ---------- */
+.pw-deps { display: grid; gap: 2px; max-height: 150px; overflow-y: auto; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--surface); }
+.pw-deps label { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 2px; cursor: pointer; }
+.pw-deps label.off { opacity: 0.45; cursor: not-allowed; }
+
+/* ---------- Gantt: plan vs real, dependencias ---------- */
+.pw-g-plan { position: absolute; top: 3px; height: 15px; border-radius: 4px; background: var(--accent-soft); border: 1.5px solid var(--accent); box-sizing: border-box; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.pw-g-plan span { font-size: 9.5px; font-weight: 700; color: var(--accent); white-space: nowrap; letter-spacing: 0.2px; }
+.pw-g-plan-pt { position: absolute; top: 6px; width: 10px; height: 10px; transform: rotate(45deg); background: var(--accent-soft); border: 1.5px solid var(--accent); box-sizing: border-box; }
+.pw-g-bar.forecast { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.28) 0 6px, transparent 6px 12px); }
+.pw-g-hit { position: absolute; top: 0; height: 100%; cursor: pointer; }
+.pw-g-links { position: absolute; top: 0; pointer-events: none; z-index: 2; overflow: visible; }
+.pw-g-row .pw-g-name .pw-pill { font-size: 10.5px; padding: 1px 6px; }
+
+/* ---------- Menú de clic derecho ---------- */
+.pw-ctx-backdrop { position: fixed; inset: 0; z-index: 90; }
+.pw-ctx { position: fixed; z-index: 91; min-width: 220px; max-width: 320px; max-height: 76vh; overflow-y: auto; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-lg); }
+.pw-ctx-title { padding: 4px 8px 6px; font-size: 12px; font-weight: 700; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pw-ctx-head { padding: 4px 8px 2px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-3); }
+.pw-ctx-sep { height: 1px; margin: 5px 4px; background: var(--border); }
+.pw-ctx-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border-radius: var(--r-sm); font-size: 13px; text-align: left; color: var(--text); }
+.pw-ctx-item:hover:not(:disabled) { background: var(--accent-soft); }
+.pw-ctx-item:disabled { opacity: 0.45; cursor: not-allowed; }
+.pw-ctx-item.danger { color: var(--danger); }
+.pw-ctx-item.danger:hover:not(:disabled) { background: var(--danger-soft); }
+.pw-ctx-item .ic { width: 14px; display: inline-grid; place-items: center; flex-shrink: 0; color: var(--text-3); }
+
+/* ---------- Resumen en una línea y secciones plegables ---------- */
+.pw-summary { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin: -2px 0 12px; font-size: 13px; color: var(--text-2); }
+.pw-summary b { color: var(--text); }
+.pw-summary .note { margin-left: auto; font-size: 12px; color: var(--text-3); cursor: help; }
+.pw-fold { margin-top: 16px; }
+.pw-fold summary { cursor: pointer; font-size: 13px; font-weight: 650; color: var(--text-2); padding: 4px 0; }
+
+.pw-plan-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 12.5px; font-weight: 650; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+
+/* ---------- Gantt: editar fechas reales arrastrando los bordes ---------- */
+.pw-g-handle { position: absolute; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 2; background: transparent; }
+.pw-g-handle.l { left: 0; border-radius: 5px 0 0 5px; }
+.pw-g-handle.r { right: 0; border-radius: 0 5px 5px 0; }
+.pw-g-handle::after { content: ""; position: absolute; top: 3px; bottom: 3px; width: 2px; left: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.85); opacity: 0; transition: opacity 0.1s; }
+.pw-g-bar:hover .pw-g-handle::after, .pw-g-bar.dragging .pw-g-handle::after { opacity: 1; }
+.pw-g-handle:hover { background: rgba(255, 255, 255, 0.25); }
+.pw-g-bar.dragging { box-shadow: 0 0 0 2px var(--accent), var(--shadow-md); z-index: 3; }
+
+/* ---------- Gantt: entregables como puntos al final del hito ---------- */
+.pw-g-del { position: absolute; z-index: 2; box-sizing: border-box; border-radius: 3px; background: var(--accent); border: 2px solid var(--surface); box-shadow: 0 0 0 1.5px var(--accent); cursor: pointer; }
+.pw-g-del.done { background: var(--success); box-shadow: 0 0 0 1.5px var(--success); }
+.pw-g-del.late { background: var(--danger); box-shadow: 0 0 0 1.5px var(--danger); }
+.pw-g-del:hover { transform: scale(1.35); }
+
+/* ---------- Reuniones ---------- */
+.pw-meeting { margin-bottom: 10px; cursor: pointer; }
+.pw-meeting:hover { border-color: var(--accent); }
+.pw-notes-prev { margin-top: 8px; font-size: 13px; color: var(--text-2); white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pw-notes-full { font-size: 13.5px; color: var(--text); white-space: pre-wrap; line-height: 1.55; padding: 10px 12px; background: var(--surface-2); border-radius: var(--r-md); }
+.pw-thumbs { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.pw-thumb { position: relative; width: 64px; height: 64px; border-radius: var(--r-md); overflow: hidden; border: 1px solid var(--border); padding: 0; background: var(--surface-2); }
+.pw-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pw-thumb:hover { border-color: var(--accent); }
+.pw-thumb .more { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, 0.55); color: #fff; font-weight: 700; font-size: 14px; }
+.pw-drop { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 2px dashed var(--border-strong); border-radius: var(--r-md); color: var(--text-2); font-size: 13px; background: var(--surface); }
+.pw-drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.pw-drop .link { color: var(--accent); font-weight: 650; text-decoration: underline; }
+.pw-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-top: 8px; }
+.pw-gal-item { position: relative; aspect-ratio: 1; border-radius: var(--r-md); overflow: hidden; border: 1px solid var(--border); background: var(--surface-2); }
+.pw-gal-item > button:first-child { width: 100%; height: 100%; padding: 0; display: block; }
+.pw-gal-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pw-gal-item .rm { position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%; background: rgba(0, 0, 0, 0.65); color: #fff; display: grid; place-items: center; }
+.pw-gal-item .rm:hover { background: var(--danger); }
+.pw-lightbox { position: fixed; inset: 0; z-index: 200; background: rgba(8, 10, 20, 0.88); display: grid; place-items: center; padding: 40px 70px; }
+.pw-lightbox img { max-width: 100%; max-height: calc(100vh - 120px); border-radius: var(--r-md); background: #fff; box-shadow: var(--shadow-lg); }
+.pw-lb-close { position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 255, 255, 0.15); color: #fff; display: grid; place-items: center; }
+.pw-lb-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 42px; height: 42px; border-radius: 50%; background: rgba(255, 255, 255, 0.15); color: #fff; display: grid; place-items: center; }
+.pw-lb-nav.l { left: 16px; } .pw-lb-nav.r { right: 16px; }
+.pw-lb-close:hover, .pw-lb-nav:hover { background: rgba(255, 255, 255, 0.3); }
+.pw-lb-cap { position: absolute; bottom: 16px; left: 0; right: 0; text-align: center; color: #e2e8f0; font-size: 13px; }

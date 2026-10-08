@@ -344,7 +344,8 @@ export function ProjectIndicatorsCard({ ind, onOpenCritical }: { ind: ProjectInd
             <dt>Fin planificado</dt><dd>{s.plannedEnd ? fmtDate(s.plannedEnd) : "—"}</dd>
             <dt>{s.actualEnd ? "Fin real" : "Fin pronosticado"}</dt><dd>{(s.actualEnd ?? s.forecastEnd) ? fmtDate((s.actualEnd ?? s.forecastEnd)!) : "—"} <Variance days={s.varianceDays} /></dd>
             <dt>Cerradas a tiempo</dt><dd>{tk.onTimePct === null ? "—" : `${tk.onTimePct}%`}{tk.avgDelayDays ? <span style={{ color: "var(--text-3)", fontSize: 12 }}> · atraso medio {tk.avgDelayDays} d</span> : null}</dd>
-            <dt>Hitos cumplidos</dt><dd>{m.met} de {m.total}{m.overdue ? <span className="pw-pill late" style={{ marginLeft: 6 }}>{m.overdue} vencido{m.overdue > 1 ? "s" : ""}</span> : null}{m.avgSlipDays !== null && <span style={{ color: "var(--text-3)", fontSize: 12 }}> · desvío medio {m.avgSlipDays > 0 ? "+" : ""}{m.avgSlipDays} d</span>}</dd>
+            <dt>Hitos cumplidos</dt><dd>{m.met} de {m.total}{m.overdue ? <span className="pw-pill late" style={{ marginLeft: 6 }}>{m.overdue} vencido{m.overdue > 1 ? "s" : ""}</span> : null}{m.onTimePct !== null && <span style={{ color: "var(--text-3)", fontSize: 12 }}> · {m.onTimePct}% a tiempo</span>}{m.avgSlipDays !== null && <span style={{ color: "var(--text-3)", fontSize: 12 }}> · desvío medio {m.avgSlipDays > 0 ? "+" : ""}{m.avgSlipDays} d (real vs. plan)</span>}</dd>
+            {m.endShiftDays > 0 && (<><dt>Fin previsto de hitos</dt><dd><span className={`pw-pill ${m.endShiftDays >= 14 ? "late" : "soon"}`}>último hito +{m.endShiftDays} d</span><span style={{ color: "var(--text-3)", fontSize: 12 }}> · {m.delayedOpen} atrasado{m.delayedOpen > 1 ? "s" : ""} hoy</span></dd></>)}
             <dt>Tareas</dt><dd>{tk.done} hechas · {tk.open} abiertas · {tk.overdue} atrasadas</dd>
           </dl>
         </div>

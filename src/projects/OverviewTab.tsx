@@ -52,6 +52,7 @@ export function OverviewTab({ projectId, perms, go, openTask }: { projectId: str
   const ind = projectIndicators(project, meta, tasks, milestones, spentMin, now, {
     sprints: work.sprints.filter((s) => s.projectId === projectId), changes: work.changes.filter((c) => c.projectId === projectId),
     risks: work.risks.filter((r) => r.projectId === projectId), baselines: work.baselines.filter((b) => b.projectId === projectId),
+    deliverables,
   });
 
   const activeUsers = env.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name));

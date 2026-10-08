@@ -157,7 +157,7 @@ export function BacklogTab({ projectId, perms }: { projectId: string; perms: Per
               <BurndownChart bd={burndown(active, tasks)} sprint={active} />
             </div>
             <KanbanView
-              tasks={sprintTasks(tasks, active.id)} projectId={projectId} perms={perms} columns={[]} groupFieldId={null}
+              tasks={sprintTasks(tasks, active.id)} projectId={projectId} perms={perms} columns={[]} groupFieldId={null} showHours
               onOpen={(t) => setModal(t)} onNew={(p) => setModal({ projectId, sprintId: active.id, sprintAddedAt: today() > active.startDate ? today() : null, ...p })}
             />
             {perms.canManage && <div style={{ marginTop: 12 }}><button className="btn btn-secondary" onClick={() => setClosing(active)}>Cerrar {active.name}</button></div>}

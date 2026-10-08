@@ -6,7 +6,8 @@ import { defaultMilestone, normalizeTask } from "./logic";
 import { backlogOf, nextSprintDates, sumHours } from "./agile";
 import { OPTION_COLORS, hasOptions } from "./fields";
 import { seedMethod } from "./seedMode";
-import type { Baseline, ChangeRequest, Deliverable, FieldDef, FieldType, Milestone, PlanStatus, ProjectMeta, Risk, Sprint, Task, TaskPriority, TaskStatus, WorkData } from "./types";
+import { seedMeetings } from "./meetings";
+import type { Baseline, ChangeRequest, Deliverable, Meeting, FieldDef, FieldType, Milestone, PlanStatus, ProjectMeta, Risk, Sprint, Task, TaskPriority, TaskStatus, WorkData } from "./types";
 
 /**
  * Almacén de la DEMO de gestión de proyectos: vive en este navegador
@@ -16,7 +17,7 @@ import type { Baseline, ChangeRequest, Deliverable, FieldDef, FieldType, Milesto
  * que lea/escriba tablas de Supabase con la misma interfaz.
  */
 
-const KEY = "tempo-gestion-proyectos-demo-v6";
+const KEY = "tempo-gestion-proyectos-demo-v11";
 
 const opt = (id: string, label: string, i: number) => ({ id, label, color: OPTION_COLORS[i % OPTION_COLORS.length] });
 
@@ -34,7 +35,7 @@ const DEFAULT_FIELDS: FieldDef[] = [
 ];
 
 function empty(): WorkData {
-  return { sprints: [], changes: [], risks: [], baselines: [], fields: DEFAULT_FIELDS, roles: DEFAULT_ROLES, assignments: [], meta: {}, milestones: [], deliverables: [], tasks: [], seeded: {} };
+  return { meetings: [], sprints: [], changes: [], risks: [], baselines: [], fields: DEFAULT_FIELDS, roles: DEFAULT_ROLES, assignments: [], meta: {}, milestones: [], deliverables: [], tasks: [], seeded: {} };
 }
 
 /** Campos nuevos de una tarea con su valor por defecto. */
@@ -90,6 +91,22 @@ export function useWork(): WorkData {
 
 const bySort = (a: Task, b: Task) => a.sortOrder - b.sortOrder;
 
+/**
+ * Fechas reales de hitos y entregables: al pasar a En curso se registra el inicio
+ * real y al pasar a Cumplido el fin real (hoy), salvo que se hayan cargado a mano;
+ * si se reabre, se borra el fin real.
+ */
+function withActuals<T extends { status: PlanStatus; actualStart?: string | null; actualEnd?: string | null }>(prev: T, patch: Partial<T>): T {
+  const next = { ...prev, ...patch };
+  if (patch.status === undefined || patch.status === prev.status) return next;
+  const now = today();
+  if (next.status !== "pendiente" && !("actualStart" in patch) && !next.actualStart) next.actualStart = now;
+  if (next.status === "cumplido" && !("actualEnd" in patch) && !next.actualEnd) next.actualEnd = now;
+  if (next.status !== "cumplido" && !("actualEnd" in patch)) next.actualEnd = null;
+  if (next.status === "pendiente" && !("actualStart" in patch)) next.actualStart = null;
+  return next;
+}
+
 export const workActions = {
   /* ---------- Tareas ---------- */
   addTask(input: NewTask): Task {
@@ -142,13 +159,13 @@ export const workActions = {
     return m;
   },
   updateMilestone(id: string, patch: Partial<Milestone>) {
-    const milestones = data.milestones.map((m) => (m.id === id ? { ...m, ...patch } : m));
+    const milestones = data.milestones.map((m) => (m.id === id ? withActuals(m, patch) : m));
     // La fecha de las tareas sale de su hito o entregable: si cambia, se recalcula.
     commit({ ...data, milestones, tasks: data.tasks.map((t) => normalizeTask(t, data.deliverables, milestones)) });
   },
   deleteMilestone(id: string) {
-    const deliverables = data.deliverables.map((d) => (d.milestoneId === id ? { ...d, milestoneId: null } : d));
-    const milestones = data.milestones.filter((m) => m.id !== id);
+    const deliverables = data.deliverables.map((d) => ({ ...d, milestoneId: d.milestoneId === id ? null : d.milestoneId, dependsOn: d.dependsOn?.filter((x) => x !== id) }));
+    const milestones = data.milestones.filter((m) => m.id !== id).map((m) => ({ ...m, dependsOn: m.dependsOn?.filter((x) => x !== id) }));
     commit({
       ...data,
       milestones,
@@ -164,14 +181,16 @@ export const workActions = {
     return d;
   },
   updateDeliverable(id: string, patch: Partial<Deliverable>) {
-    const deliverables = data.deliverables.map((d) => (d.id === id ? { ...d, ...patch } : d));
+    const deliverables = data.deliverables.map((d) => (d.id === id ? withActuals(d, patch) : d));
     commit({ ...data, deliverables, tasks: data.tasks.map((t) => normalizeTask(t, deliverables, data.milestones)) });
   },
   deleteDeliverable(id: string) {
+    const rest = data.deliverables.filter((d) => d.id !== id).map((d) => ({ ...d, dependsOn: d.dependsOn?.filter((x) => x !== id) }));
     commit({
       ...data,
-      deliverables: data.deliverables.filter((d) => d.id !== id),
-      tasks: data.tasks.map((t) => normalizeTask(t.deliverableId === id ? { ...t, deliverableId: null } : t, data.deliverables.filter((d) => d.id !== id), data.milestones)),
+      deliverables: rest,
+      milestones: data.milestones.map((m) => ({ ...m, dependsOn: m.dependsOn?.filter((x) => x !== id) })),
+      tasks: data.tasks.map((t) => normalizeTask(t.deliverableId === id ? { ...t, deliverableId: null } : t, rest, data.milestones)),
     });
   },
 
@@ -249,6 +268,19 @@ export const workActions = {
       sprints: data.sprints.map((s) => (s.id === id ? { ...s, status: "cerrado", completedHours: completed, reviewNotes: opts.reviewNotes, retroNotes: opts.retroNotes } : s)),
       tasks: data.tasks.map((t) => (t.sprintId === id && t.status !== "hecha" ? { ...t, sprintId: opts.moveTo, sprintAddedAt: null } : t)),
     });
+  },
+
+  /* ---------- Reuniones ---------- */
+  addMeeting(input: Omit<Meeting, "id" | "createdAt">): Meeting {
+    const m: Meeting = { ...input, id: uid(), createdAt: new Date().toISOString() };
+    commit({ ...data, meetings: [...data.meetings, m] });
+    return m;
+  },
+  updateMeeting(id: string, patch: Partial<Meeting>) {
+    commit({ ...data, meetings: data.meetings.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
+  },
+  deleteMeeting(id: string) {
+    commit({ ...data, meetings: data.meetings.filter((m) => m.id !== id) });
   },
 
   /* ---------- Cambios del cliente ---------- */
@@ -447,6 +479,7 @@ function seedProject(cur: WorkData, project: Project, index: number): WorkData {
     // Cada hito arranca cuando termina el anterior (el primero, con el proyecto)
     startDate: i === 0 ? off(m.due - 40) : off(MILESTONES[i - 1].due + 1),
   }));
+
   const deliverables: Deliverable[] = DELIVERABLES.map((d, i) => ({
     id: uid(), projectId: project.id, milestoneId: milestones[d.ms].id, name: d.name, description: "",
     ownerId: pick(i + 1), dueDate: off(d.due), status: "pendiente",
@@ -454,9 +487,12 @@ function seedProject(cur: WorkData, project: Project, index: number): WorkData {
     startDate: (() => {
       const ms = MILESTONES[d.ms];
       const msStart = d.ms === 0 ? ms.due - 40 : MILESTONES[d.ms - 1].due + 1;
-      return off(Math.max(msStart, d.due - 18));
+      // Empieza cuando termina el entregable anterior (dependencia fin → inicio)
+      const afterPrev = i > 0 ? DELIVERABLES[i - 1].due + 1 : msStart;
+      return off(Math.min(d.due, Math.max(msStart, d.due - 18, afterPrev)));
     })(),
   }));
+
 
   // Ejemplo de campo propio de UN proyecto (el primero): cantidad de planos afectados
   const planField: FieldDef | null =
@@ -496,6 +532,21 @@ function seedProject(cur: WorkData, project: Project, index: number): WorkData {
   for (const m of milestones) {
     const ts = tasks.filter((t) => t.milestoneId === m.id);
     m.status = planOf(ts, m.dueDate);
+  }
+  // Fechas reales: lo cumplido cerró cuando se cerró su última tarea; lo que está en curso ya empezó
+  for (const x of [...deliverables, ...milestones]) {
+    const ts = tasks.filter((t) => ("milestoneId" in x ? t.deliverableId : t.milestoneId) === x.id);
+    if (x.status === "pendiente") continue;
+    // Solo empezó de verdad si lo que lo precede ya terminó (si no, queda esperando y el atraso lo corre)
+    const preds = (x.dependsOn ?? []).map((id) => [...deliverables, ...milestones].find((o) => o.id === id));
+    const predsDone = preds.every((p) => !p || p.status === "cumplido");
+    if (x.startDate && x.startDate <= now && predsDone) x.actualStart = x.startDate;
+    else if (x.status === "cumplido") x.actualStart = x.startDate ?? null;
+    if (x.status === "cumplido") {
+      const ends = ts.map((t) => t.completedAt).filter(Boolean) as string[];
+      const last = ends.length ? ends.reduce((a, b) => (a > b ? a : b)) : x.dueDate;
+      x.actualEnd = last && last > now ? now : last;
+    }
   }
 
   // Plan del proyecto (inicio y fin previstos) según su situación
@@ -542,6 +593,7 @@ function seedProject(cur: WorkData, project: Project, index: number): WorkData {
     risks: [...cur.risks, ...seeded.risks],
     baselines: [...cur.baselines, ...seeded.baselines],
     assignments: [...cur.assignments, ...assignments],
+    meetings: [...(cur.meetings ?? []), ...seedMeetings(project, pick, now, allDone, seeded.meta.startDate)],
     seeded: { ...cur.seeded, [project.id]: true },
   };
 }

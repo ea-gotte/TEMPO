@@ -2,6 +2,7 @@ import type { Project, User } from "../types";
 import { addDays, parseISO, today } from "../utils";
 import { EMPTY_CTX, activeSprint, burndown, methodCritical, scopeStats, uncertainty, velocity, type MethodContext, type ScopeStats, type Uncertainty } from "./agile";
 import { isPlanOverdue, isProjectLate, isTaskOverdue, projectPerms } from "./logic";
+import { scheduleStats } from "./schedule";
 import type { Milestone, ProjectMeta, ProjectMode, Task, WorkData, WorkEnv } from "./types";
 
 /**
@@ -48,7 +49,17 @@ export interface ProjectIndicators {
     eac: number | null;
     eacVariancePct: number | null;
   };
-  milestones: { total: number; met: number; overdue: number; avgSlipDays: number | null };
+  milestones: {
+    total: number; met: number; overdue: number;
+    /** Desvío medio (días) del fin REAL contra el PLANIFICADO de lo ya cerrado (hitos y entregables); + = tarde */
+    avgSlipDays: number | null;
+    /** % de hitos y entregables cerrados dentro de su fecha planificada */
+    onTimePct: number | null;
+    /** Cuántos están corridos hoy (atrasados o empujados por dependencias) */
+    delayedOpen: number;
+    /** Días que se corre el último fin previsto contra el planificado, con las dependencias */
+    endShiftDays: number;
+  };
   mode: ProjectMode;
   /** Rango de horas finales, reserva y madurez del plan */
   uncertainty: Uncertainty;
@@ -127,6 +138,7 @@ export function projectIndicators(
     if (ends.length) slips.push(diffDays(max(ends), m.dueDate));
   }
 
+  const sched = scheduleStats(ms, ctx.deliverables ?? [], now);
   const ind: ProjectIndicators = {
     project, meta,
     tasks: {
@@ -139,7 +151,8 @@ export function projectIndicators(
     hours: { budget, logged, consumedPct, variance, eac, eacVariancePct },
     milestones: {
       total: ms.length, met: ms.filter((m) => m.status === "cumplido").length, overdue: ms.filter((m) => isPlanOverdue(m, now)).length,
-      avgSlipDays: avg(slips) === null ? null : Math.round(avg(slips)! * 10) / 10,
+      avgSlipDays: sched.avgSlipDays ?? (avg(slips) === null ? null : Math.round(avg(slips)! * 10) / 10),
+      onTimePct: sched.onTimePct, delayedOpen: sched.delayedOpen, endShiftDays: sched.endShiftDays,
     },
     mode: meta?.mode ?? "planificado",
     uncertainty: uncertainty(project, meta, tasks, ctx.risks, logged),
@@ -199,6 +212,7 @@ function criticalItems(i: ProjectIndicators, milestones: Milestone[], now: strin
     if (i.schedule.gapPct !== null && i.schedule.gapPct <= -15) add("media", `Avance ${i.tasks.pct}% contra ${i.schedule.expectedPct}% esperado a la fecha`);
     const plainOverdue = i.tasks.overdue - i.tasks.urgentOverdue;
     if (plainOverdue > 0) add("media", `${plainOverdue} tarea${plainOverdue > 1 ? "s" : ""} fuera de plazo (su hito o entregable ya venció)`);
+    if (i.milestones.endShiftDays >= 3) add(i.milestones.endShiftDays >= 14 ? "alta" : "media", `Con los atrasos actuales, el último hito terminaría ${i.milestones.endShiftDays} d después de lo planificado`);
     if (i.tasks.unassigned > 0) add("media", `${i.tasks.unassigned} tarea${i.tasks.unassigned > 1 ? "s" : ""} abierta${i.tasks.unassigned > 1 ? "s" : ""} sin responsable`);
     if (i.tasks.noDates > 0) add("media", `${i.tasks.noDates} tarea${i.tasks.noDates > 1 ? "s" : ""} abierta${i.tasks.noDates > 1 ? "s" : ""} sin hito asignado`);
   }
@@ -275,6 +289,7 @@ export function portfolio(env: WorkEnv, work: WorkData, f: PortfolioFilters, now
     const ctx: MethodContext = {
       sprints: work.sprints.filter((s) => s.projectId === p.id), changes: work.changes.filter((c) => c.projectId === p.id),
       risks: work.risks.filter((r) => r.projectId === p.id), baselines: work.baselines.filter((b) => b.projectId === p.id),
+      deliverables: work.deliverables.filter((d) => d.projectId === p.id),
     };
     return projectIndicators(p, work.meta[p.id], ts, work.milestones.filter((m) => m.projectId === p.id), env.minutesByProject[p.id] ?? 0, now, ctx);
   });

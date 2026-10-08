@@ -20,6 +20,10 @@ export interface ViewProps {
   columns: FieldDef[];
   /** Mostrar también los hitos sin tareas (cuando no hay filtros activos) */
   showEmpty?: boolean;
+  /** Clic derecho sobre una tarea: menú de opciones */
+  onContext?: (e: React.MouseEvent, t: Task) => void;
+  /** Mostrar las horas estimadas en las tarjetas (el tablero del sprint las usa; el Kanban de tareas no) */
+  showHours?: boolean;
 }
 
 /** Archivar / restaurar una tarea ya finalizada. */
@@ -55,7 +59,7 @@ function Links({ task }: { task: Task }) {
  * ==================================================================== */
 type SortKey = "name" | "assignee" | "status" | "priority" | "due" | "hours" | `f:${string}`;
 
-export function TableView({ tasks, perms, onOpen, columns }: ViewProps) {
+export function TableView({ tasks, perms, onOpen, columns, onContext }: ViewProps) {
   const env = useEnv();
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "due", dir: 1 });
   const userOf = (id: string | null) => env.users.find((u) => u.id === id);
@@ -107,7 +111,7 @@ export function TableView({ tasks, perms, onOpen, columns }: ViewProps) {
           {rows.map((t) => {
             const access = perms.taskAccess(t);
             return (
-              <tr key={t.id} style={{ cursor: "pointer", opacity: t.archived ? 0.6 : 1 }} onClick={() => onOpen(t)}>
+              <tr key={t.id} style={{ cursor: "pointer", opacity: t.archived ? 0.6 : 1 }} onClick={() => onOpen(t)} onContextMenu={(e) => onContext?.(e, t)}>
                 <td style={{ minWidth: 240 }}>
                   <div style={{ fontWeight: 600, textDecoration: t.status === "hecha" ? "line-through" : undefined, color: t.status === "hecha" ? "var(--text-3)" : undefined }}>{t.name}</div>
                   <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 3 }}>
@@ -144,7 +148,7 @@ export function TableView({ tasks, perms, onOpen, columns }: ViewProps) {
  * Tareas y el tablero del sprint (Backlog y sprints). La programación del
  * proyecto (plazos) se sigue en “Hitos y entregables”.
  * ==================================================================== */
-export function KanbanView({ tasks, perms, onOpen, onNew, columns }: ViewProps & { groupFieldId?: null }) {
+export function KanbanView({ tasks, perms, onOpen, onNew, columns, onContext, showHours }: ViewProps & { groupFieldId?: null }) {
   const env = useEnv();
   const [dragId, setDragId] = useState<string | null>(null);
   const [overCol, setOverCol] = useState<string | null>(null);
@@ -187,6 +191,7 @@ export function KanbanView({ tasks, perms, onOpen, onNew, columns }: ViewProps &
                   onDragOver={(e) => { if (canDrop) { e.preventDefault(); e.stopPropagation(); setOverCol(col.key); } }}
                   onDrop={(e) => { e.preventDefault(); e.stopPropagation(); drop(col.key, t.id); }}
                   onClick={() => onOpen(t)}
+                  onContextMenu={(e) => onContext?.(e, t)}
                 >
                   <div className="tags"><Links task={t} /></div>
                   <div className="title">{t.name}</div>
@@ -197,7 +202,7 @@ export function KanbanView({ tasks, perms, onOpen, onNew, columns }: ViewProps &
                   )}
                   <div className="meta">
                     <PriorityPill priority={t.priority} />
-                    {t.estimateHours != null && <span className="pw-pill">{t.estimateHours} h</span>}
+                    {showHours && t.estimateHours != null && <span className="pw-pill">{t.estimateHours} h</span>}
                     {taskDue(t)}
                     <ArchiveBtn t={t} perms={perms} />
                     <span style={{ marginLeft: "auto" }}>{u ? <Avatar name={u.name} size={22} /> : <span style={{ fontSize: 11, color: "var(--text-3)" }}>—</span>}</span>

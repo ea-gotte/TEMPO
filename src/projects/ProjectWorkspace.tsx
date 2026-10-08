@@ -12,11 +12,12 @@ import { ChangesTab } from "./ChangesTab";
 import { DiscoveryTab, RisksTab } from "./Uncertainty";
 import { scopeStats } from "./agile";
 import { TasksTab } from "./TasksTab";
+import { MeetingsTab } from "./MeetingsTab";
 import type { Task, WorkEnv } from "./types";
 import { useWork, workActions } from "./workStore";
 import "./projects.css";
 
-export type Tab = "resumen" | "tareas" | "plan" | "backlog" | "cambios" | "riesgos" | "descubrimiento";
+export type Tab = "resumen" | "tareas" | "plan" | "backlog" | "cambios" | "riesgos" | "descubrimiento" | "reuniones";
 
 const MODE_LABEL = { planificado: "Planificado", agil: "Ágil", hibrido: "Híbrido" } as const;
 
@@ -69,6 +70,7 @@ function Workspace({ projectId, onBack, onEditProject }: { projectId: string; on
   const late = isProjectLate(project, meta, work.milestones.filter((m) => m.projectId === projectId));
   const nTasks = work.tasks.filter((t) => t.projectId === projectId && !t.archived).length;
   const mode = meta?.mode ?? "planificado";
+  const nMeetings = work.meetings.filter((m) => m.projectId === projectId).length;
   const pending = scopeStats([], work.changes.filter((c) => c.projectId === projectId)).pending;
   const nRisks = work.risks.filter((r) => r.projectId === projectId && r.status === "abierto").length;
   const tabs: { key: Tab; label: string }[] = [
@@ -78,6 +80,7 @@ function Workspace({ projectId, onBack, onEditProject }: { projectId: string; on
     // La programación se sigue por hitos y entregables en todos los modos; las tareas cuelgan de un hito
     { key: "plan", label: "Hitos y entregables" },
     { key: "tareas", label: `Tareas (${nTasks})` },
+    { key: "reuniones", label: `Reuniones (${nMeetings})` },
     { key: "cambios", label: `Cambios del cliente${pending ? ` (${pending})` : ""}` },
     { key: "riesgos", label: `Riesgos (${nRisks})` },
   ];
@@ -120,6 +123,7 @@ function Workspace({ projectId, onBack, onEditProject }: { projectId: string; on
       {current === "backlog" && <BacklogTab projectId={projectId} perms={perms} />}
       {current === "tareas" && <TasksTab projectId={projectId} perms={perms} initialDraft={draft} onConsume={() => setDraft(null)} />}
       {current === "plan" && <PlanTab projectId={projectId} perms={perms} />}
+      {current === "reuniones" && <MeetingsTab projectId={projectId} perms={perms} />}
       {current === "cambios" && <ChangesTab projectId={projectId} perms={perms} />}
       {current === "riesgos" && <RisksTab projectId={projectId} perms={perms} />}
     </>

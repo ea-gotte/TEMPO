@@ -233,9 +233,11 @@ export interface MethodContext {
   changes: ChangeRequest[];
   risks: Risk[];
   baselines: Baseline[];
+  /** Para medir fechas reales contra planificadas y el efecto de las dependencias */
+  deliverables?: import("./types").Deliverable[];
 }
 
-export const EMPTY_CTX: MethodContext = { sprints: [], changes: [], risks: [], baselines: [] };
+export const EMPTY_CTX: MethodContext = { sprints: [], changes: [], risks: [], baselines: [], deliverables: [] };
 
 export function methodCritical(
   project: Project, meta: ProjectMeta | undefined, tasks: Task[], milestones: Milestone[], ctx: MethodContext, unc: Uncertainty, scope: ScopeStats, now: string,

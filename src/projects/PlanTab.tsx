@@ -1,13 +1,15 @@
 import React, { useState } from "react";
 import { Empty } from "../components/ui";
 import { Icon } from "../components/Icon";
-import { fmtDate } from "../utils";
+import { fmtDate, today } from "../utils";
 import { PLAN_STATUS } from "./constants";
 import { useEnv } from "./env";
 import { isPlanOverdue, taskProgress, type Perms } from "./logic";
 import { DeliverableModal, MilestoneModal, TaskModal, type TaskDraft } from "./Modals";
 import { Bar, DuePill, Person, StatusPill } from "./parts";
 import { PlanGantt } from "./PlanViews";
+import { useTaskMenu } from "./TaskMenu";
+import { diffDays, forecastSchedule, planItems } from "./schedule";
 import type { Deliverable, Milestone, PlanStatus, Task } from "./types";
 import { useWork, workActions } from "./workStore";
 
@@ -40,6 +42,7 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
   const [msModal, setMsModal] = useState<Milestone | "new" | null>(null);
   const [delModal, setDelModal] = useState<{ d: Deliverable | null; milestoneId?: string | null } | null>(null);
   const [taskModal, setTaskModal] = useState<TaskDraft | null>(null);
+  const taskMenu = useTaskMenu({ perms, onEdit: (t) => setTaskModal(t) });
 
   function setView(v: PlanView) {
     setViewState(v);
@@ -51,6 +54,34 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
   const tasks = work.tasks.filter((t) => t.projectId === projectId);
   const userOf = (id: string | null) => env.users.find((u) => u.id === id);
   const visibleTasks = (list: Task[]) => list.filter((t) => !t.archived).sort((a, b) => a.sortOrder - b.sortOrder);
+
+  // Plan contra real: fechas previstas tras propagar los atrasos por las dependencias
+  const fc = forecastSchedule(planItems(milestones, deliverables));
+  const sign = (n: number) => (n > 0 ? "+" : "") + n;
+  const short = (d: string | null | undefined) => (d ? fmtDate(d).slice(0, 5) : "—");
+
+  /** Fechas reales (o previstas si todavía está abierto) */
+  const realCell = (x: Milestone | Deliverable) => {
+    const f = fc.get(x.id);
+    if (!f) return <td />;
+    if (f.done) return <td style={{ whiteSpace: "nowrap", fontSize: 12.5 }}>{x.actualStart ? short(x.actualStart) + " → " : ""}{short(f.end)}</td>;
+    const moved = f.end && x.dueDate && f.end !== x.dueDate;
+    return (
+      <td style={{ whiteSpace: "nowrap", fontSize: 12.5 }}>
+        {x.actualStart ? <span style={{ color: "var(--text-3)" }}>desde {short(x.actualStart)} </span> : null}
+        {moved ? <span style={{ color: "var(--danger)", fontWeight: 600 }} title="Fin previsto, con los atrasos y las dependencias">prev. {short(f.end)}</span> : x.actualStart ? null : <span style={{ color: "var(--text-3)" }}>—</span>}
+      </td>
+    );
+  };
+  /** Desvío del fin contra el plan: real si ya cerró, previsto si no */
+  const desvioCell = (x: Milestone | Deliverable) => {
+    const f = fc.get(x.id);
+    if (!f || !x.dueDate || !f.end) return <td />;
+    if (f.done) {
+      return <td>{f.delayDays > 0 ? <span className="pw-pill soon" title="Cerró después de lo planificado">{sign(f.delayDays)} d</span> : <span className="pw-pill ok" title="Cerró en plazo">{f.delayDays < 0 ? `${f.delayDays} d` : "a tiempo"}</span>}</td>;
+    }
+    return <td>{f.delayDays > 0 ? <span className="pw-pill late" title={f.viaDeps ? `Se corre ${f.inheritedDays} d por un predecesor atrasado` : "Atraso propio"}>{sign(f.delayDays)} d{f.viaDeps ? " ↳" : ""}</span> : <span style={{ color: "var(--text-3)", fontSize: 12 }}>en plazo</span>}</td>;
+  };
 
   const orphanDeliverables = deliverables.filter((d) => !d.milestoneId || !milestones.some((m) => m.id === d.milestoneId));
   const looseTasks = tasks.filter((t) => (!t.milestoneId || !milestones.some((m) => m.id === t.milestoneId)) && !t.deliverableId);
@@ -81,8 +112,9 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
 
   const plazo = (x: { startDate?: string | null; dueDate: string | null; status: PlanStatus }) => (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
-      {x.startDate && x.dueDate && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{fmtDate(x.startDate).slice(0, 5)} →</span>}
-      <DuePill date={x.dueDate} done={x.status === "cumplido"} />
+      {x.startDate && x.dueDate && <span className="pw-plan-chip"><Icon name="calendar-days" size={12} /> {fmtDate(x.startDate).slice(0, 5)} → {fmtDate(x.dueDate).slice(0, 5)}</span>}
+      {!(x.startDate && x.dueDate) && <DuePill date={x.dueDate} done={x.status === "cumplido"} />}
+      {x.startDate && x.dueDate && x.status !== "cumplido" && x.dueDate < today() && <span className="pw-pill late" title="Venció la fecha planificada"><Icon name="alert" size={11} /></span>}
     </span>
   );
 
@@ -98,7 +130,7 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
 
   const taskRows = (list: Task[], indent: number) =>
     visibleTasks(list).map((t) => (
-      <tr key={t.id} className="pw-tr-task" style={{ cursor: "pointer" }} onClick={() => setTaskModal(t)}>
+      <tr key={t.id} className="pw-tr-task" style={{ cursor: "pointer" }} onClick={() => setTaskModal(t)} onContextMenu={(e) => taskMenu.open(e, t)}>
         <td style={{ paddingLeft: 12 + indent * 24 }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
             <span className="pw-chev" />
@@ -107,6 +139,7 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
         </td>
         <td><Person user={userOf(t.assigneeId)} size={18} /></td>
         <td>{plazo({ dueDate: t.dueDate, status: t.status === "hecha" ? "cumplido" : "pendiente" })}</td>
+        <td /><td />
         <td><StatusPill status={t.status} /></td>
         <td style={{ fontSize: 12, color: "var(--text-3)" }}>{t.estimateHours != null ? `${t.estimateHours} h` : "—"}</td>
         <td />
@@ -123,11 +156,12 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
               {chev(k, ts.length > 0)}
               <span style={{ color: "var(--text-3)" }}>▣</span><span style={{ fontWeight: 600 }}>{d.name}</span>
-              {isPlanOverdue(d) && <span className="pw-pill late"><Icon name="alert" size={11} /> Atrasado</span>}
             </span>
           </td>
           <td><Person user={userOf(d.ownerId)} size={18} /></td>
           <td>{plazo(d)}</td>
+          {realCell(d)}
+          {desvioCell(d)}
           <td>{planSelect(d.status, (s) => workActions.updateDeliverable(d.id, { status: s }))}</td>
           {progressCell(taskProgress(ts), false)}
           <td style={{ whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
@@ -167,14 +201,14 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
       {nothing && <div className="card card-pad"><Empty icon="calendar-days" text="Todavía no hay hitos ni entregables" sub="Empezá por el primer hito del proyecto." /></div>}
 
       {view === "gantt" && !nothing && (
-        <PlanGantt milestones={milestones} deliverables={deliverables} tasks={tasks} onOpenMs={(m) => setMsModal(m)} onOpenDel={(d) => setDelModal({ d })} />
+        <PlanGantt milestones={milestones} deliverables={deliverables} tasks={tasks} onOpenMs={(m) => setMsModal(m)} onOpenDel={(d) => setDelModal({ d })} canEdit={perms.canManage} />
       )}
 
       {view === "tabla" && !nothing && (
         <div className="card" style={{ overflowX: "auto" }}>
           <table className="table pw-plan-table">
             <thead>
-              <tr><th>Hito / entregable / tarea</th><th>Responsable</th><th>Plazo</th><th>Estado</th><th>Avance</th><th /></tr>
+              <tr><th>Hito / entregable / tarea</th><th>Responsable</th><th>Plan</th><th>Real / previsto</th><th>Desvío</th><th>Estado</th><th>Avance</th><th /></tr>
             </thead>
             <tbody>
               {milestones.map((m) => {
@@ -199,6 +233,8 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
                       </td>
                       <td><Person user={userOf(m.ownerId)} size={18} /></td>
                       <td>{plazo(m)}</td>
+                      {realCell(m)}
+                      {desvioCell(m)}
                       <td>{planSelect(m.status, (s) => workActions.updateMilestone(m.id, { status: s }))}</td>
                       {progressCell(taskProgress(ts), true)}
                       <td style={{ whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
@@ -223,7 +259,7 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
               {orphanDeliverables.length > 0 && (
                 <>
                   <tr className="pw-tr-ms" style={{ cursor: "pointer" }} onClick={() => toggle("od")}>
-                    <td colSpan={6}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>{chev("od", true)}<span style={{ color: "var(--text-2)" }}>Entregables sin hito</span></span></td>
+                    <td colSpan={8}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>{chev("od", true)}<span style={{ color: "var(--text-2)" }}>Entregables sin hito</span></span></td>
                   </tr>
                   {open.has("od") && orphanDeliverables.map((d) => deliverableRows(d, 1))}
                 </>
@@ -232,7 +268,7 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
               {looseTasks.length > 0 && (
                 <>
                   <tr className="pw-tr-ms" style={{ cursor: "pointer" }} onClick={() => toggle("lt")}>
-                    <td colSpan={6}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>{chev("lt", true)}<span style={{ color: "var(--danger)" }}>Tareas sin hito</span><span style={{ fontWeight: 500, fontSize: 12, color: "var(--text-3)" }}>toda tarea tiene que estar asignada a un hito: abrila y elegí uno</span></span></td>
+                    <td colSpan={8}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>{chev("lt", true)}<span style={{ color: "var(--danger)" }}>Tareas sin hito</span><span style={{ fontWeight: 500, fontSize: 12, color: "var(--text-3)" }}>toda tarea tiene que estar asignada a un hito: abrila y elegí uno</span></span></td>
                   </tr>
                   {open.has("lt") && taskRows(looseTasks, 1)}
                 </>
@@ -242,6 +278,7 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
         </div>
       )}
 
+      {taskMenu.element}
       {msModal && <MilestoneModal projectId={projectId} milestone={msModal === "new" ? null : msModal} onClose={() => setMsModal(null)} />}
       {delModal && <DeliverableModal projectId={projectId} deliverable={delModal.d} defaultMilestoneId={delModal.milestoneId} onClose={() => setDelModal(null)} />}
       {taskModal && (

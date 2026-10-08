@@ -269,6 +269,8 @@ export function MilestoneModal({ projectId, milestone, onClose }: { projectId: s
   const [ownerId, setOwnerId] = useState<string | null>(milestone?.ownerId ?? null);
   const [startDate, setStartDate] = useState<string | null>(milestone?.startDate ?? null);
   const [dueDate, setDueDate] = useState<string | null>(milestone?.dueDate ?? null);
+  const [actualStart, setActualStart] = useState<string | null>(milestone?.actualStart ?? null);
+  const [actualEnd, setActualEnd] = useState<string | null>(milestone?.actualEnd ?? null);
   const [status, setStatus] = useState<PlanStatus>(milestone?.status ?? "pendiente");
   const [isGate, setIsGate] = useState(!!milestone?.isGate);
   const [gateCriteria, setGateCriteria] = useState(milestone?.gateCriteria ?? "");
@@ -278,7 +280,8 @@ export function MilestoneModal({ projectId, milestone, onClose }: { projectId: s
   function save() {
     if (!name.trim()) return setError("Poné un nombre para el hito.");
     if (startDate && dueDate && dueDate < startDate) return setError("La fecha del hito no puede ser anterior a su inicio.");
-    const fields = { name: name.trim(), description: description.trim(), ownerId, startDate, dueDate, status, isGate, gateCriteria: isGate ? gateCriteria.trim() : "", gateDecision: isGate ? milestone?.gateDecision ?? ("pendiente" as const) : undefined };
+    if (actualStart && actualEnd && actualEnd < actualStart) return setError("El fin real no puede ser anterior al inicio real.");
+    const fields = { name: name.trim(), description: description.trim(), ownerId, startDate, dueDate, actualStart, actualEnd, status, isGate, gateCriteria: isGate ? gateCriteria.trim() : "", gateDecision: isGate ? milestone?.gateDecision ?? ("pendiente" as const) : undefined };
     if (milestone) workActions.updateMilestone(milestone.id, fields);
     else workActions.addMilestone({ projectId, ...fields });
     toast(milestone ? "Hito actualizado." : "Hito creado.");
@@ -315,8 +318,11 @@ export function MilestoneModal({ projectId, milestone, onClose }: { projectId: s
             {PLAN_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
         </div>
-        <div className="field"><label>Inicio del plazo</label><OptDate value={startDate} onChange={setStartDate} /></div>
-        <div className="field"><label>Fecha del hito (fin del plazo)</label><OptDate value={dueDate} onChange={setDueDate} /></div>
+        <div className="field"><label>Inicio planificado</label><OptDate value={startDate} onChange={setStartDate} /></div>
+        <div className="field"><label>Fin planificado (fecha del hito)</label><OptDate value={dueDate} onChange={setDueDate} /></div>
+        <div className="field"><label>Inicio real</label><OptDate value={actualStart} onChange={setActualStart} /></div>
+        <div className="field"><label>Fin real</label><OptDate value={actualEnd} onChange={setActualEnd} /></div>
+        <div className="field full" style={{ marginTop: -6, fontSize: 12, color: "var(--text-3)" }}>Las fechas reales se completan solas al pasar a En curso o Cumplido; se pueden corregir a mano. Comparadas con las planificadas dan el desvío.</div>
         <div className="field full">
           <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 600 }}>
             <input type="checkbox" checked={isGate} onChange={(e) => setIsGate(e.target.checked)} /> Es una puerta de decisión (se revisa lo aprendido y se decide cómo seguir)
@@ -346,6 +352,8 @@ export function DeliverableModal({
   const [ownerId, setOwnerId] = useState<string | null>(deliverable?.ownerId ?? null);
   const [startDate, setStartDate] = useState<string | null>(deliverable?.startDate ?? null);
   const [dueDate, setDueDate] = useState<string | null>(deliverable?.dueDate ?? null);
+  const [actualStart, setActualStart] = useState<string | null>(deliverable?.actualStart ?? null);
+  const [actualEnd, setActualEnd] = useState<string | null>(deliverable?.actualEnd ?? null);
   const [status, setStatus] = useState<PlanStatus>(deliverable?.status ?? "pendiente");
   const [milestoneId, setMilestoneId] = useState<string | null>(deliverable?.milestoneId ?? defaultMilestoneId ?? null);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -354,7 +362,8 @@ export function DeliverableModal({
   function save() {
     if (!name.trim()) return setError("Poné un nombre para el entregable.");
     if (startDate && dueDate && dueDate < startDate) return setError("La fecha de entrega no puede ser anterior al inicio.");
-    const fields = { name: name.trim(), description: description.trim(), ownerId, startDate, dueDate, status, milestoneId };
+    if (actualStart && actualEnd && actualEnd < actualStart) return setError("El fin real no puede ser anterior al inicio real.");
+    const fields = { name: name.trim(), description: description.trim(), ownerId, startDate, dueDate, actualStart, actualEnd, status, milestoneId };
     if (deliverable) workActions.updateDeliverable(deliverable.id, fields);
     else workActions.addDeliverable({ projectId, ...fields });
     toast(deliverable ? "Entregable actualizado." : "Entregable creado.");
@@ -398,8 +407,11 @@ export function DeliverableModal({
             {PLAN_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
         </div>
-        <div className="field"><label>Inicio del plazo</label><OptDate value={startDate} onChange={setStartDate} /></div>
-        <div className="field"><label>Fecha de entrega (fin del plazo)</label><OptDate value={dueDate} onChange={setDueDate} /></div>
+        <div className="field"><label>Inicio planificado</label><OptDate value={startDate} onChange={setStartDate} /></div>
+        <div className="field"><label>Fin planificado (fecha de entrega)</label><OptDate value={dueDate} onChange={setDueDate} /></div>
+        <div className="field"><label>Inicio real</label><OptDate value={actualStart} onChange={setActualStart} /></div>
+        <div className="field"><label>Fin real</label><OptDate value={actualEnd} onChange={setActualEnd} /></div>
+        <div className="field full" style={{ marginTop: -6, fontSize: 12, color: "var(--text-3)" }}>Las fechas reales se completan solas al pasar a En curso o Cumplido; se pueden corregir a mano.</div>
       </div>
       {error && <div style={{ color: "var(--danger)", fontSize: 12.5 }}>{error}</div>}
     </Modal>
