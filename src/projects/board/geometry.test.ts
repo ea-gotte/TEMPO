@@ -1,0 +1,93 @@
+import { describe, expect, it } from "vitest";
+import {
+  anchorOnBox, boxFromPoints, clampZoom, cloudPath, connectorEnds, exportScale, fitScale, fitViewport, gridSpec,
+  squareFromPoints, unionBoxes,
+} from "./geometry";
+
+// Caja de 100 × 50 con centro en (50, 25)
+const A = { left: 0, top: 0, width: 100, height: 50 };
+// Misma medida, 200 a la derecha: centro en (250, 25)
+const B = { left: 200, top: 0, width: 100, height: 50 };
+
+describe("boxFromPoints / squareFromPoints", () => {
+  it("normaliza un arrastre hacia arriba a la izquierda", () => {
+    expect(boxFromPoints({ x: 10, y: 20 }, { x: 4, y: 5 })).toEqual({ left: 4, top: 5, width: 6, height: 15 });
+  });
+  it("con Shift usa el lado mayor y respeta la dirección del arrastre", () => {
+    expect(squareFromPoints({ x: 0, y: 0 }, { x: -30, y: 10 })).toEqual({ left: -30, top: 0, width: 30, height: 30 });
+  });
+});
+
+describe("anchorOnBox", () => {
+  it("apunta a la derecha, izquierda, abajo y arriba", () => {
+    expect(anchorOnBox(A, { x: 200, y: 25 })).toEqual({ x: 100, y: 25 });
+    expect(anchorOnBox(A, { x: -50, y: 25 })).toEqual({ x: 0, y: 25 });
+    expect(anchorOnBox(A, { x: 50, y: 300 })).toEqual({ x: 50, y: 50 });
+    expect(anchorOnBox(A, { x: 50, y: -10 })).toEqual({ x: 50, y: 0 });
+  });
+  it("en diagonal corta el borde que se alcanza primero", () => {
+    expect(anchorOnBox(A, { x: 150, y: 125 })).toEqual({ x: 75, y: 50 });
+  });
+  it("si el destino es el centro, devuelve el centro", () => {
+    expect(anchorOnBox(A, { x: 50, y: 25 })).toEqual({ x: 50, y: 25 });
+  });
+});
+
+describe("connectorEnds", () => {
+  it("dos formas enganchadas: de borde a borde", () => {
+    expect(connectorEnds(A, B, { x: 0, y: 0 }, { x: 0, y: 0 })).toEqual({ start: { x: 100, y: 25 }, end: { x: 200, y: 25 } });
+  });
+  it("final suelto: el inicio apunta al extremo libre", () => {
+    expect(connectorEnds(A, null, { x: 0, y: 0 }, { x: 50, y: 200 })).toEqual({ start: { x: 50, y: 50 }, end: { x: 50, y: 200 } });
+  });
+  it("inicio suelto: el final apunta al inicio libre", () => {
+    expect(connectorEnds(null, B, { x: 250, y: -100 }, { x: 0, y: 0 })).toEqual({ start: { x: 250, y: -100 }, end: { x: 250, y: 0 } });
+  });
+  it("formas superpuestas con el mismo centro: ambos extremos en el centro", () => {
+    expect(connectorEnds(A, { ...A }, { x: 0, y: 0 }, { x: 0, y: 0 })).toEqual({ start: { x: 50, y: 25 }, end: { x: 50, y: 25 } });
+  });
+});
+
+describe("vista", () => {
+  it("unionBoxes", () => {
+    expect(unionBoxes([])).toBeNull();
+    expect(unionBoxes([A, B])).toEqual({ left: 0, top: 0, width: 300, height: 50 });
+  });
+  it("clampZoom limita a 10 %–400 %", () => {
+    expect(clampZoom(0.01)).toBe(0.1);
+    expect(clampZoom(9)).toBe(4);
+    expect(clampZoom(1.5)).toBe(1.5);
+  });
+  it("fitViewport encuadra contenido grande y centra", () => {
+    const v = fitViewport({ left: 0, top: 0, width: 1000, height: 500 }, { width: 648, height: 448 });
+    expect(v.zoom).toBeCloseTo(0.552, 3);
+    expect(v.x).toBeCloseTo(48, 3);
+    expect(v.y).toBeCloseTo(86, 3);
+  });
+  it("fitViewport no agranda contenido chico más allá de 100 %", () => {
+    expect(fitViewport({ left: 0, top: 0, width: 100, height: 100 }, { width: 800, height: 600 })).toEqual({ zoom: 1, x: 350, y: 250 });
+  });
+  it("fitScale y exportScale", () => {
+    expect(fitScale(2000, 1000, 800, 800)).toBe(0.4);
+    expect(fitScale(100, 100, 800, 800)).toBe(1);
+    expect(exportScale(1000, 500)).toBe(2);
+    expect(exportScale(16000, 100)).toBe(0.5);
+  });
+  it("gridSpec sigue al desplazamiento y se oculta con poco zoom", () => {
+    expect(gridSpec({ x: 30, y: -10, zoom: 1 })).toEqual({ size: 24, x: 6, y: 14 });
+    expect(gridSpec({ x: 0, y: 0, zoom: 2 })).toEqual({ size: 48, x: 0, y: 0 });
+    expect(gridSpec({ x: 0, y: 0, zoom: 0.25 })).toBeNull();
+  });
+});
+
+describe("cloudPath", () => {
+  it("rodea la caja con arcos y cierra el trazo", () => {
+    const d = cloudPath(100, 50);
+    expect(d.startsWith("M 0 0")).toBe(true);
+    expect(d.endsWith("Z")).toBe(true);
+    expect(d.match(/A /g)).toHaveLength(24); // 8 + 4 + 8 + 4
+  });
+  it("una caja mínima tiene al menos un arco por lado", () => {
+    expect(cloudPath(5, 5).match(/A /g)).toHaveLength(4);
+  });
+});
