@@ -481,7 +481,7 @@ export function Admin() {
           )}
           <p style={{ fontSize: 12, color: "var(--text-3)" }}>
             Categorías y actividades del sistema de "Horas de vuelo": la experiencia acumulada de cada persona según
-            los proyectos en los que trabajó. Se asignan por proyecto en Clientes y proyectos. Desactivar una
+            los proyectos en los que trabajó. Se asignan por proyecto en Proyectos. Desactivar una
             actividad la saca del selector para proyectos nuevos, pero no borra las horas ya acumuladas con ella.
           </p>
           {state.flightCategories.map((cat) => {

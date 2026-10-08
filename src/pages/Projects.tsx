@@ -4,6 +4,8 @@ import type { Client, Project, ProjectStatus, SubProject } from "../types";
 import { fmtDur, safeHttpUrl, uid } from "../utils";
 import { Avatar, Dot, Empty, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
+import { ProjectWorkspace } from "../projects/ProjectWorkspace";
+import { Panorama } from "../projects/Panorama";
 
 export const COLORS = ["#5b6cff", "#12b5a5", "#f5a524", "#f0446c", "#8b5cf6", "#0ea5e9", "#84cc16", "#f97316"];
 
@@ -15,7 +17,9 @@ export function Projects() {
   // mismo participa) — ni crea/elimina proyectos ni toca presupuesto,
   // cliente, estado, etc. Ver el branch de retorno más abajo.
   const isSupervisorOnly = me.role === "supervisor";
-  const [tab, setTab] = useState<"proyectos" | "clientes" | "etiquetas">("proyectos");
+  const [tab, setTab] = useState<"proyectos" | "clientes" | "etiquetas" | "panorama">("proyectos");
+  // Gestión de proyectos (demo): espacio de trabajo del proyecto abierto
+  const [openProjectId, setOpenProjectId] = useState<string | null>(null);
   const [editProject, setEditProject] = useState<Project | "new" | null>(null);
   const [deleteProject, setDeleteProject] = useState<Project | null>(null);
   const [editClient, setEditClient] = useState<Client | "new" | null>(null);
@@ -53,6 +57,17 @@ export function Projects() {
     }
     return m;
   }, [state.entries]);
+
+  const workEnv = useMemo(
+    () => ({
+      projects: state.projects, clients: state.clients, users: state.users, me, minutesByProject: Object.fromEntries(spentBy),
+      // Ausencias aprobadas que dejan a la persona sin trabajar (descuentan capacidad de los sprints)
+      absences: state.absences
+        .filter((a) => a.status === "Aprobado" && a.type !== "Trabajo remoto" && a.type !== "Horas extra")
+        .map((a) => ({ userId: a.userId, dateFrom: a.dateFrom, dateTo: a.dateTo })),
+    }),
+    [state.projects, state.clients, state.users, state.absences, me, spentBy],
+  );
 
   const filtersActive = Boolean(fQuery || fClient || fStatus || fMember || fActivity);
   const filteredProjects = useMemo(
@@ -128,6 +143,21 @@ export function Projects() {
   // Vista acotada para supervisor: solo sus propios proyectos (donde él
   // mismo es miembro), y solo puede tocar la membresía — nada de crear,
   // eliminar, ni editar presupuesto/cliente/estado/color.
+  if (openProjectId) {
+    return (
+      <ProjectWorkspace
+        env={workEnv}
+        projectId={openProjectId}
+        onBack={() => setOpenProjectId(null)}
+        onEditProject={() => {
+          const p = state.projects.find((x) => x.id === openProjectId);
+          setOpenProjectId(null);
+          if (p) setEditProject(p);
+        }}
+      />
+    );
+  }
+
   if (isSupervisorOnly) {
     const myProjects = state.projects.filter((p) => p.memberIds.includes(me.id));
     return (
@@ -181,6 +211,9 @@ export function Projects() {
                         )}
                       </td>
                       <td>
+                        <button className="btn btn-primary btn-sm" onClick={() => setOpenProjectId(p.id)} style={{ marginRight: 6 }}>
+                          <Icon name="folder" size={13} /> Abrir
+                        </button>
                         <button className="btn btn-secondary btn-sm" onClick={() => setEditMembersOf(p)}>
                           <Icon name="users" size={13} /> Miembros
                         </button>
@@ -208,10 +241,10 @@ export function Projects() {
   return (
     <>
       <div className="page-head">
-        <h1>Clientes y proyectos</h1>
+        <h1>Proyectos</h1>
         <span className="spacer" />
         <div className="tabs">
-          {(["proyectos", "clientes", "etiquetas"] as const).map((v) => (
+          {(["proyectos", "clientes", "etiquetas", "panorama"] as const).map((v) => (
             <button key={v} className={tab === v ? "active" : ""} onClick={() => setTab(v)} style={{ textTransform: "capitalize" }}>
               {v}
             </button>
@@ -308,7 +341,7 @@ export function Projects() {
                 return (
                   <tr key={p.id} onDoubleClick={() => setEditProject(p)} style={{ cursor: "pointer" }} title="Doble clic para editar">
                     <td>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 600 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 600, cursor: "pointer" }} onClick={() => setOpenProjectId(p.id)} title="Abrir espacio de trabajo del proyecto">
                         <Dot color={p.color} /> {p.name}
                       </div>
                       {state.subProjects.some((sp) => sp.projectId === p.id) && (
@@ -375,6 +408,7 @@ export function Projects() {
                       )}
                     </td>
                     <td onDoubleClick={(e) => e.stopPropagation()}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setOpenProjectId(p.id)}><Icon name="folder" size={13} /> Abrir</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => setEditProject(p)}><Icon name="pencil" size={13} /> Editar</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => setDeleteProject(p)}><Icon name="trash" size={13} /> Eliminar</button>
                     </td>
@@ -435,6 +469,8 @@ export function Projects() {
           </p>
         </div>
       )}
+
+      {tab === "panorama" && <Panorama env={workEnv} onOpen={setOpenProjectId} />}
 
       {editProject && (
         <ProjectModal

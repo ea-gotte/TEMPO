@@ -30,7 +30,7 @@ export function FlightHours({ userId }: { userId: string }) {
       {result.categories.length === 0 ? (
         <div className="card card-pad" style={{ textAlign: "center", color: "var(--text-3)", padding: 40 }}>
           {selectedUser.name} todavía no tiene horas de vuelo registradas. Se acumulan automáticamente al cargar tiempo
-          en proyectos que tengan una actividad asignada (Clientes y proyectos → editar proyecto).
+          en proyectos que tengan una actividad asignada (Proyectos → editar proyecto).
         </div>
       ) : (
         result.categories.map((cat) => (

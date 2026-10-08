@@ -63,7 +63,7 @@ const NAV: { section: string; items: { key: PageKey; label: string; ico: IconNam
     section: "Gestión",
     items: [
       { key: "summary", label: "Resumen de personal", ico: "star" },
-      { key: "projects", label: "Clientes y proyectos", ico: "folder" },
+      { key: "projects", label: "Proyectos", ico: "folder" },
       { key: "team", label: "Equipo", ico: "users" },
       { key: "control", label: "Control de horas", ico: "check-circle" },
       { key: "absences", label: "Gestión", ico: "briefcase" },

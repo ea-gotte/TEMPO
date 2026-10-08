@@ -232,7 +232,7 @@ export function TimeEntriesImportPanel() {
   const withStatus = useMemo(() => rows.map((row) => ({ row, ...rowStatus(row, state) })), [rows, state.entries]);
 
   // Nombres de proyecto que vinieron en el archivo pero no existen todavía en
-  // Clientes y proyectos (uno por nombre distinto, aunque aparezca en varias filas).
+  // Proyectos (uno por nombre distinto, aunque aparezca en varias filas).
   const missingProjectNames = useMemo(() => {
     const map = new Map<string, string>(); // normText -> nombre tal como vino en el archivo
     for (const { row, status } of withStatus) {
@@ -243,7 +243,7 @@ export function TimeEntriesImportPanel() {
     return map;
   }, [withStatus]);
 
-  /** Da de alta en Clientes y proyectos cada nombre de proyecto que apareció en el
+  /** Da de alta en Proyectos cada nombre de proyecto que apareció en el
    * archivo y todavía no existe, y vincula automáticamente las filas correspondientes.
    * También los da de alta ya con el equipo (todas las personas que cargaron horas
    * a ese proyecto en el archivo) — si no, el proyecto queda sin nadie asignado y
@@ -271,7 +271,7 @@ export function TimeEntriesImportPanel() {
         return np ? { ...r, projectId: np.id, subProjectId: null, projectMatched: true } : r;
       }),
     );
-    toast(`${newProjects.length} proyecto${newProjects.length !== 1 ? "s" : ""} creado${newProjects.length !== 1 ? "s" : ""} y vinculado${newProjects.length !== 1 ? "s" : ""} en Clientes y proyectos.`);
+    toast(`${newProjects.length} proyecto${newProjects.length !== 1 ? "s" : ""} creado${newProjects.length !== 1 ? "s" : ""} y vinculado${newProjects.length !== 1 ? "s" : ""} en Proyectos.`);
   }
 
   async function apply() {
@@ -355,7 +355,7 @@ export function TimeEntriesImportPanel() {
             ))}
             {missingProjectNames.size > 0 && (
               <button className="btn btn-secondary btn-sm" onClick={createMissingProjects}>
-                <Icon name="plus" size={13} /> Agregar {missingProjectNames.size} proyecto{missingProjectNames.size !== 1 ? "s" : ""} que falta{missingProjectNames.size !== 1 ? "n" : ""} en Clientes y proyectos
+                <Icon name="plus" size={13} /> Agregar {missingProjectNames.size} proyecto{missingProjectNames.size !== 1 ? "s" : ""} que falta{missingProjectNames.size !== 1 ? "n" : ""} en Proyectos
               </button>
             )}
           </div>
@@ -428,7 +428,7 @@ export function TimeEntriesImportPanel() {
                       }}
                     >
                       <option value="">{v.row.projectRaw ? `${v.row.projectRaw} (sin match)` : "Sin proyecto — elegir…"}</option>
-                      {v.row.projectRaw && <option value="n:1">+ Crear "{v.row.projectRaw}" en Clientes y proyectos</option>}
+                      {v.row.projectRaw && <option value="n:1">+ Crear "{v.row.projectRaw}" en Proyectos</option>}
                       {[...state.projects].sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
                         <option key={p.id} value={`p:${p.id}`}>{p.name}</option>
                       ))}
