@@ -16,7 +16,7 @@ import type { Baseline, ChangeRequest, Deliverable, FieldDef, FieldType, Milesto
  * que lea/escriba tablas de Supabase con la misma interfaz.
  */
 
-const KEY = "tempo-gestion-proyectos-demo-v5";
+const KEY = "tempo-gestion-proyectos-demo-v6";
 
 const opt = (id: string, label: string, i: number) => ({ id, label, color: OPTION_COLORS[i % OPTION_COLORS.length] });
 
@@ -444,10 +444,18 @@ function seedProject(cur: WorkData, project: Project, index: number): WorkData {
   const milestones: Milestone[] = MILESTONES.map((m, i) => ({
     id: uid(), projectId: project.id, name: m.name, description: m.desc,
     ownerId: pick(i === 1 ? 2 : 0), dueDate: off(m.due), status: "pendiente",
+    // Cada hito arranca cuando termina el anterior (el primero, con el proyecto)
+    startDate: i === 0 ? off(m.due - 40) : off(MILESTONES[i - 1].due + 1),
   }));
   const deliverables: Deliverable[] = DELIVERABLES.map((d, i) => ({
     id: uid(), projectId: project.id, milestoneId: milestones[d.ms].id, name: d.name, description: "",
     ownerId: pick(i + 1), dueDate: off(d.due), status: "pendiente",
+    // El plazo de un entregable: sus últimas semanas dentro del hito
+    startDate: (() => {
+      const ms = MILESTONES[d.ms];
+      const msStart = d.ms === 0 ? ms.due - 40 : MILESTONES[d.ms - 1].due + 1;
+      return off(Math.max(msStart, d.due - 18));
+    })(),
   }));
 
   // Ejemplo de campo propio de UN proyecto (el primero): cantidad de planos afectados
@@ -513,7 +521,6 @@ function seedProject(cur: WorkData, project: Project, index: number): WorkData {
     ["lider_tecnico", tech],
     ["coordinador", coord],
     ...modelers.map((id) => ["modelador", id] as [string, string | null]),
-    ...(index % 3 === 0 ? ([["lider_funcional", pick(3) ?? pick(1)]] as [string, string | null][]) : []),
   ];
   const assignments = roleUsers.flatMap(([roleKey, userId]) => (userId ? [{ id: uid(), projectId: project.id, userId, roleKey }] : []));
 

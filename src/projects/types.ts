@@ -71,6 +71,8 @@ export interface Milestone {
   name: string;
   description: string;
   ownerId: ID | null;
+  /** Inicio del plazo (para el Gantt); la fecha del hito es su fin */
+  startDate?: string | null;
   dueDate: string | null;
   status: PlanStatus;
   /** Puerta de decisión: se revisa lo aprendido y se decide cómo seguir */
@@ -88,6 +90,8 @@ export interface Deliverable {
   name: string;
   description: string;
   ownerId: ID | null;
+  /** Inicio del plazo (para el Gantt); la fecha de entrega es su fin */
+  startDate?: string | null;
   dueDate: string | null;
   status: PlanStatus;
 }

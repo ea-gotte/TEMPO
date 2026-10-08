@@ -60,7 +60,7 @@ export function seedMethod(a: Args): Seeded {
   /* ---------- Descubrimiento (híbrido): spikes y puerta de decisión ---------- */
   if (mode === "hibrido") {
     const gate: Milestone = {
-      id: uid(), projectId: project.id, name: "Puerta: decidir si seguimos", ownerId: pick(0), dueDate: meta.discoveryEnd, status: "en_curso",
+      id: uid(), projectId: project.id, name: "Puerta: decidir si seguimos", ownerId: pick(0), startDate: addDays(now, -16), dueDate: meta.discoveryEnd, status: "en_curso",
       description: "Cierre del descubrimiento: se revisa lo aprendido y se decide cómo continuar.",
       isGate: true, gateDecision: "pendiente", gateNote: "",
       gateCriteria: "Viabilidad técnica validada · estimación del desarrollo con rango acotado · presupuesto y alcance aprobados por el cliente",

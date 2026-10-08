@@ -7,16 +7,16 @@ import { FieldFilterBar, FieldsModal } from "./FieldControls";
 import { fieldsForProject, filterActive, matchesFilter, type FieldFilter } from "./fields";
 import { defaultMilestone, type Perms } from "./logic";
 import { TaskModal, type TaskDraft } from "./Modals";
-import { ListView, TableView } from "./TaskViews";
+import { KanbanView, TableView } from "./TaskViews";
 import type { Task, TaskPriority, TaskStatus } from "./types";
 import { useWork, workActions } from "./workStore";
 
-type ViewKey = "lista" | "tabla";
+type ViewKey = "tabla" | "kanban";
 const VIEWS: { key: ViewKey; label: string }[] = [
-  { key: "lista", label: "Lista" },
   { key: "tabla", label: "Tabla" },
+  { key: "kanban", label: "Kanban" },
 ];
-const VIEW_KEY = "tempo-proyectos-vista-tareas";
+const VIEW_KEY = "tempo-proyectos-vista-tareas-v2";
 const ARCHIVED_KEY = "tempo-proyectos-ver-archivadas";
 const colsKey = (projectId: string) => `tempo-proyectos-columnas-${projectId}`;
 
@@ -25,7 +25,7 @@ function loadView(): ViewKey {
     const v = localStorage.getItem(VIEW_KEY) as ViewKey | null;
     if (v && VIEWS.some((x) => x.key === v)) return v;
   } catch { /* sin preferencia guardada */ }
-  return "lista";
+  return "tabla";
 }
 
 function loadCols(projectId: string): string[] | null {
@@ -41,9 +41,9 @@ function loadShowArchived(): boolean {
 }
 
 /**
- * Tareas del proyecto. Cada tarea cuelga de un hito: la programación se sigue
- * por hitos y entregables (calendario y Kanban viven en esa pestaña), así que acá
- * solo hay dos formas de ver la misma lista. Las tareas ya finalizadas se pueden
+ * Tareas del proyecto. Cada tarea cuelga de un hito: los plazos se siguen en
+ * “Hitos y entregables” (tabla y Gantt), y acá hay dos formas de ver la misma
+ * lista de tareas: tabla y Kanban. Las tareas ya finalizadas se pueden
  * archivar para dejar el listado limpio, y volver a mostrar cuando haga falta.
  */
 export function TasksTab({ projectId, perms, initialDraft, onConsume }: { projectId: string; perms: Perms; initialDraft?: TaskDraft | null; onConsume?: () => void }) {
@@ -221,8 +221,8 @@ export function TasksTab({ projectId, perms, initialDraft, onConsume }: { projec
 
       <FieldFilterBar defs={defs} filters={fieldFilters} onChange={setFieldFilters} />
 
-      {view === "lista" && <ListView {...viewProps} />}
       {view === "tabla" && <TableView {...viewProps} />}
+      {view === "kanban" && <KanbanView {...viewProps} />}
 
       {modal && (
         <TaskModal

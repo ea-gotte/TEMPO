@@ -23,9 +23,10 @@ export const PLAN_STATUS: { key: PlanStatus; label: string; color: string }[] = 
 /**
  * Roles de un proyecto. Los tres imprescindibles: Project Manager (cliente y
  * gestión; es quien aprueba), Líder técnico (soporte técnico) y Coordinador
- * (día a día con los modeladores). El Modelador ejecuta las tareas. El líder
- * funcional de área es opcional y de consulta; Referente y Líder comercial
- * quedan como roles opcionales de consulta. Cada rol lleva sus responsabilidades.
+ * (día a día con los modeladores). El Modelador ejecuta las tareas. El Referente
+ * queda como rol opcional de consulta. Cada rol lleva sus responsabilidades. El
+ * Project Manager también lleva la relación comercial con el cliente (ya no hay
+ * un Líder comercial aparte ni un Líder funcional de área).
  */
 export const DEFAULT_ROLES: RoleDef[] = [
   {
@@ -36,6 +37,8 @@ export const DEFAULT_ROLES: RoleDef[] = [
       "Decide los cambios del cliente en un máximo de 48 horas (aprueba, difiere o rechaza).",
       "Aprueba las puertas de decisión en los proyectos híbridos.",
       "Controla las horas contra lo proyectado y avisa a gerencia ante desvíos.",
+      "Mantiene la relación comercial con el cliente y el contrato (precio cerrado, sin adicionales).",
+      "Conoce el alcance contratado para detectar los pedidos que lo exceden y llevarlos a Cambios del cliente.",
     ],
   },
   {
@@ -69,28 +72,11 @@ export const DEFAULT_ROLES: RoleDef[] = [
     ],
   },
   {
-    key: "lider_funcional", label: "Líder funcional de área", active: true, manage: false, approve: false, required: false,
-    responsibilities: [
-      "Es el responsable del área (la columna del organigrama) de la que salen las personas del proyecto.",
-      "Asegura que las personas y las competencias necesarias estén disponibles.",
-      "Resuelve los conflictos de disponibilidad entre proyectos.",
-      "Consulta el avance del proyecto; no modifica su plan.",
-    ],
-  },
-  {
     key: "referente", label: "Referente", active: true, manage: false, approve: false, required: false,
     responsibilities: [
       "Es un contacto de consulta del proyecto.",
       "Aporta contexto y criterio cuando se lo piden.",
       "Consulta el avance; no modifica el plan.",
-    ],
-  },
-  {
-    key: "lider_comercial", label: "Líder comercial", active: true, manage: false, approve: false, required: false,
-    responsibilities: [
-      "Mantiene la relación comercial con el cliente y el contrato (precio cerrado, sin adicionales).",
-      "Conoce el alcance contratado para detectar pedidos que lo exceden.",
-      "Consulta el estado del proyecto; no modifica el plan.",
     ],
   },
 ];

@@ -140,122 +140,9 @@ export function TableView({ tasks, perms, onOpen, columns }: ViewProps) {
 }
 
 /* ====================================================================
- * Lista (agrupable)
- * ==================================================================== */
-type GroupBy = "status" | "assignee" | "milestone" | `f:${string}`;
-
-export function ListView({ tasks, projectId, perms, onOpen, onNew, columns, showEmpty }: ViewProps) {
-  const env = useEnv();
-  const work = useWork();
-  // Las tareas cuelgan de hitos: por defecto se ven agrupadas por hito
-  const [groupBy, setGroupBy] = useState<GroupBy>("milestone");
-  const groupable = fieldsForProject(work.fields, projectId).filter((d) => hasOptions(d.type));
-
-  const groups = useMemo(() => {
-    const list: { key: string; label: React.ReactNode; tasks: Task[]; newDefaults: Partial<Task> }[] = [];
-    if (groupBy === "status") {
-      for (const s of TASK_STATUS) list.push({ key: s.key, label: <><span className="pw-dotc" style={{ background: s.color }} /> {s.label}</>, tasks: tasks.filter((t) => t.status === s.key), newDefaults: { status: s.key } });
-    } else if (groupBy === "assignee") {
-      const ids = Array.from(new Set(tasks.map((t) => t.assigneeId)));
-      for (const id of ids) {
-        const u = env.users.find((x) => x.id === id);
-        list.push({ key: id ?? "none", label: u ? <><Avatar name={u.name} size={18} /> {u.name}</> : "Sin asignar", tasks: tasks.filter((t) => t.assigneeId === id), newDefaults: { assigneeId: id } });
-      }
-      list.sort((a, b) => (a.key === "none" ? 1 : b.key === "none" ? -1 : String(a.tasks[0] && env.users.find((u) => u.id === a.key)?.name).localeCompare(String(env.users.find((u) => u.id === b.key)?.name))));
-    } else if (groupBy.startsWith("f:")) {
-      const d = groupable.find((x) => x.id === groupBy.slice(2));
-      if (d) {
-        for (const o of d.options) {
-          list.push({
-            key: o.id, label: <><span className="pw-dotc" style={{ background: o.color }} /> {o.label}</>,
-            tasks: tasks.filter((t) => selectedOptionIds(t, d).includes(o.id)),
-            newDefaults: { custom: { [d.id]: d.type === "multiple" ? [o.id] : o.id } },
-          });
-        }
-        list.push({ key: "none", label: "Sin valor", tasks: tasks.filter((t) => selectedOptionIds(t, d).length === 0), newDefaults: {} });
-      }
-    } else {
-      for (const m of work.milestones.filter((x) => x.projectId === projectId && (showEmpty || tasks.some((t) => t.milestoneId === x.id))).sort((a, b) => (a.dueDate ?? "9").localeCompare(b.dueDate ?? "9"))) {
-        list.push({
-          key: m.id,
-          label: <>◆ {m.name} <DuePill date={m.dueDate} done={m.status === "cumplido"} />{isPlanOverdue(m) && <span style={{ color: "var(--danger)", fontSize: 11.5, fontWeight: 650 }}>hito atrasado</span>}</>,
-          tasks: tasks.filter((t) => t.milestoneId === m.id), newDefaults: { milestoneId: m.id },
-        });
-      }
-      list.push({ key: "none", label: "Sin hito · asignalas a uno", tasks: tasks.filter((t) => !t.milestoneId || !work.milestones.some((m) => m.id === t.milestoneId)), newDefaults: {} });
-    }
-    return list.filter((g) => g.tasks.length > 0 || groupBy === "status" || (groupBy === "milestone" && g.key !== "none"));
-  }, [tasks, groupBy, env.users, work.milestones, groupable, projectId, showEmpty]);
-
-  // Un hito sin tareas visibles puede tener todas sus tareas archivadas: se avisa para que no parezca vacío
-  const emptyMilestoneText = (milestoneId: string) => {
-    const hidden = work.tasks.filter((t) => t.milestoneId === milestoneId && t.archived && !tasks.some((x) => x.id === t.id)).length;
-    return hidden > 0 ? `Sin tareas a la vista: ${hidden} archivada${hidden > 1 ? "s" : ""} (activá “Ver archivadas” para verlas).` : "Sin tareas en este hito todavía.";
-  };
-
-  return (
-    <>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 12.5, color: "var(--text-2)" }}>
-        Agrupar por
-        <select className="select" style={{ width: "auto" }} value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}>
-          <option value="milestone">Hito</option>
-          <option value="status">Estado</option>
-          <option value="assignee">Responsable</option>
-          {groupable.map((d) => <option key={d.id} value={`f:${d.id}`}>{d.name}</option>)}
-        </select>
-      </div>
-      {tasks.length === 0 ? (
-        <div className="card card-pad"><Empty icon="clipboard" text="Sin tareas" sub="Creá la primera con “Nueva tarea” o ajustá los filtros." /></div>
-      ) : (
-        <div className="card" style={{ overflow: "hidden" }}>
-          {groups.map((g) => (
-            <div key={g.key}>
-              <div className="pw-group-head">
-                {g.label} <span className="count">{g.tasks.length}</span>
-                {perms.canManage && (
-                  <button className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={() => onNew(g.newDefaults)}>
-                    <Icon name="plus" size={12} />
-                  </button>
-                )}
-              </div>
-              {g.tasks.length === 0 && <div style={{ padding: "10px 14px", color: "var(--text-3)", fontSize: 12.5, borderTop: "1px solid var(--border)" }}>{groupBy === "milestone" ? emptyMilestoneText(g.key) : "Sin tareas en este estado."}</div>}
-              {g.tasks.map((t) => {
-                const access = perms.taskAccess(t);
-                const done = t.status === "hecha";
-                return (
-                  <div key={t.id} className={`pw-task-row ${done ? "done" : ""} ${t.archived ? "archived" : ""}`} onClick={() => onOpen(t)}>
-                    <button
-                      className={`pw-check ${done ? "on" : ""}`}
-                      disabled={access === "none"}
-                      title={access === "none" ? "Solo lectura" : done ? "Reabrir" : "Marcar como hecha"}
-                      onClick={(e) => { e.stopPropagation(); workActions.updateTask(t.id, { status: done ? "pendiente" : "hecha" }); }}
-                      style={access === "none" ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-                    >
-                      {done && <Icon name="check" size={11} strokeWidth={3} />}
-                    </button>
-                    <span className="name">{t.name}</span>
-                    {t.archived && <span className="pw-pill"><Icon name="archive" size={10} /> Archivada</span>}
-                    <span style={{ display: "flex", gap: 5 }}><Links task={t} /></span>
-                    {columns.map((c) => <FieldValueView key={c.id} def={c} task={t} compact />)}
-                    <PriorityPill priority={t.priority} />
-                    <Person user={env.users.find((u) => u.id === t.assigneeId)} size={18} />
-                    <span style={{ width: 80, textAlign: "right" }}>{taskDue(t)}</span>
-                    <span style={{ width: 30 }}><ArchiveBtn t={t} perms={perms} /></span>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
-
-/* ====================================================================
- * Tablero de tareas por estado (arrastrar y soltar nativo). Solo lo usa el
- * tablero del sprint (Backlog y sprints); el seguimiento de la programación
- * del proyecto está en el Kanban de “Hitos y entregables”.
+ * Kanban de tareas por estado (arrastrar y soltar nativo). Lo usan la pestaña
+ * Tareas y el tablero del sprint (Backlog y sprints). La programación del
+ * proyecto (plazos) se sigue en “Hitos y entregables”.
  * ==================================================================== */
 export function KanbanView({ tasks, perms, onOpen, onNew, columns }: ViewProps & { groupFieldId?: null }) {
   const env = useEnv();
@@ -311,6 +198,8 @@ export function KanbanView({ tasks, perms, onOpen, onNew, columns }: ViewProps &
                   <div className="meta">
                     <PriorityPill priority={t.priority} />
                     {t.estimateHours != null && <span className="pw-pill">{t.estimateHours} h</span>}
+                    {taskDue(t)}
+                    <ArchiveBtn t={t} perms={perms} />
                     <span style={{ marginLeft: "auto" }}>{u ? <Avatar name={u.name} size={22} /> : <span style={{ fontSize: 11, color: "var(--text-3)" }}>—</span>}</span>
                   </div>
                 </div>

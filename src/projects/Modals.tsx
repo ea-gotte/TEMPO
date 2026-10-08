@@ -267,6 +267,7 @@ export function MilestoneModal({ projectId, milestone, onClose }: { projectId: s
   const [name, setName] = useState(milestone?.name ?? "");
   const [description, setDescription] = useState(milestone?.description ?? "");
   const [ownerId, setOwnerId] = useState<string | null>(milestone?.ownerId ?? null);
+  const [startDate, setStartDate] = useState<string | null>(milestone?.startDate ?? null);
   const [dueDate, setDueDate] = useState<string | null>(milestone?.dueDate ?? null);
   const [status, setStatus] = useState<PlanStatus>(milestone?.status ?? "pendiente");
   const [isGate, setIsGate] = useState(!!milestone?.isGate);
@@ -276,7 +277,8 @@ export function MilestoneModal({ projectId, milestone, onClose }: { projectId: s
 
   function save() {
     if (!name.trim()) return setError("Poné un nombre para el hito.");
-    const fields = { name: name.trim(), description: description.trim(), ownerId, dueDate, status, isGate, gateCriteria: isGate ? gateCriteria.trim() : "", gateDecision: isGate ? milestone?.gateDecision ?? ("pendiente" as const) : undefined };
+    if (startDate && dueDate && dueDate < startDate) return setError("La fecha del hito no puede ser anterior a su inicio.");
+    const fields = { name: name.trim(), description: description.trim(), ownerId, startDate, dueDate, status, isGate, gateCriteria: isGate ? gateCriteria.trim() : "", gateDecision: isGate ? milestone?.gateDecision ?? ("pendiente" as const) : undefined };
     if (milestone) workActions.updateMilestone(milestone.id, fields);
     else workActions.addMilestone({ projectId, ...fields });
     toast(milestone ? "Hito actualizado." : "Hito creado.");
@@ -313,7 +315,8 @@ export function MilestoneModal({ projectId, milestone, onClose }: { projectId: s
             {PLAN_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
         </div>
-        <div className="field full"><label>Fecha</label><OptDate value={dueDate} onChange={setDueDate} /></div>
+        <div className="field"><label>Inicio del plazo</label><OptDate value={startDate} onChange={setStartDate} /></div>
+        <div className="field"><label>Fecha del hito (fin del plazo)</label><OptDate value={dueDate} onChange={setDueDate} /></div>
         <div className="field full">
           <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 600 }}>
             <input type="checkbox" checked={isGate} onChange={(e) => setIsGate(e.target.checked)} /> Es una puerta de decisión (se revisa lo aprendido y se decide cómo seguir)
@@ -341,6 +344,7 @@ export function DeliverableModal({
   const [name, setName] = useState(deliverable?.name ?? "");
   const [description, setDescription] = useState(deliverable?.description ?? "");
   const [ownerId, setOwnerId] = useState<string | null>(deliverable?.ownerId ?? null);
+  const [startDate, setStartDate] = useState<string | null>(deliverable?.startDate ?? null);
   const [dueDate, setDueDate] = useState<string | null>(deliverable?.dueDate ?? null);
   const [status, setStatus] = useState<PlanStatus>(deliverable?.status ?? "pendiente");
   const [milestoneId, setMilestoneId] = useState<string | null>(deliverable?.milestoneId ?? defaultMilestoneId ?? null);
@@ -349,7 +353,8 @@ export function DeliverableModal({
 
   function save() {
     if (!name.trim()) return setError("Poné un nombre para el entregable.");
-    const fields = { name: name.trim(), description: description.trim(), ownerId, dueDate, status, milestoneId };
+    if (startDate && dueDate && dueDate < startDate) return setError("La fecha de entrega no puede ser anterior al inicio.");
+    const fields = { name: name.trim(), description: description.trim(), ownerId, startDate, dueDate, status, milestoneId };
     if (deliverable) workActions.updateDeliverable(deliverable.id, fields);
     else workActions.addDeliverable({ projectId, ...fields });
     toast(deliverable ? "Entregable actualizado." : "Entregable creado.");
@@ -393,7 +398,8 @@ export function DeliverableModal({
             {PLAN_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
         </div>
-        <div className="field"><label>Fecha de entrega</label><OptDate value={dueDate} onChange={setDueDate} /></div>
+        <div className="field"><label>Inicio del plazo</label><OptDate value={startDate} onChange={setStartDate} /></div>
+        <div className="field"><label>Fecha de entrega (fin del plazo)</label><OptDate value={dueDate} onChange={setDueDate} /></div>
       </div>
       {error && <div style={{ color: "var(--danger)", fontSize: 12.5 }}>{error}</div>}
     </Modal>

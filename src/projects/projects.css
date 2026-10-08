@@ -243,3 +243,10 @@ a.pw-doc:hover { background: var(--accent-soft); border-color: var(--accent); }
 .pw-quickadd .input { flex: 1; min-width: 220px; border: none; background: transparent; box-shadow: none; }
 .pw-quickadd .select { width: auto; max-width: 240px; }
 .pw-task-row.archived { opacity: 0.6; }
+
+/* ---------- Tabla expandible de hitos y entregables ---------- */
+.pw-chev { width: 22px; height: 22px; display: inline-grid; place-items: center; border-radius: 4px; color: var(--text-3); flex-shrink: 0; }
+button.pw-chev:hover { background: var(--surface-3); color: var(--text); }
+.pw-plan-table .pw-tr-ms td { background: var(--surface-2); font-weight: 650; }
+.pw-plan-table .pw-tr-ms:hover td, .pw-plan-table .pw-tr-del:hover td, .pw-plan-table .pw-tr-task:hover td { background: var(--accent-soft); }
+.pw-plan-table .pw-tr-task td { font-size: 12.5px; }
