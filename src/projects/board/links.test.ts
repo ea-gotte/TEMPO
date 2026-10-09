@@ -11,6 +11,10 @@ describe("enlaces en los objetos", () => {
     expect(normalizeLink("www.quantia.com")).toBe("https://www.quantia.com");
     expect(normalizeLink("quantia.sharepoint.com/sites/obra")).toBe("https://quantia.sharepoint.com/sites/obra");
   });
+  it("acepta direcciones con puerto, sin https://", () => {
+    expect(normalizeLink("intranet.local:8080/docs")).toBe("https://intranet.local:8080/docs");
+    expect(normalizeLink("localhost:3000")).toBe("https://localhost:3000");
+  });
   it("vacío = quitar el enlace", () => {
     expect(normalizeLink("   ")).toBe("");
   });

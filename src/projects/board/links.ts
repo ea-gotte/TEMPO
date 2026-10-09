@@ -4,12 +4,17 @@
  * un "javascript:" que, al abrirse, correría código.
  */
 
+const HAS_SCHEME = /^([a-z][a-z0-9+.-]*:\/\/|mailto:)/i;
+const HOST_LIKE = /^[^\s/:?#]+((\.[^\s/:?#]+)+(:\d+)?|:\d+)([/?#]|$)/;
+
 /** Dirección lista para guardar y abrir; "" = quitar el enlace; null = no es una dirección válida. */
 export function normalizeLink(input: string): string | null {
   const s = input.trim();
   if (!s) return "";
   if (/\s/.test(s)) return null;
-  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(s) ? s : /^[^/]+\.[^/]+/.test(s) ? `https://${s}` : null;
+  // con esquema ("https://", "mailto:") va tal cual; si parece una dirección (con punto o con puerto), se le pone
+  // https://. "intranet.local:8080" no es el esquema "intranet.local:" (por eso se mira que siga "//")
+  const withScheme = HAS_SCHEME.test(s) ? s : HOST_LIKE.test(s) ? `https://${s}` : null;
   if (!withScheme) return null;
   let url: URL;
   try {
