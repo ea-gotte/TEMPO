@@ -30,7 +30,7 @@ import { decodeBoardFile, encodeBoardFile, itemsBounds } from "./boardFile";
 import { sanitizeBoardItems } from "./sanitize";
 import { relinkAfterAltDrag, type Link } from "./altDrag";
 import { normalizeLink } from "./links";
-import { attachSectionPicking, createSection, editSectionTitle, isSection, keepSectionsBack, sectionContents } from "./frames";
+import { attachSectionPicking, createSection, editSectionTitle, isSection, keepSectionsBack, sectionContents, shiftObjects } from "./frames";
 import { SECTION_HEADER } from "./sections";
 import { STAMPS, stampText, type Stamp } from "./stamps";
 import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject, setMarkerNumber, setMarkerResolved } from "./shapes";
@@ -380,13 +380,16 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   };
 
   /** Copia la selección: devuelve los objetos serializados (o null si no hay nada seleccionado). */
-  const copySelection = (): Record<string, unknown>[] | null => {
+  const copySelection = (forCut = false): Record<string, unknown>[] | null => {
+    const c = cRef.current;
     const objs = takeSelection();
-    if (!objs.length) return null;
-    clipboard.current = objs.map((o) => o.toObject() as Record<string, unknown>);
+    if (!c || !objs.length) return null;
+    // una sección se copia con lo que tiene adentro; al cortar, eso también se saca
+    const all = withContents(c, objs);
+    clipboard.current = all.map((o) => o.toObject() as Record<string, unknown>);
     clipSource.current = projectId;
     pasteCount.current = 0;
-    select(objs);
+    select(forCut ? all : objs);
     return clipboard.current;
   };
 
@@ -429,7 +432,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const c = cRef.current;
     const objs = takeSelection();
     if (!c || !objs.length) return;
-    const copies = await insertCopies(c, objs.map((o) => o.toObject() as Record<string, unknown>), 20);
+    const copies = await insertCopies(c, withContents(c, objs).map((o) => o.toObject() as Record<string, unknown>), 20);
     refreshConnectors(c);
     select(copies);
     commit();
@@ -439,10 +442,14 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const c = cRef.current;
     const a = c?.getActiveObject();
     if (!c || !a) return;
+    // lo de adentro de las secciones seleccionadas se mueve con ellas
+    const selected = c.getActiveObjects();
+    const inside = withContents(c, selected).filter((o) => !selected.includes(o));
     a.set({ left: a.left + dx, top: a.top + dy });
     a.setCoords();
+    shiftObjects(inside, dx, dy);
     if (isConnector(a)) a.set({ fromId: null, toId: null }); // mover una flecha a mano la desengancha
-    const ids = c.getActiveObjects().map((o) => o.id).filter((id): id is string => !!id);
+    const ids = [...selected, ...inside].map((o) => o.id).filter((id): id is string => !!id);
     refreshConnectors(c, new Set(ids));
     c.requestRenderAll();
     commitSoon();
@@ -696,10 +703,19 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     if (!c) return;
     const objs = takeSelection();
     const movable = objs.filter((o) => !isConnector(o));
+    // lo de adentro de cada sección (que no se esté acomodando también) va con ella; se busca antes de mover
+    const taken = new Set<FabricObject>(objs);
+    const inside = movable.map((o) => {
+      if (!isSection(o)) return [];
+      const mine = sectionContents(c, o).filter((x) => !taken.has(x));
+      mine.forEach((x) => taken.add(x)); // dentro de dos secciones acomodadas, se mueve una sola vez
+      return mine;
+    });
     deltasFor(movable.map(shapeBox), movable).forEach((d, i) => {
       const o = movable[i];
       o.set({ left: o.left + d.dx, top: o.top + d.dy });
       o.setCoords();
+      shiftObjects(inside[i], d.dx, d.dy);
     });
     refreshConnectors(c);
     select(objs);
@@ -1456,7 +1472,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       if (!c || !e.clipboardData || typingIn(e.target)) return;
       const ctx = { focusInBoard: focusOk(e.target), hasSelection: c.getActiveObjects().length > 0, textSelected: !!window.getSelection()?.toString() };
       if (!shouldIntercept({ type: "copy" }, ctx)) return; // texto de la página: copia normal
-      const items = act.current.copySelection();
+      const items = act.current.copySelection(cut);
       if (!items) return;
       e.preventDefault();
       e.clipboardData.setData(BOARD_MIME, encodeClip(projectId, items));

@@ -1,6 +1,6 @@
-import { IText, Point, Rect, classRegistry, type Canvas, type FabricObject, type TBBox } from "fabric";
+import { IText, Point, Rect, classRegistry, type Canvas, type FabricObject, type Line, type TBBox } from "fabric";
 import { uid } from "../../utils";
-import { shapeBox } from "./connectors";
+import { isConnector, lineEnds, setLineEnds, shapeBox } from "./connectors";
 import type { Box } from "./geometry";
 import { SECTION_HEADER, inSection, sectionHit, sectionOrder } from "./sections";
 import { isTransient, markTransient, prepareObject } from "./shapes";
@@ -60,6 +60,22 @@ export function createSection(box: Box, title: string): Frame {
 export function sectionContents(canvas: Canvas, section: FabricObject): FabricObject[] {
   const b = shapeBox(section);
   return canvas.getObjects().filter((o) => o !== section && !isTransient(o) && !o.group && inSection(b, shapeBox(o)));
+}
+
+/**
+ * Desplaza objetos (lo de adentro de una sección que se movió con el teclado o al alinear). Las
+ * flechas se mueven por sus extremos: después refreshConnectors reacomoda los enganchados.
+ */
+export function shiftObjects(objs: FabricObject[], dx: number, dy: number) {
+  for (const o of objs) {
+    if (isConnector(o)) {
+      const { start, end } = lineEnds(o as Line);
+      setLineEnds(o as Line, { x: start.x + dx, y: start.y + dy }, { x: end.x + dx, y: end.y + dy });
+    } else {
+      o.set({ left: o.left + dx, top: o.top + dy });
+      o.setCoords();
+    }
+  }
 }
 
 /** Las secciones van al fondo, las más grandes más atrás (se llama antes de registrar cada cambio). */
