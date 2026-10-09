@@ -37,8 +37,9 @@ export function Minimap({ canvas, onViewport }: { canvas: Canvas; onViewport: ()
       const v = getViewport(canvas);
       const view: Box = { left: -v.x / v.zoom, top: -v.y / v.zoom, width: canvas.width / v.zoom, height: canvas.height / v.zoom };
       const objs = canvas.getObjects().filter((o) => !isTransient(o) && o.visible);
+      const boxes = objs.map(shapeBox); // una vez por dibujo: se usan para el encuadre y para dibujar
       if (!dragging.current || !fit.current) {
-        const world = unionBoxes([view, ...objs.map(shapeBox)])!;
+        const world = unionBoxes([view, ...boxes])!;
         const pad = Math.max(world.width, world.height) * 0.05;
         fit.current = mapFit({ left: world.left - pad, top: world.top - pad, width: world.width + pad * 2, height: world.height + pad * 2 }, W, H);
       }
@@ -46,9 +47,9 @@ export function Minimap({ canvas, onViewport }: { canvas: Canvas; onViewport: ()
       const rect = (b: Box) => [f.x + b.left * f.scale, f.y + b.top * f.scale, Math.max(b.width * f.scale, 1.5), Math.max(b.height * f.scale, 1.5)] as const;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, W, H);
-      for (const o of objs) {
-        if (o.kind && SKIP.includes(o.kind)) continue;
-        const [x, y, w, h] = rect(shapeBox(o));
+      objs.forEach((o, i) => {
+        if (o.kind && SKIP.includes(o.kind)) return;
+        const [x, y, w, h] = rect(boxes[i]);
         if (o.kind === "frame") {
           ctx.fillStyle = "#ffffff";
           ctx.fillRect(x, y, w, h);
@@ -59,7 +60,7 @@ export function Minimap({ canvas, onViewport }: { canvas: Canvas; onViewport: ()
           ctx.fillStyle = (o.kind && COLORS[o.kind]) || "#94a3b8";
           ctx.fillRect(x, y, w, h);
         }
-      }
+      });
       const [x, y, w, h] = rect(view);
       ctx.fillStyle = "rgba(91, 108, 255, 0.1)";
       ctx.fillRect(x, y, w, h);
