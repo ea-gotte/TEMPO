@@ -19,7 +19,8 @@ export type KeyAction =
   | { type: "escape" }
   | { type: "fit" }
   | { type: "spaceDown" }
-  | { type: "spaceUp" };
+  | { type: "spaceUp" }
+  | { type: "help" };
 
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
@@ -40,6 +41,7 @@ export function keyToAction(e: KeyLike, phase: "down" | "up", editing: boolean):
   if (space) return { type: "spaceDown" };
   if (e.key === "Delete" || e.key === "Backspace") return { type: "delete" };
   if (e.key === "Escape") return { type: "escape" };
+  if (e.key === "?") return { type: "help" };
   const arrow = ARROWS[e.key];
   if (arrow) {
     const step = e.shiftKey ? 10 : 1;

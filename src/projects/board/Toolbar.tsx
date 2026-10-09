@@ -41,6 +41,7 @@ export interface ToolbarProps {
   onFullscreen: () => void;
   onClear: () => void;
   saveState: SaveState;
+  onHelp: () => void;
 }
 
 const GROUPS: ToolGroup[] = ["nav", "ideas", "diagram", "markup", "common"];
@@ -87,6 +88,7 @@ export function Toolbar(p: ToolbarProps) {
         <span className="bd-spacer" />
         <span className={`bd-save ${p.saveState}`} role="status" aria-live="polite">{SAVE_LABEL[p.saveState]}</span>
         <div className="bd-group">
+          <Btn icon="info" label="Atajos de teclado (?)" onClick={p.onHelp} />
           <Btn icon="download" label="Exportar PNG" onClick={p.onExport} />
           <Btn icon={p.fullscreen ? "minimize" : "maximize"} label={p.fullscreen ? "Salir de pantalla completa" : "Pantalla completa"} onClick={p.onFullscreen} />
           <Btn icon="trash" label="Vaciar el tablero" danger onClick={p.onClear} />

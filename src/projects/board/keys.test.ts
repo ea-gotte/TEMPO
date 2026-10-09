@@ -75,3 +75,10 @@ describe("shouldIntercept", () => {
     expect(shouldIntercept({ type: "tool", tool: "note" }, { ...ctx, hasSelection: false })).toBe(true);
   });
 });
+
+describe("ayuda de atajos", () => {
+  it("? abre la ayuda (en teclado español es Shift + ')", () => {
+    expect(keyToAction(k("?", { shiftKey: true, code: "Minus" }), "down", false)).toEqual({ type: "help" });
+    expect(keyToAction(k("?", { shiftKey: true, code: "Slash" }), "down", false)).toEqual({ type: "help" });
+  });
+});

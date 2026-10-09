@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActiveSelection, IText, type Canvas, type FabricObject } from "fabric";
 import { Icon } from "../../components/Icon";
+import { ContextMenu, type CtxItem } from "../../components/ui";
 import { today, uid } from "../../utils";
 import { boardEpoch, loadBoard, saveBoard, type BoardDoc } from "./boardStore";
 import { applyToolMode, attachPanZoom, createBoardCanvas, exportPng, fitToContent, getViewport, setViewport, viewCenter, zoomAt, zoomStep } from "./canvas";
@@ -13,6 +14,7 @@ import { attachKeys, shouldIntercept, type KeyAction } from "./keys";
 import { BOARD_MIME, decodeClip, encodeClip, pasteOffset, textOf } from "./clipboard";
 import { bakeScaledLabels, createLabeled, editLabel, isLabeled } from "./labels";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { ShortcutsHelp } from "./ShortcutsHelp";
 import { insertCopies, restore, snapshot } from "./serialize";
 import { applyLock, createImage, isTransient, prepareObject, replaceObject } from "./shapes";
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
@@ -88,6 +90,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
+  const [help, setHelp] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number; items: CtxItem[] } | null>(null);
   const noticeTimer = useRef(0);
 
   /** Aviso dentro del tablero: a diferencia de los toasts de la app, también se ve en pantalla completa. */
@@ -426,7 +430,12 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       case "selectAll": selectAll(); break;
       case "delete": removeSelection(); break;
       case "nudge": nudge(a.dx, a.dy); break;
+      case "help":
+        setHelp((h) => !h);
+        break;
       case "escape":
+        setHelp(false);
+        setMenu(null);
         c.discardActiveObject();
         c.requestRenderAll();
         setTool("select");
@@ -450,9 +459,44 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     }
   };
 
+  /** Menú del clic derecho: acciones sobre lo seleccionado, o sobre el lienzo si se hizo en vacío. */
+  const openMenu = (x: number, y: number, target: FabricObject | undefined, at: Pt) => {
+    const c = cRef.current;
+    if (!c) return;
+    pointer.current = at; // "Pegar aquí" pega donde se hizo clic
+    const items: CtxItem[] = [];
+    if (target?.lockedByUser) {
+      items.push({ label: "Desbloquear", ico: "unlock", onClick: () => setLocked([target], false) });
+    } else if (target) {
+      if (!c.getActiveObjects().includes(target)) {
+        c.setActiveObject(target);
+        c.requestRenderAll();
+        refreshPanel();
+      }
+      items.push(
+        { label: "Copiar", ico: "copy", onClick: () => document.execCommand("copy") },
+        { label: "Cortar", onClick: () => document.execCommand("cut") },
+        { label: "Duplicar", onClick: () => void duplicate() },
+        { label: "Traer al frente", ico: "bring-front", onClick: () => reorder(true) },
+        { label: "Enviar al fondo", ico: "send-back", onClick: () => reorder(false) },
+        { label: "Bloquear", ico: "lock", onClick: () => setLocked(takeSelection(), true) },
+        { label: "Eliminar", ico: "trash", danger: true, onClick: () => removeSelection() },
+      );
+    } else {
+      c.discardActiveObject();
+      c.requestRenderAll();
+      if (clipboard.current.length) items.push({ label: "Pegar aquí", ico: "clipboard", onClick: () => void pasteObjects(clipboard.current, clipSource.current) });
+      items.push(
+        { label: "Seleccionar todo", onClick: () => selectAll() },
+        { label: "Ajustar al contenido", ico: "scan", onClick: () => { fitToContent(c); onViewport(); } },
+      );
+    }
+    setMenu({ x, y, items });
+  };
+
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
-    duplicate, clearBoard, addImages, exportBoard, startOver, onKey,
+    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu,
   };
   const act = useRef(actions);
   act.current = actions;
@@ -488,6 +532,13 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const edit = (g: Parameters<typeof editLabel>[1]) => editLabel(c, g, () => { refreshConnectors(c); refreshPanel(); commit(); });
 
     const offs: (() => void)[] = [
+      // clic derecho: Fabric corta la propagación del evento del navegador, así que se usa el suyo
+      c.on("contextmenu", (o) => {
+        const e = o.e as MouseEvent;
+        if (toolRef.current !== "select" || spaceHeld.current) return;
+        const p = c.getScenePoint(e);
+        act.current.openMenu(e.clientX, e.clientY, o.target, { x: p.x, y: p.y });
+      }),
       attachPanZoom(c, { panMode: () => toolRef.current === "hand" || spaceHeld.current, onChange: onViewport }),
       attachDrawing(c, {
         // con Espacio apretado se desplaza la vista: no se dibuja aunque haya una herramienta de dibujo elegida
@@ -781,6 +832,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         }}
         onClear={() => act.current.clearBoard()}
         saveState={saveState}
+        onHelp={() => setHelp((h) => !h)}
       />
 
       {banner?.kind === "unavailable" && (
@@ -827,6 +879,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         <div className="bd-canvas" ref={hostRef} />
         {!ready && <div className="bd-loading">Cargando el tablero…</div>}
         {notice && <div className="bd-notice" role="status">{notice}</div>}
+        {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
+        {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
         {sel ? (
           <PropertiesPanel
             count={sel.count}
