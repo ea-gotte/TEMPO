@@ -21,7 +21,10 @@ export type KeyAction =
   | { type: "spaceDown" }
   | { type: "spaceUp" }
   | { type: "help" }
-  | { type: "toggleSnap" };
+  | { type: "toggleSnap" }
+  | { type: "find" }
+  | { type: "front" }
+  | { type: "back" };
 
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
@@ -36,6 +39,9 @@ export function keyToAction(e: KeyLike, phase: "down" | "up", editing: boolean):
     if (key === "y") return { type: "redo" };
     if (key === "d") return { type: "duplicate" };
     if (key === "a") return { type: "selectAll" };
+    if (key === "f") return { type: "find" };
+    if (e.key === "]") return { type: "front" };
+    if (e.key === "[") return { type: "back" };
     return null; // Ctrl+C, Ctrl+X y Ctrl+V: los manejan los eventos copy/cut/paste del tablero
   }
   if (e.altKey) return null;
@@ -66,7 +72,7 @@ export interface InterceptContext {
 export function shouldIntercept(a: KeyAction, ctx: InterceptContext): boolean {
   if (!ctx.focusInBoard) return false;
   if (a.type === "copy") return ctx.hasSelection && !ctx.textSelected;
-  if (a.type === "nudge" || a.type === "delete") return ctx.hasSelection;
+  if (a.type === "nudge" || a.type === "delete" || a.type === "front" || a.type === "back") return ctx.hasSelection;
   return true;
 }
 

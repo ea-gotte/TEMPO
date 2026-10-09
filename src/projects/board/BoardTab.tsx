@@ -16,9 +16,11 @@ import { createHistory } from "./history";
 import { readImage, validateImageFile } from "./image";
 import { attachKeys, shouldIntercept, type KeyAction } from "./keys";
 import { BOARD_MIME, decodeClip, encodeClip, pasteOffset, textOf } from "./clipboard";
-import { bakeScaledLabels, createLabeled, editLabel, isLabeled } from "./labels";
+import { bakeScaledLabels, createLabeled, editLabel, isLabeled, readLabeled } from "./labels";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { ShortcutsHelp } from "./ShortcutsHelp";
+import { SearchBar } from "./SearchBar";
+import { findMatches } from "./search";
 import { insertCopies, restore, snapshot } from "./serialize";
 import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject } from "./shapes";
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
@@ -100,6 +102,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const [notice, setNotice] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [help, setHelp] = useState(false);
+  const [search, setSearch] = useState<{ query: string; ids: string[]; index: number } | null>(null);
   // ajustar a la cuadrícula: preferencia de quien mira, recordada en este navegador
   const [snapOn, setSnapOn] = useState(() => {
     try {
@@ -462,6 +465,15 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       case "selectAll": selectAll(); break;
       case "delete": removeSelection(); break;
       case "nudge": nudge(a.dx, a.dy); break;
+      case "find":
+        setSearch((s) => s ?? { query: "", ids: [], index: 0 });
+        break;
+      case "front":
+        reorder(true);
+        break;
+      case "back":
+        reorder(false);
+        break;
       case "toggleSnap":
         toggleSnap();
         break;
@@ -591,6 +603,45 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const openTemplates = (x: number, y: number) =>
     setMenu({ x, y, items: TEMPLATES.map((t) => ({ label: t.label, onClick: () => insertTemplate(t) })) });
+
+  /** Texto de un objeto, para buscar: notas, formas, textos, observaciones y cotas. */
+  const objectText = (o: FabricObject): string => {
+    if (isLabeled(o)) return readLabeled(o).text ?? "";
+    if (o.kind === "text") return (o as IText).text;
+    if (o.kind === "marker") return `Observación ${o.num}`;
+    if (o.kind === "measure") return o.measureLabel ?? "";
+    return "";
+  };
+
+  /** Selecciona el objeto (si no está bloqueado) y centra la vista en él, sin cambiar el zoom. */
+  const focusObject = (id: string) => {
+    const c = cRef.current;
+    const o = c?.getObjects().find((x) => x.id === id);
+    if (!c || !o) return;
+    const b = shapeBox(o);
+    const z = c.getZoom();
+    setViewport(c, { zoom: z, x: c.width / 2 - (b.left + b.width / 2) * z, y: c.height / 2 - (b.top + b.height / 2) * z });
+    onViewport();
+    if (o.selectable) c.setActiveObject(o);
+    else c.discardActiveObject();
+    c.requestRenderAll();
+    refreshPanel();
+  };
+
+  const runSearch = (query: string) => {
+    const c = cRef.current;
+    if (!c) return;
+    const ids = findMatches(c.getObjects().filter((o) => o.id).map((o) => ({ id: o.id!, text: objectText(o) })), query);
+    setSearch({ query, ids, index: 0 });
+    if (ids.length) focusObject(ids[0]);
+  };
+
+  const stepSearch = (dir: 1 | -1) => {
+    if (!search || !search.ids.length) return;
+    const index = (search.index + dir + search.ids.length) % search.ids.length;
+    setSearch({ ...search, index });
+    focusObject(search.ids[index]);
+  };
 
   /** Menú del clic derecho: acciones sobre lo seleccionado, o sobre el lienzo si se hizo en vacío. */
   const openMenu = (x: number, y: number, target: FabricObject | undefined, at: Pt) => {
@@ -991,6 +1042,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         snap={snapOn}
         onToggleSnap={() => act.current.toggleSnap()}
         onTemplates={(x, y) => act.current.openTemplates(x, y)}
+        onSearch={() => setSearch((s) => s ?? { query: "", ids: [], index: 0 })}
       />
 
       {banner?.kind === "unavailable" && (
@@ -1043,6 +1095,17 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         <div className="bd-canvas" ref={hostRef} />
         {!ready && <div className="bd-loading">Cargando el tablero…</div>}
         {notice && <div className="bd-notice" role="status">{notice}</div>}
+        {search && (
+          <SearchBar
+            query={search.query}
+            count={search.ids.length}
+            index={search.index}
+            onQuery={(q) => runSearch(q)}
+            onNext={() => stepSearch(1)}
+            onPrev={() => stepSearch(-1)}
+            onClose={() => setSearch(null)}
+          />
+        )}
         {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
         {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
         {sel ? (

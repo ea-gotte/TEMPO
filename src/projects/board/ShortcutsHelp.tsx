@@ -10,6 +10,8 @@ const EDIT: [string, string][] = [
   ["Ctrl + C  ·  Ctrl + X  ·  Ctrl + V", "Copiar, cortar y pegar (también entre proyectos)"],
   ["Ctrl + D", "Duplicar"],
   ["Ctrl + A", "Seleccionar todo (menos lo bloqueado)"],
+  ["Ctrl + F", "Buscar texto en el tablero"],
+  ["Ctrl + ]  ·  Ctrl + [", "Traer al frente  ·  Enviar al fondo"],
   ["Supr  ·  Retroceso", "Eliminar"],
   ["Flechas  ·  Shift + flechas", "Mover 1 px  ·  10 px"],
   ["Doble clic", "Escribir en una nota o forma"],

@@ -89,3 +89,15 @@ describe("cuadrícula", () => {
     expect(keyToAction(k("g"), "down", true)).toBeNull();
   });
 });
+
+describe("buscar y ordenar", () => {
+  it("Ctrl+F busca en el tablero", () => {
+    expect(keyToAction(k("f", { ctrlKey: true }), "down", false)).toEqual({ type: "find" });
+  });
+  it("Ctrl+] trae al frente y Ctrl+[ envía al fondo (solo con algo seleccionado)", () => {
+    expect(keyToAction(k("]", { ctrlKey: true }), "down", false)).toEqual({ type: "front" });
+    expect(keyToAction(k("[", { ctrlKey: true }), "down", false)).toEqual({ type: "back" });
+    expect(shouldIntercept({ type: "front" }, { focusInBoard: true, hasSelection: false, textSelected: false })).toBe(false);
+    expect(shouldIntercept({ type: "back" }, { focusInBoard: true, hasSelection: true, textSelected: false })).toBe(true);
+  });
+});
