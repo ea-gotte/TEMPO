@@ -552,16 +552,39 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   };
 
   /** Exporta a PNG solo lo seleccionado (por ejemplo, un plano con sus marcas). */
+  /** Lo que sale en la imagen de una selección: una sección, con lo que tiene adentro. */
+  const withContents = (c: Canvas, objs: FabricObject[]) => [...new Set(objs.flatMap((o) => (isSection(o) ? [o, ...sectionContents(c, o)] : [o])))];
+
   const exportSelection = async () => {
     const c = cRef.current;
     const objs = takeSelection();
     if (!c || !objs.length) return;
-    // una sección se exporta con lo que tiene adentro
-    const all = [...new Set(objs.flatMap((o) => (isSection(o) ? [o, ...sectionContents(c, o)] : [o])))];
-    const res = await exportPng(c, all);
+    const res = await exportPng(c, withContents(c, objs));
     select(objs);
     if (res === "failed") notify("No se pudo exportar la selección: la imagen resultante es demasiado grande para el navegador.");
     else if (res !== "empty") download(res, `tablero-${slug(fileLabel)}-seleccion-${today()}.png`);
+  };
+
+  /** Copia la selección como imagen (para pegarla en un correo, un chat o un documento). */
+  const copySelectionImage = async () => {
+    const c = cRef.current;
+    const objs = takeSelection();
+    if (!c || !objs.length) return;
+    // la imagen se entrega como promesa: así el navegador sigue tomando la copia como pedida por el clic
+    const png = exportPng(c, withContents(c, objs)).then((r) => {
+      if (r instanceof Blob) return r;
+      throw new Error(r);
+    });
+    let ok = false;
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+      ok = true;
+    } catch {
+      /* sin permiso, sin soporte o imagen demasiado grande: se avisa abajo */
+    }
+    await png.catch(() => undefined); // que termine de exportar antes de volver a seleccionar
+    select(objs);
+    notify(ok ? "Imagen copiada: pegala en un correo, un chat o un documento." : "No se pudo copiar la imagen: usá Exportar selección (PNG).");
   };
 
   const startOver = () => {
@@ -907,6 +930,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         { label: "Traer al frente", ico: "bring-front", onClick: () => reorder(true) },
         { label: "Enviar al fondo", ico: "send-back", onClick: () => reorder(false) },
         { label: "Bloquear", ico: "lock", onClick: () => setLocked(takeSelection(), true) },
+        { label: "Copiar como imagen", ico: "image", onClick: () => void copySelectionImage() },
         { label: "Exportar selección (PNG)", ico: "download", onClick: () => void exportSelection() },
         { label: "Eliminar", ico: "trash", danger: true, onClick: () => removeSelection() },
       );
@@ -997,7 +1021,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
-    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, sortByVotes, vote, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openStamps, openSections, startPresent, stopPresent, sectionsInOrder, openMoreMenu, importFile, rotateSelection,
+    duplicate, copySelectionImage, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, sortByVotes, vote, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openStamps, openSections, startPresent, stopPresent, sectionsInOrder, openMoreMenu, importFile, rotateSelection,
     setMarkerInfo, copyObservations, renumberMarkers, setLink, openLink,
   };
   const act = useRef(actions);
