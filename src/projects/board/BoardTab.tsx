@@ -123,6 +123,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     link: { id: string; url: string } | null;
     votes: number | null;
     canSortByVotes: boolean;
+    canRotate: boolean;
   } | null>(null);
   const [obsOpen, setObsOpen] = useState(false);
   /** Sube con cada cambio registrado (y al deshacer): la lista de observaciones se vuelve a leer del lienzo */
@@ -247,6 +248,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       count: objs.length,
       style: mergeStyles(objs.map(readStyle)),
       image: img ? { calibrated: !!img.mPerPx } : null,
+      canRotate: !objs.some(isSection),
       marker: mk ? { id: mk.id!, num: mk.num ?? 0, detail: mk.detail ?? "", resolved: !!mk.resolved } : null,
       link: objs.length === 1 && objs[0].id ? { id: objs[0].id, url: objs[0].link ?? "" } : null,
       votes: objs.length === 1 && isLabeled(objs[0]) ? objs[0].votes ?? 0 : null,
@@ -958,7 +960,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             ]
           : []),
         { label: "Duplicar", onClick: () => void duplicate() },
-        { label: "Girar 90°", ico: "rotate-cw", onClick: () => rotateSelection() },
+        ...(c.getActiveObjects().some(isSection) ? [] : [{ label: "Girar 90°", ico: "rotate-cw" as const, onClick: () => rotateSelection() }]),
         { label: "Traer al frente", ico: "bring-front", onClick: () => reorder(true) },
         { label: "Enviar al fondo", ico: "send-back", onClick: () => reorder(false) },
         { label: "Bloquear", ico: "lock", onClick: () => setLocked(takeSelection(), true) },
@@ -986,7 +988,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const rotateSelection = () => {
     const c = cRef.current;
     const t = c?.getActiveObject();
-    if (!c || !t || isSection(t)) return;
+    if (!c || !t || c.getActiveObjects().some(isSection)) return;
     t.rotate((Math.round(t.angle / 90) * 90 + 90) % 360);
     t.setCoords();
     c.fire("object:modified", { target: t } as Parameters<typeof c.fire<"object:modified">>[1]);
@@ -1170,6 +1172,14 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       });
     };
 
+    /** Una selección múltiple con alguna sección no se gira ni se espeja (como la sección sola). */
+    const guardSections = () => {
+      const a = c.getActiveObject();
+      if (!(a instanceof ActiveSelection) || !a.getObjects().some(isSection)) return;
+      a.set({ lockRotation: true, lockScalingFlip: true });
+      a.setControlsVisibility({ mtr: false });
+    };
+
     /** Al terminar de mover, escalar o girar a mano: rehace lo que haga falta, reacomoda las flechas y registra. */
     function afterModified(t: FabricObject) {
       if (t instanceof ActiveSelection) {
@@ -1184,6 +1194,13 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
           quiet.current = false;
           // las cotas giradas o escaladas en grupo vuelven a escala 1 y sin giro, como al tocarlas solas
           for (const o of objs) if (o.kind === "measure") { const e = lineEnds(o as Line); setLineEnds(o as Line, e.start, e.end); }
+          // las secciones escaladas en grupo guardan el tamaño en su ancho y alto (el título no se deforma)
+          for (const o of objs) {
+            if (isSection(o) && (o.scaleX !== 1 || o.scaleY !== 1)) {
+              o.set({ width: o.width * Math.abs(o.scaleX), height: o.height * Math.abs(o.scaleY), scaleX: 1, scaleY: 1, flipX: false, flipY: false });
+              o.setCoords();
+            }
+          }
           const baked = new Map(bakeScaledLabels(c, objs).map((g) => [g.id, g]));
           refreshConnectors(c);
           act.current.select(objs.map((o) => (o.id && baked.get(o.id)) || o));
@@ -1365,8 +1382,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         else if (isSection(t)) editSectionTitle(c, t, () => { refreshPanel(); commit(); });
         else if (isConnector(t)) editCaption(c, t, () => { refreshPanel(); commit(); });
       }),
-      c.on("selection:created", () => { setLockedFocus(null); refreshPanel(); }),
-      c.on("selection:updated", () => { setLockedFocus(null); refreshPanel(); }),
+      c.on("selection:created", () => { setLockedFocus(null); guardSections(); refreshPanel(); }),
+      c.on("selection:updated", () => { setLockedFocus(null); guardSections(); refreshPanel(); }),
       c.on("selection:cleared", () => {
         refreshPanel();
         if (restoring.current || quiet.current) return;
@@ -1749,7 +1766,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             onBack={() => act.current.reorder(false)}
             onLock={() => act.current.setLocked(act.current.takeSelection(), true)}
             onDuplicate={() => void act.current.duplicate()}
-            onRotate={() => act.current.rotateSelection()}
+            onRotate={sel.canRotate ? () => act.current.rotateSelection() : undefined}
             onDelete={() => act.current.removeSelection()}
             onAlign={(m) => act.current.alignSelection(m)}
             onDistribute={(a) => act.current.distributeSelection(a)}

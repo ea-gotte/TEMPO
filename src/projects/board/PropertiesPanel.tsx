@@ -24,7 +24,8 @@ export interface PanelProps {
   onBack: () => void;
   onLock: () => void;
   onDuplicate: () => void;
-  onRotate: () => void;
+  /** Sin función: no se ofrece (las secciones no se giran) */
+  onRotate?: () => void;
   onDelete: () => void;
   onAlign: (mode: AlignMode) => void;
   onDistribute: (axis: "h" | "v") => void;
@@ -214,7 +215,7 @@ export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onL
         <Btn icon="send-back" label="Enviar al fondo" onClick={onBack} />
         <Btn icon="lock" label="Bloquear (para marcar encima sin moverlo)" onClick={onLock} />
         <Btn icon="copy" label="Duplicar (Ctrl+D)" onClick={onDuplicate} />
-        <Btn icon="rotate-cw" label="Girar 90° a la derecha" onClick={onRotate} />
+        {onRotate && <Btn icon="rotate-cw" label="Girar 90° a la derecha" onClick={onRotate} />}
         <Btn icon="download" label="Exportar la selección (PNG)" onClick={onExport} />
         <Btn icon="trash" label="Eliminar (Supr)" danger onClick={onDelete} />
       </div>

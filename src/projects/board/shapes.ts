@@ -244,7 +244,8 @@ export function applyLock(o: FabricObject, locked: boolean) {
     lockMovementY: locked,
     lockScalingX: locked,
     lockScalingY: locked,
-    lockRotation: locked,
+    // una sección nunca se gira (su título quedaría de costado)
+    lockRotation: locked || o.kind === "frame",
     hoverCursor: locked ? "default" : null,
   });
 }
@@ -262,7 +263,10 @@ export function prepareObject(o: FabricObject) {
   // una imagen (un plano) se agranda o achica solo desde las esquinas: estirarla la deformaría y arruinaría su escala
   if (o.kind === "image") o.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
   // una sección no se gira (su título quedaría de costado)
-  if (o.kind === "frame") o.setControlsVisibility({ mtr: false });
+  if (o.kind === "frame") {
+    o.setControlsVisibility({ mtr: false });
+    o.lockScalingFlip = true; // ni espejada (el título se vería al revés)
+  }
   applyLock(o, !!o.lockedByUser);
 }
 
