@@ -6,6 +6,12 @@ import { useEffect, useRef, useState } from "react";
  * el navegador avise que el campo perdió el foco). Así cada cambio es un solo paso de deshacer.
  * `onSave` puede devolver false para rechazar lo escrito.
  */
+/** Los campos abiertos, para registrar lo escrito al cerrar o recargar la página (ver flushDrafts). */
+const open = new Set<() => void>();
+
+/** Registra lo escrito en todos los campos abiertos (al cerrar o recargar la página, o al desarmar el tablero). */
+export const flushDrafts = () => open.forEach((flush) => flush());
+
 export function useDraft(value: string, onSave: (text: string) => boolean | void) {
   const [draft, setDraft] = useState(value);
   const latest = useRef({ draft: value, saved: value, onSave });
@@ -21,7 +27,13 @@ export function useDraft(value: string, onSave: (text: string) => boolean | void
       change(prev);
     }
   };
-  useEffect(() => flush, []);
+  useEffect(() => {
+    open.add(flush);
+    return () => {
+      open.delete(flush);
+      flush();
+    };
+  }, []);
   const change = (text: string) => {
     latest.current.draft = text;
     setDraft(text);

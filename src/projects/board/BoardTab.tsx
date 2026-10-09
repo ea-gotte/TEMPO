@@ -37,6 +37,7 @@ import { applyLock, createConnector, createImage, createText, isTransient, prepa
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
 import { mergeStyles } from "./styleMerge";
 import { SAVE_LABEL, Toolbar, type Pen, type SaveState } from "./Toolbar";
+import { flushDrafts } from "./useDraft";
 import { INK, NOTE_COLORS, type Tool } from "./tools";
 import "./board.css";
 
@@ -1452,6 +1453,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const finishEditing = () => {
       const a = c.getActiveObject();
       if (a instanceof IText && a.isEditing) a.exitEditing();
+      // lo escrito en un campo del panel (descripción de una observación, enlace) y todavía sin registrar
+      flushDrafts();
     };
     const onHidden = () => {
       if (document.visibilityState !== "hidden") return;
