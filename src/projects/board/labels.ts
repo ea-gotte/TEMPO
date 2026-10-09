@@ -49,7 +49,8 @@ export function createLabeled(s: LabeledSpec): Group {
   const boxW = Math.max(s.box.width, 24);
   const boxH = Math.max(s.box.height, 24);
   const note = s.kind === "note";
-  const wanted = s.fontSize ?? (note ? 18 : 16);
+  // acotado: achicar la letra de a 1 px desde un tamaño absurdo colgaría la página
+  const wanted = Math.min(200, Math.max(8, s.fontSize ?? (note ? 18 : 16)));
   const area = textArea(s.kind, boxW, boxH);
   const label = new Textbox(s.text ?? "", {
     left: 0,

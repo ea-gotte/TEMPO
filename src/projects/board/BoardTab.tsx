@@ -27,6 +27,7 @@ import { Minimap } from "./Minimap";
 import { findMatches } from "./search";
 import { insertCopies, restore, snapshot } from "./serialize";
 import { decodeBoardFile, encodeBoardFile, itemsBounds } from "./boardFile";
+import { sanitizeBoardItems } from "./sanitize";
 import { relinkAfterAltDrag, type Link } from "./altDrag";
 import { normalizeLink } from "./links";
 import { attachSectionPicking, createSection, editSectionTitle, isSection, keepSectionsBack, sectionContents } from "./frames";
@@ -47,6 +48,8 @@ import "./board.css";
  */
 
 const SNAP_KEY = "tempo-tablero-cuadricula";
+/** Tope de un archivo de tablero a importar */
+const IMPORT_MAX_BYTES = 50 * 1024 * 1024;
 const MAP_KEY = "tempo-tablero-minimapa";
 
 type Banner = { kind: "unavailable" } | { kind: "quota"; mb: number } | { kind: "corrupt"; raw: unknown };
@@ -399,7 +402,12 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const same = sourceProject === projectId;
     pasteCount.current = same ? pasteCount.current + 1 : 0;
     const { dx, dy } = pasteOffset(items, pastePoint(), same, pasteCount.current);
-    const objs = await insertCopies(c, items, dx, dy);
+    let objs: FabricObject[];
+    try {
+      objs = await insertCopies(c, items, dx, dy);
+    } catch {
+      return notify("No se pudo pegar: lo copiado está dañado.");
+    }
     refreshConnectors(c);
     select(objs);
     commit();
@@ -523,6 +531,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const importFile = async (file: File) => {
     const c = cRef.current;
     if (!c) return;
+    if (file.size > IMPORT_MAX_BYTES) return notify("El archivo es demasiado grande para importarlo (más de 50 MB).");
     let text: string;
     try {
       text = await file.text();
@@ -531,14 +540,17 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     }
     const parsed = decodeBoardFile(text);
     if (!parsed) return notify("Ese archivo no es un tablero: elegí un .json descargado desde un tablero (Más → Descargar el tablero).");
-    const bounds = itemsBounds(parsed.objects);
-    if (!bounds) return notify("El tablero de ese archivo está vacío.");
+    // lo que viene de afuera se filtra antes de dárselo a Fabric (ver sanitize.ts)
+    const objects = sanitizeBoardItems(parsed.objects);
+    const skipped = parsed.objects.length - objects.length;
+    const bounds = itemsBounds(objects);
+    if (!bounds) return notify(skipped ? "El archivo no tiene elementos que se puedan agregar." : "El tablero de ese archivo está vacío.");
     const occupied = c.getObjects().filter((o) => !isTransient(o)).map(shapeBox);
     const { dx, dy } = templateOffset(bounds, viewCenter(c), occupied);
     c.discardActiveObject();
     let objs: FabricObject[];
     try {
-      objs = await insertCopies(c, parsed.objects, dx, dy, true);
+      objs = await insertCopies(c, objects, dx, dy, true);
     } catch {
       return notify("El archivo del tablero está dañado: no se pudo agregar.");
     }
@@ -548,7 +560,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     onViewport();
     select(objs);
     commit();
-    notify(`Se agregó ${parsed.project ? `el tablero «${parsed.project}»` : "el tablero del archivo"} (${objs.length} elementos).`);
+    const omitted = skipped === 1 ? " Se omitió 1 que no era válido." : skipped ? ` Se omitieron ${skipped} que no eran válidos.` : "";
+    notify(`Se agregó ${parsed.project ? `el tablero «${parsed.project}»` : "el tablero del archivo"} (${objs.length} elementos).${omitted}`);
   };
 
   /** Exporta a PNG solo lo seleccionado (por ejemplo, un plano con sus marcas). */
@@ -992,7 +1005,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   /** Abre el enlace del objeto en otra pestaña (se vuelve a validar: pudo venir en un tablero importado). */
   const openLink = (o: FabricObject | null | undefined) => {
-    const url = o?.link ? normalizeLink(o.link) : null;
+    const url = typeof o?.link === "string" ? normalizeLink(o.link) : null;
     if (url) window.open(url, "_blank", "noopener,noreferrer");
   };
 
@@ -1460,7 +1473,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       const text = e.clipboardData.getData("text/plain").trim();
       if (board) {
         e.preventDefault();
-        void act.current.pasteObjects(board.objects, board.projectId);
+        // lo del portapapeles del sistema puede venir de cualquier página: se filtra (ver sanitize.ts)
+        void act.current.pasteObjects(sanitizeBoardItems(board.objects), board.projectId);
       } else if (files.length) {
         e.preventDefault();
         void act.current.addImages(files);

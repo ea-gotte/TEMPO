@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Icon } from "../../components/Icon";
 import { useDraft } from "./useDraft";
+import { isSafeColor } from "./sanitize";
 import { filterObservations, observationCounts, renumberObservations, type Observation, type ObservationFilter } from "./observations";
 
 export type ObservationItem = Observation & { color: string };
@@ -72,7 +73,7 @@ export function ObservationsPanel({ items, below, onFocus, onDetail, onResolved,
           <ol className="bd-obs-list">
             {shown.map((o) => (
               <li key={o.id} className={`bd-obs-item${o.resolved ? " resolved" : ""}`}>
-                <button type="button" className="bd-obs-num" style={{ background: o.color }} title="Ir a la observación" aria-label={`Ir a la observación ${o.num}`} onClick={() => onFocus(o.id)}>
+                <button type="button" className="bd-obs-num" style={{ background: isSafeColor(o.color) ? o.color : "#e11d48" }} title="Ir a la observación" aria-label={`Ir a la observación ${o.num}`} onClick={() => onFocus(o.id)}>
                   {o.num}
                 </button>
                 <div className="bd-obs-body">

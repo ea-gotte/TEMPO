@@ -136,7 +136,7 @@ export class Arrow extends Line {
     const segs = pts.slice(1).map((q, i) => [pts[i], q] as const);
     const len = ([p, q]: readonly [Pt, Pt]) => Math.abs(q.x - p.x) + Math.abs(q.y - p.y);
     const [m1, m2] = n === 4 ? segs[1] : segs.reduce((best, s) => (len(s) > len(best) ? s : best));
-    if (this.caption) drawUpright(ctx, this, (m1.x + m2.x) / 2, (m1.y + m2.y) / 2, this.caption, 500);
+    if (this.caption) drawUpright(ctx, this, (m1.x + m2.x) / 2, (m1.y + m2.y) / 2, String(this.caption), 500);
   }
 
 
@@ -218,7 +218,7 @@ export class AreaMeasure extends Polygon {
     super._render(ctx);
     if (!this.measureLabel) return;
     const c = polygonCentroid(this.points);
-    drawUpright(ctx, this, c.x - this.pathOffset.x, c.y - this.pathOffset.y, this.measureLabel, 600);
+    drawUpright(ctx, this, c.x - this.pathOffset.x, c.y - this.pathOffset.y, String(this.measureLabel), 600);
   }
 }
 classRegistry.setClass(AreaMeasure);
