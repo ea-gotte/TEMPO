@@ -140,3 +140,32 @@ export function heightForText(kind: LabelShape, h: number, textHeight: number, p
   const needed = k < 1 ? textHeight / k : textHeight + pad * 2;
   return Math.max(h, Math.ceil(needed));
 }
+
+/**
+ * Tamaño que necesita una forma para que su texto entre. `measure(anchoDelTexto)` devuelve el
+ * alto que ocupa el texto con ese ancho de renglón. Rectángulo y nota crecen solo en alto; la
+ * elipse y el rombo crecen en ancho y alto manteniendo la proporción (si no, quedarían
+ * alargados): se busca el factor mínimo, porque al ensancharse el texto ocupa menos renglones.
+ */
+export function sizeForText(
+  kind: LabelShape, w: number, h: number, measure: (textWidth: number) => number, pad = LABEL_PAD,
+): { w: number; h: number } {
+  if (LABEL_RATIO[kind] === 1) return { w, h: heightForText(kind, h, measure(textArea(kind, w, h, pad).width), pad) };
+  const fits = (s: number) => {
+    const a = textArea(kind, w * s, h * s, pad);
+    return measure(a.width) <= a.height;
+  };
+  if (fits(1)) return { w, h };
+  let lo = 1;
+  let hi = 2;
+  while (!fits(hi) && hi < 64) {
+    lo = hi;
+    hi *= 2;
+  }
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    if (fits(mid)) hi = mid;
+    else lo = mid;
+  }
+  return { w: Math.ceil(w * hi - 1e-6), h: Math.ceil(h * hi - 1e-6) };
+}

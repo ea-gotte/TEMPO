@@ -1,6 +1,6 @@
 import { Ellipse, Group, Polygon, Rect, Shadow, Textbox, type Canvas, type FabricObject } from "fabric";
 import { uid } from "../../utils";
-import { heightForText, textArea, type Box } from "./geometry";
+import { sizeForText, textArea, type Box } from "./geometry";
 import { markTransient, prepareObject, replaceObject } from "./shapes";
 import { FONT, INK, NOTE_COLORS } from "./tools";
 
@@ -41,11 +41,11 @@ function fitText(t: Textbox, maxHeight: number, min: number) {
 }
 
 export function createLabeled(s: LabeledSpec): Group {
-  const w = Math.max(s.box.width, 24);
+  const boxW = Math.max(s.box.width, 24);
   const boxH = Math.max(s.box.height, 24);
   const note = s.kind === "note";
   const wanted = s.fontSize ?? (note ? 18 : 16);
-  const area = textArea(s.kind, w, boxH);
+  const area = textArea(s.kind, boxW, boxH);
   const label = new Textbox(s.text ?? "", {
     left: 0,
     top: 0,
@@ -56,8 +56,15 @@ export function createLabeled(s: LabeledSpec): Group {
     textAlign: "center",
   });
   fitText(label, Math.max(area.height, 12), Math.min(MIN_FONT, wanted));
-  // si con la letra mínima el texto todavía no entra, la forma crece en alto (el borde de arriba queda fijo)
-  const h = heightForText(s.kind, boxH, label.height);
+  // si con la letra mínima el texto todavía no entra, la forma crece (la esquina de arriba a la izquierda
+  // queda fija): rectángulo y nota en alto; elipse y rombo en ancho y alto, manteniendo la proporción
+  const measure = (textWidth: number) => {
+    label.set({ width: Math.max(textWidth, 16) });
+    label.initDimensions();
+    return label.height;
+  };
+  const { w, h } = sizeForText(s.kind, boxW, boxH, measure);
+  measure(textArea(s.kind, w, h).width); // el renglón definitivo, para el tamaño elegido
   const base = {
     left: 0,
     top: 0,

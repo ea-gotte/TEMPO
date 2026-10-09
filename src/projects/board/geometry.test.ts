@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   anchorOnBox, boxFromPoints, clampZoom, cloudPath, connectorEnds, exportScale, fitScale, fitViewport, gridSpec,
-  heightForText, squareFromPoints, textArea, unionBoxes,
+  heightForText, sizeForText, squareFromPoints, textArea, unionBoxes,
 } from "./geometry";
 
 // Caja de 100 × 50 con centro en (50, 25)
@@ -117,5 +117,26 @@ describe("formas con texto", () => {
     expect(heightForText("note", 200, 300)).toBe(324);
     expect(heightForText("ellipse", 100, 140)).toBe(200); // 140 / 0,7
     expect(heightForText("diamond", 100, 90)).toBe(180); // 90 / 0,5
+  });
+});
+
+describe("sizeForText", () => {
+  // texto de "área" fija: cuanto más ancho el renglón, menos alto ocupa
+  const measure = (textWidth: number) => 10000 / textWidth;
+
+  it("si el texto entra, la forma no cambia", () => {
+    expect(sizeForText("diamond", 400, 400, measure)).toEqual({ w: 400, h: 400 });
+  });
+  it("el rombo crece en ancho y alto, manteniendo la proporción", () => {
+    expect(sizeForText("diamond", 100, 100, measure)).toEqual({ w: 200, h: 200 }); // 10000 / (50·2) = 100 ≤ 50·2
+  });
+  it("la elipse crece lo mínimo para que el texto entre", () => {
+    const r = sizeForText("ellipse", 200, 100, measure);
+    expect(r).toEqual({ w: 203, h: 102 });
+    expect(r.w / r.h).toBeCloseTo(2, 1);
+  });
+  it("rectángulo y nota crecen solo en alto", () => {
+    expect(sizeForText("rect", 100, 40, measure)).toEqual({ w: 100, h: 156 }); // 10000 / 76 + 24
+    expect(sizeForText("note", 100, 40, measure).w).toBe(100);
   });
 });
