@@ -44,6 +44,8 @@ export interface ToolbarProps {
   onClear: () => void;
   saveState: SaveState;
   onHelp: () => void;
+  /** Abre el menú de plantillas debajo del botón (coordenadas de la ventana) */
+  onTemplates: (x: number, y: number) => void;
   snap: boolean;
   onToggleSnap: () => void;
 }
@@ -93,6 +95,18 @@ export function Toolbar(p: ToolbarProps) {
         <span className="bd-spacer" />
         <span className={`bd-save ${p.saveState}`} role="status" aria-live="polite">{SAVE_LABEL[p.saveState]}</span>
         <div className="bd-group">
+          <button
+            type="button"
+            className="bd-btn"
+            title="Plantillas"
+            aria-label="Plantillas"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              p.onTemplates(r.left, r.bottom + 4);
+            }}
+          >
+            <Icon name="dashboard" size={17} />
+          </button>
           <Btn icon="info" label="Atajos de teclado (?)" onClick={p.onHelp} />
           <Btn icon="download" label="Exportar PNG" onClick={p.onExport} />
           <Btn icon={p.fullscreen ? "minimize" : "maximize"} label={p.fullscreen ? "Salir de pantalla completa" : "Pantalla completa"} onClick={p.onFullscreen} />

@@ -9,7 +9,8 @@ import { isConnector, lineEnds, refreshConnectors, setLineEnds, shapeBox } from 
 import { parseMeters } from "./measure";
 import { calibrateImage, refreshMeasures } from "./measures";
 import { attachDrawing } from "./draw";
-import { fitScale, gridSpec, snapDelta, type Box, type Pt } from "./geometry";
+import { connectorEnds, fitScale, gridSpec, snapDelta, type Box, type Pt } from "./geometry";
+import { TEMPLATES, templateBounds, templateOffset, type Template } from "./templates";
 import { alignDeltas, distributeDeltas, type AlignMode } from "./align";
 import { createHistory } from "./history";
 import { readImage, validateImageFile } from "./image";
@@ -19,7 +20,7 @@ import { bakeScaledLabels, createLabeled, editLabel, isLabeled } from "./labels"
 import { PropertiesPanel } from "./PropertiesPanel";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { insertCopies, restore, snapshot } from "./serialize";
-import { applyLock, createImage, isTransient, prepareObject, replaceObject } from "./shapes";
+import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject } from "./shapes";
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
 import { mergeStyles } from "./styleMerge";
 import { Toolbar, type Pen, type SaveState } from "./Toolbar";
@@ -554,6 +555,43 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     notify("Escala calibrada: ya podés medir sobre el plano con la herramienta Medir (K).");
   };
 
+  /** Crea una plantilla centrada en la vista, con sus flechas enganchadas; es un solo paso de deshacer. */
+  const insertTemplate = (t: Template) => {
+    const c = cRef.current;
+    if (!c) return;
+    const b = templateBounds(t);
+    // al centro de la vista; si ahí ya hay algo, a la derecha de todo (no se encima con lo existente)
+    const occupied = c.getObjects().filter((o) => !isTransient(o)).map(shapeBox);
+    const { dx, dy } = templateOffset(b, viewCenter(c), occupied);
+    c.discardActiveObject();
+    const objs: FabricObject[] = t.items.map((it) => {
+      const box = { left: it.x + dx, top: it.y + dy, width: it.w, height: it.h };
+      if (it.kind !== "text") return createLabeled({ kind: it.kind, box, text: it.text, fill: it.fill });
+      const title = createText({ x: box.left + it.w / 2, y: box.top + it.h / 2 });
+      title.set({ text: it.text, width: it.w, fontSize: 24, fontWeight: "bold" });
+      return title;
+    });
+    objs.forEach((o) => c.add(o));
+    for (const [from, to] of t.links) {
+      const a = objs[from];
+      const z = objs[to];
+      const ends = connectorEnds(shapeBox(a), shapeBox(z), { x: 0, y: 0 }, { x: 0, y: 0 });
+      const arrow = createConnector("arrow", ends.start, ends.end);
+      arrow.set({ fromId: a.id, toId: z.id });
+      c.add(arrow);
+      objs.push(arrow);
+    }
+    // la vista se centra en la plantilla nueva (puede haber quedado fuera de pantalla)
+    const z = c.getZoom();
+    setViewport(c, { zoom: z, x: c.width / 2 - (b.left + dx + b.width / 2) * z, y: c.height / 2 - (b.top + dy + b.height / 2) * z });
+    onViewport();
+    select(objs);
+    commit();
+  };
+
+  const openTemplates = (x: number, y: number) =>
+    setMenu({ x, y, items: TEMPLATES.map((t) => ({ label: t.label, onClick: () => insertTemplate(t) })) });
+
   /** Menú del clic derecho: acciones sobre lo seleccionado, o sobre el lienzo si se hizo en vacío. */
   const openMenu = (x: number, y: number, target: FabricObject | undefined, at: Pt) => {
     const c = cRef.current;
@@ -592,7 +630,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
-    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration,
+    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates,
   };
   const act = useRef(actions);
   act.current = actions;
@@ -952,6 +990,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         onHelp={() => setHelp((h) => !h)}
         snap={snapOn}
         onToggleSnap={() => act.current.toggleSnap()}
+        onTemplates={(x, y) => act.current.openTemplates(x, y)}
       />
 
       {banner?.kind === "unavailable" && (
