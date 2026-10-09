@@ -55,17 +55,7 @@ export function distributeDeltas(boxes: Box[], axis: "h" | "v"): Delta[] {
  * Con `score` (por ejemplo, los votos de cada nota), primero los de más puntaje.
  */
 export function gridDeltas(boxes: Box[], gap = 24, score?: number[]): Delta[] {
-  // filas: un elemento sigue en la fila si empieza antes de la mitad del primero de ella
-  const rows: number[][] = [];
-  let limit = -Infinity;
-  for (const i of boxes.map((_, i) => i).sort((a, b) => boxes[a].top - boxes[b].top)) {
-    if (rows.length && boxes[i].top < limit) rows[rows.length - 1].push(i);
-    else {
-      rows.push([i]);
-      limit = boxes[i].top + boxes[i].height / 2;
-    }
-  }
-  const reading = rows.flatMap((r) => r.sort((a, b) => boxes[a].left - boxes[b].left));
+  const reading = readingOrder(boxes);
   // a igual puntaje se mantiene el orden de lectura (sort es estable)
   const order = score ? [...reading].sort((a, b) => score[b] - score[a]) : reading;
   const cols = Math.ceil(Math.sqrt(boxes.length));
@@ -78,4 +68,21 @@ export function gridDeltas(boxes: Box[], gap = 24, score?: number[]): Delta[] {
     out[i] = { dx: left + (k % cols) * cellW - boxes[i].left, dy: top + Math.floor(k / cols) * cellH - boxes[i].top };
   });
   return out;
+}
+
+/**
+ * Orden de lectura (índices): por filas de arriba a abajo y, en cada fila, de izquierda a derecha.
+ * Un elemento sigue en la fila si empieza antes de la mitad del primero de ella.
+ */
+export function readingOrder(boxes: Box[]): number[] {
+  const rows: number[][] = [];
+  let limit = -Infinity;
+  for (const i of boxes.map((_, i) => i).sort((a, b) => boxes[a].top - boxes[b].top)) {
+    if (rows.length && boxes[i].top < limit) rows[rows.length - 1].push(i);
+    else {
+      rows.push([i]);
+      limit = boxes[i].top + boxes[i].height / 2;
+    }
+  }
+  return rows.flatMap((r) => r.sort((a, b) => boxes[a].left - boxes[b].left));
 }

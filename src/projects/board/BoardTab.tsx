@@ -11,7 +11,7 @@ import { calibrateImage, refreshMeasures } from "./measures";
 import { attachDrawing } from "./draw";
 import { connectorEnds, fitScale, fitViewport, gridSpec, snapDelta, unionBoxes, type Box, type Pt } from "./geometry";
 import { TEMPLATES, templateBounds, templateOffset, type Template } from "./templates";
-import { alignDeltas, distributeDeltas, gridDeltas, type AlignMode } from "./align";
+import { alignDeltas, distributeDeltas, gridDeltas, readingOrder, type AlignMode } from "./align";
 import { createHistory } from "./history";
 import { readImage, validateImageFile } from "./image";
 import { attachKeys, shouldIntercept, type KeyAction } from "./keys";
@@ -129,6 +129,10 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const [banner, setBanner] = useState<Banner | null>(null);
   const [lockPrompt, setLockPrompt] = useState<FabricObject | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  /** Presentación: índice de la sección que se muestra (null = no se presenta) */
+  const [present, setPresent] = useState<number | null>(null);
+  /** La pantalla completa la puso la presentación: al salir de una se sale de la otra */
+  const presentFs = useRef(false);
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
@@ -507,6 +511,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       x,
       y,
       items: [
+        { label: "Presentar las secciones", ico: "play", onClick: () => startPresent() },
         { label: "Exportar imagen PNG", ico: "image", onClick: () => void exportBoard() },
         { label: "Descargar el tablero (.json)", ico: "download", onClick: exportFile },
         { label: "Importar un tablero (.json)…", ico: "upload", onClick: () => importRef.current?.click() },
@@ -785,18 +790,47 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     commit();
   };
 
-  /** Lista de secciones (por posición, de arriba a abajo): elegir una encuadra la vista en ella. */
+  /** Secciones en orden de lectura (por filas, de izquierda a derecha): así se listan y se presentan. */
+  const sectionsInOrder = () => {
+    const c = cRef.current;
+    if (!c) return [];
+    const sections = c.getObjects().filter(isSection);
+    return readingOrder(sections.map(shapeBox)).map((i) => sections[i]);
+  };
+
+  /** Lista de secciones: elegir una encuadra la vista en ella; también se pueden presentar una por una. */
   const openSections = (x: number, y: number) => {
     const c = cRef.current;
     if (!c) return;
-    const sections = c.getObjects().filter(isSection).sort((a, b) => a.top - b.top || a.left - b.left);
+    const sections = sectionsInOrder();
     setMenu({
       x,
       y,
       items: sections.length
-        ? sections.map((s) => ({ label: s.caption || "Sección", onClick: () => { fitToObjects(c, [s]); onViewport(); } }))
+        ? [
+            { label: "Presentar las secciones", ico: "play", onClick: () => startPresent() },
+            ...sections.map((s) => ({ label: s.caption || "Sección", onClick: () => { fitToObjects(c, [s]); onViewport(); } })),
+          ]
         : [{ label: "No hay secciones: creá una con la herramienta Sección (F)", onClick: () => setTool("frame") }],
     });
+  };
+
+  /** Presentar: las secciones una por una, a pantalla completa (← → para pasar, Esc para salir). */
+  const startPresent = () => {
+    if (!sectionsInOrder().length) return notify("Para presentar, ordená el tablero en secciones (herramienta Sección, F): se muestran una por una.");
+    cRef.current?.discardActiveObject();
+    setTool("select");
+    setMenu(null);
+    if (!document.fullscreenElement && rootRef.current?.requestFullscreen) {
+      presentFs.current = true;
+      rootRef.current.requestFullscreen().catch(() => { presentFs.current = false; });
+    }
+    setPresent(0);
+  };
+  const stopPresent = () => {
+    setPresent(null);
+    if (presentFs.current && document.fullscreenElement) void document.exitFullscreen();
+    presentFs.current = false;
   };
 
   const openStamps = (x: number, y: number) =>
@@ -963,7 +997,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
-    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, sortByVotes, vote, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openStamps, openSections, openMoreMenu, importFile, rotateSelection,
+    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, sortByVotes, vote, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openStamps, openSections, startPresent, stopPresent, sectionsInOrder, openMoreMenu, importFile, rotateSelection,
     setMarkerInfo, copyObservations, renumberMarkers, setLink, openLink,
   };
   const act = useRef(actions);
@@ -1425,10 +1459,52 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     };
   }, []);
 
+  // presentación: encuadra la sección actual (también cuando cambia el tamaño al entrar en pantalla completa)
+  useEffect(() => {
+    if (present === null) return;
+    const t = window.setTimeout(() => {
+      const c = cRef.current;
+      const s = act.current.sectionsInOrder()[present];
+      if (!c || !s) return;
+      fitToObjects(c, [s]);
+      onViewport();
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [present, fullscreen, onViewport]);
+
+  // presentación: ← → (o Av Pág / Re Pág / Espacio) pasan de sección, Esc sale; antes que los atajos del tablero
+  useEffect(() => {
+    if (present === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target;
+      if (t instanceof HTMLElement && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      const n = act.current.sectionsInOrder().length;
+      if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") setPresent((i) => Math.min(n - 1, (i ?? 0) + 1));
+      else if (e.key === "ArrowLeft" || e.key === "PageUp") setPresent((i) => Math.max(0, (i ?? 0) - 1));
+      else if (e.key === "Escape") act.current.stopPresent();
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [present]);
+
   useEffect(() => {
     const onChange = () => setFullscreen(document.fullscreenElement === rootRef.current);
     document.addEventListener("fullscreenchange", onChange);
-    return () => document.removeEventListener("fullscreenchange", onChange);
+    // si la presentación puso la pantalla completa y se sale de ella (Esc del navegador), termina la presentación
+    const onExit = () => {
+      if (!document.fullscreenElement && presentFs.current) {
+        presentFs.current = false;
+        setPresent(null);
+      }
+    };
+    document.addEventListener("fullscreenchange", onExit);
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange);
+      document.removeEventListener("fullscreenchange", onExit);
+    };
   }, []);
 
   useEffect(() => {
@@ -1575,6 +1651,24 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             onClose={() => setObsOpen(false)}
           />
         )}
+        {present !== null && (() => {
+          const list = act.current.sectionsInOrder();
+          const s = list[present];
+          return (
+            <div className="bd-present" role="toolbar" aria-label="Presentación de las secciones">
+              <button type="button" className="bd-btn" aria-label="Sección anterior (←)" title="Anterior (←)" disabled={present === 0} onClick={() => setPresent(present - 1)}>
+                <Icon name="arrow-left" size={15} />
+              </button>
+              <span className="bd-present-title">
+                {s?.caption || "Sección"} <span className="bd-present-count">{present + 1} de {list.length}</span>
+              </span>
+              <button type="button" className="bd-btn" aria-label="Sección siguiente (→)" title="Siguiente (→)" disabled={present >= list.length - 1} onClick={() => setPresent(present + 1)}>
+                <Icon name="arrow-right" size={15} />
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => act.current.stopPresent()}>Salir (Esc)</button>
+            </div>
+          );
+        })()}
         {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
         {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
         {sel ? (

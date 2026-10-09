@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignDeltas, distributeDeltas, gridDeltas } from "./align";
+import { alignDeltas, distributeDeltas, gridDeltas, readingOrder } from "./align";
 
 // tres cajas de distinto tamaño
 const a = { left: 0, top: 0, width: 100, height: 50 };
@@ -72,5 +72,16 @@ describe("gridDeltas por votos", () => {
     // votos: 1, 5, 0, 5 → orden 1, 3, 0, 2 en una cuadrícula de 2 columnas
     const placed = gridDeltas(boxes, 10, [1, 5, 0, 5]).map((d, i) => ({ x: boxes[i].left + d.dx, y: d.dy }));
     expect(placed).toEqual([{ x: 0, y: 60 }, { x: 0, y: 0 }, { x: 60, y: 60 }, { x: 60, y: 0 }]);
+  });
+});
+
+describe("readingOrder", () => {
+  it("por filas de arriba a abajo y, en cada fila, de izquierda a derecha (aunque no estén alineadas justas)", () => {
+    const boxes = [
+      { left: 600, top: 20, width: 400, height: 300 }, // 1.ª fila, 2.º
+      { left: 0, top: 500, width: 400, height: 300 }, // 2.ª fila
+      { left: 0, top: 0, width: 500, height: 300 }, // 1.ª fila, 1.º
+    ];
+    expect(readingOrder(boxes)).toEqual([2, 0, 1]);
   });
 });

@@ -29,6 +29,7 @@ const VIEW: [string, string][] = [
   ["Espacio + arrastrar", "Desplazar la vista"],
   ["Shift + 1", "Ajustar al contenido"],
   ["Shift + 2", "Encuadrar la selección"],
+  ["← →  ·  Esc", "Al presentar las secciones: pasar de una a otra · salir"],
   ["G", "Ajustar a la cuadrícula (activar o desactivar)"],
   ["?", "Esta ayuda"],
 ];

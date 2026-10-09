@@ -148,3 +148,11 @@
 
 /* Votos (panel de propiedades) */
 .bd-votes { min-width: 22px; text-align: center; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--text); }
+
+/* Presentación de las secciones */
+.bd-present {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+}
+.bd-present-title { font-weight: 650; font-size: 13px; color: var(--text); padding: 0 6px; white-space: nowrap; max-width: 50vw; overflow: hidden; text-overflow: ellipsis; }
+.bd-present-count { font-weight: 500; color: var(--text-3); margin-left: 6px; font-variant-numeric: tabular-nums; }
