@@ -145,3 +145,6 @@
   position: absolute; right: 12px; bottom: 40px; cursor: pointer; touch-action: none;
   background: #f8f9fb; border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-md);
 }
+
+/* Votos (panel de propiedades) */
+.bd-votes { min-width: 22px; text-align: center; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--text); }

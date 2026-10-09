@@ -115,6 +115,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     image: { calibrated: boolean } | null;
     marker: { id: string; num: number; detail: string; resolved: boolean } | null;
     link: { id: string; url: string } | null;
+    votes: number | null;
+    canSortByVotes: boolean;
   } | null>(null);
   const [obsOpen, setObsOpen] = useState(false);
   /** Sube con cada cambio registrado (y al deshacer): la lista de observaciones se vuelve a leer del lienzo */
@@ -237,6 +239,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       image: img ? { calibrated: !!img.mPerPx } : null,
       marker: mk ? { id: mk.id!, num: mk.num ?? 0, detail: mk.detail ?? "", resolved: !!mk.resolved } : null,
       link: objs.length === 1 && objs[0].id ? { id: objs[0].id, url: objs[0].link ?? "" } : null,
+      votes: objs.length === 1 && isLabeled(objs[0]) ? objs[0].votes ?? 0 : null,
+      canSortByVotes: objs.length > 1 && objs.some((o) => o.votes),
     } : null);
   }, []);
 
@@ -645,12 +649,12 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   };
 
   /** Alinear o distribuir la selección; las flechas no se mueven solas: siguen a sus formas. */
-  const arrange = (deltasFor: (boxes: Box[]) => { dx: number; dy: number }[]) => {
+  const arrange = (deltasFor: (boxes: Box[], objs: FabricObject[]) => { dx: number; dy: number }[]) => {
     const c = cRef.current;
     if (!c) return;
     const objs = takeSelection();
     const movable = objs.filter((o) => !isConnector(o));
-    deltasFor(movable.map(shapeBox)).forEach((d, i) => {
+    deltasFor(movable.map(shapeBox), movable).forEach((d, i) => {
       const o = movable[i];
       o.set({ left: o.left + d.dx, top: o.top + d.dy });
       o.setCoords();
@@ -662,6 +666,30 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const alignSelection = (mode: AlignMode) => arrange((boxes) => alignDeltas(boxes, mode));
   const distributeSelection = (axis: "h" | "v") => arrange((boxes) => distributeDeltas(boxes, axis));
   const tidySelection = () => arrange((boxes) => gridDeltas(boxes));
+  /** Ordenar en cuadrícula con los más votados primero (lluvia de ideas). */
+  const sortByVotes = () => arrange((boxes, objs) => gridDeltas(boxes, 24, objs.map((o) => o.votes ?? 0)));
+
+  /** Votar (+1) o quitar un voto a las notas y formas seleccionadas. */
+  const vote = (delta: 1 | -1) => {
+    const c = cRef.current;
+    if (!c) return;
+    const targets = c.getActiveObjects().filter(isLabeled);
+    if (!targets.length) return;
+    for (const o of targets) o.set({ votes: Math.max(0, (o.votes ?? 0) + delta) || undefined });
+    c.requestRenderAll();
+    refreshPanel();
+    commit();
+  };
+
+  /** Empezar otra votación: quita los votos de todo el tablero. */
+  const clearVotes = () => {
+    const c = cRef.current;
+    if (!c) return;
+    c.getObjects().forEach((o) => o.votes && o.set({ votes: undefined }));
+    c.requestRenderAll();
+    refreshPanel();
+    commit();
+  };
 
   /** Calibrar la escala de la imagen seleccionada: se traza una línea sobre una distancia conocida. */
   const startCalibration = () => {
@@ -828,6 +856,12 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       items.push(
         { label: "Copiar", ico: "copy", onClick: () => document.execCommand("copy") },
         { label: "Cortar", onClick: () => document.execCommand("cut") },
+        ...(isLabeled(target)
+          ? [
+              { label: "Votar (+1)", ico: "star" as const, onClick: () => vote(1) },
+              ...(target.votes ? [{ label: "Quitar un voto", onClick: () => vote(-1) }] : []),
+            ]
+          : []),
         { label: "Duplicar", onClick: () => void duplicate() },
         { label: "Girar 90°", ico: "rotate-cw", onClick: () => rotateSelection() },
         { label: "Traer al frente", ico: "bring-front", onClick: () => reorder(true) },
@@ -844,6 +878,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         { label: "Seleccionar todo", onClick: () => selectAll() },
         { label: "Ajustar al contenido", ico: "scan", onClick: () => { fitToContent(c); onViewport(); } },
       );
+      if (c.getObjects().some((o) => o.votes)) items.push({ label: "Borrar todos los votos", onClick: () => clearVotes() });
     }
     setMenu({ x, y, items });
   };
@@ -922,7 +957,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
-    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openStamps, openSections, openMoreMenu, importFile, rotateSelection,
+    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, sortByVotes, vote, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openStamps, openSections, openMoreMenu, importFile, rotateSelection,
     setMarkerInfo, copyObservations, renumberMarkers, setLink, openLink,
   };
   const act = useRef(actions);
@@ -1155,10 +1190,31 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         section = { frame: tr.target, left: tr.target.left, top: tr.target.top, items };
       }),
       c.on("mouse:up", () => { section = null; }),
-      // distintivo de los objetos con enlace (en pantalla, no al exportar)
+      // distintivos en pantalla (no al exportar): enlace arriba a la derecha, votos abajo a la derecha
       c.on("after:render", ({ ctx }) => {
         if (ctx !== c.getContext()) return;
         const v = c.viewportTransform;
+        for (const o of c.getObjects()) {
+          if (!o.votes || !o.visible || isTransient(o)) continue;
+          const r = o.getBoundingRect();
+          const label = `● ${o.votes}`;
+          ctx.save();
+          ctx.font = "bold 12px system-ui, sans-serif";
+          const w = ctx.measureText(label).width + 12;
+          const x = (r.left + r.width) * v[0] + v[4] - w + 6;
+          const y = (r.top + r.height) * v[3] + v[5] - 6;
+          ctx.beginPath();
+          ctx.roundRect(x - 6, y - 10, w, 20, 10);
+          ctx.fillStyle = "#e11d48";
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = "#ffffff";
+          ctx.stroke();
+          ctx.fillStyle = "#ffffff";
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, x, y + 0.5);
+          ctx.restore();
+        }
         for (const o of c.getObjects()) {
           if (!o.link || !o.visible || isTransient(o)) continue;
           const r = o.getBoundingRect();
@@ -1537,6 +1593,10 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             link={sel.link}
             onLink={(id, t) => act.current.setLink(id, t)}
             onOpenLink={() => act.current.openLink(cRef.current?.getActiveObject())}
+            votes={sel.votes}
+            onVote={(d) => act.current.vote(d)}
+            canSortByVotes={sel.canSortByVotes}
+            onSortByVotes={() => act.current.sortByVotes()}
           />
         ) : lockedFocus ? (
           <aside className="bd-panel" aria-label="Elemento bloqueado">

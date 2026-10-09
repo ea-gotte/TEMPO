@@ -65,3 +65,12 @@ describe("gridDeltas", () => {
     ]);
   });
 });
+
+describe("gridDeltas por votos", () => {
+  it("con puntaje, primero los más votados; a igual puntaje, en orden de lectura", () => {
+    const boxes = [0, 1, 2, 3].map((i) => ({ left: i * 100, top: 0, width: 50, height: 50 }));
+    // votos: 1, 5, 0, 5 → orden 1, 3, 0, 2 en una cuadrícula de 2 columnas
+    const placed = gridDeltas(boxes, 10, [1, 5, 0, 5]).map((d, i) => ({ x: boxes[i].left + d.dx, y: d.dy }));
+    expect(placed).toEqual([{ x: 0, y: 60 }, { x: 0, y: 0 }, { x: 60, y: 60 }, { x: 60, y: 0 }]);
+  });
+});

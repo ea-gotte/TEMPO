@@ -52,8 +52,9 @@ export function distributeDeltas(boxes: Box[], axis: "h" | "v"): Delta[] {
  * Ordenar en cuadrícula (p. ej. notas sueltas de una lluvia de ideas): en orden de lectura
  * (por filas, de izquierda a derecha), con tantas columnas como la raíz de la cantidad y celdas
  * del tamaño del elemento más grande, desde la esquina superior izquierda de la selección.
+ * Con `score` (por ejemplo, los votos de cada nota), primero los de más puntaje.
  */
-export function gridDeltas(boxes: Box[], gap = 24): Delta[] {
+export function gridDeltas(boxes: Box[], gap = 24, score?: number[]): Delta[] {
   // filas: un elemento sigue en la fila si empieza antes de la mitad del primero de ella
   const rows: number[][] = [];
   let limit = -Infinity;
@@ -64,7 +65,9 @@ export function gridDeltas(boxes: Box[], gap = 24): Delta[] {
       limit = boxes[i].top + boxes[i].height / 2;
     }
   }
-  const order = rows.flatMap((r) => r.sort((a, b) => boxes[a].left - boxes[b].left));
+  const reading = rows.flatMap((r) => r.sort((a, b) => boxes[a].left - boxes[b].left));
+  // a igual puntaje se mantiene el orden de lectura (sort es estable)
+  const order = score ? [...reading].sort((a, b) => score[b] - score[a]) : reading;
   const cols = Math.ceil(Math.sqrt(boxes.length));
   const cellW = Math.max(...boxes.map((b) => b.width)) + gap;
   const cellH = Math.max(...boxes.map((b) => b.height)) + gap;

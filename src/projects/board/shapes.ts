@@ -39,6 +39,8 @@ declare module "fabric" {
     resolved?: boolean;
     /** Enlace a un documento, carpeta o plano (Ctrl+clic lo abre) */
     link?: string;
+    /** Votos de una nota o forma (lluvia de ideas) */
+    votes?: number;
   }
   interface SerializedObjectProps {
     id?: string;
@@ -56,11 +58,12 @@ declare module "fabric" {
     detail?: string;
     resolved?: boolean;
     link?: string;
+    votes?: number;
   }
 }
 
 // Propiedades propias que viajan al guardar (spec §4)
-FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads", "num", "mPerPx", "measureLabel", "caption", "detail", "resolved", "link"];
+FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads", "num", "mPerPx", "measureLabel", "caption", "detail", "resolved", "link", "votes"];
 
 /** Tamaño de letra del texto de flechas y líneas. */
 export const CAPTION_SIZE = 14;
@@ -314,6 +317,7 @@ export async function createImage(dataUrl: string, at: Pt, scale = 1): Promise<F
 export function replaceObject(canvas: Canvas, oldObj: FabricObject, next: FabricObject) {
   // lo que no depende de la forma pasa al objeto nuevo (al editar el texto, cambiar el estilo o el tamaño)
   if (oldObj.link && next.link === undefined) next.set({ link: oldObj.link });
+  if (oldObj.votes && next.votes === undefined) next.set({ votes: oldObj.votes });
   const i = canvas.getObjects().indexOf(oldObj);
   canvas.remove(oldObj);
   canvas.insertAt(i < 0 ? canvas.getObjects().length : i, next);

@@ -39,6 +39,12 @@ export interface PanelProps {
   /** false si el enlace no es válido (el campo vuelve al anterior) */
   onLink: (id: string, text: string) => boolean;
   onOpenLink: () => void;
+  /** Votos de la nota o forma seleccionada (null si no aplica) */
+  votes: number | null;
+  onVote: (delta: 1 | -1) => void;
+  /** Varias seleccionadas y alguna con votos: se pueden ordenar por votos */
+  canSortByVotes: boolean;
+  onSortByVotes: () => void;
 }
 
 /** Selector de color libre (además de la paleta). Con valores mixtos o sin color parte de un gris. */
@@ -79,7 +85,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onRotate, onDelete, onAlign, onDistribute, onTidy, onExport, image, onCalibrate, marker, onMarker, link, onLink, onOpenLink }: PanelProps) {
+export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onRotate, onDelete, onAlign, onDistribute, onTidy, onExport, image, onCalibrate, marker, onMarker, link, onLink, onOpenLink, votes, onVote, canSortByVotes, onSortByVotes }: PanelProps) {
   const fills = s.kind === "note" ? NOTE_COLORS : FILL_COLORS;
   // el resaltador tiene sus propios colores claros y trazos anchos
   const hl = s.strokeLabel === "Resaltador";
@@ -158,6 +164,13 @@ export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onL
           </select>
         </Row>
       )}
+      {votes !== null && (
+        <Row label="Votos">
+          <button type="button" className="bd-chip" aria-label="Quitar un voto" title="Quitar un voto" disabled={!votes} onClick={() => onVote(-1)}>−</button>
+          <span className="bd-votes" aria-live="polite">{votes}</span>
+          <button type="button" className="bd-chip" aria-label="Votar" title="Votar (+1)" onClick={() => onVote(1)}>+</button>
+        </Row>
+      )}
       {link && (
         <Row label="Enlace">
           <LinkField key={link.id + link.url} value={link.url} onSave={(t) => onLink(link.id, t)} onOpen={onOpenLink} />
@@ -183,6 +196,7 @@ export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onL
           <Btn icon="align-bottom" label="Alinear abajo" onClick={() => onAlign("bottom")} />
           {count > 2 && <Btn icon="distribute-h" label="Distribuir horizontalmente" onClick={() => onDistribute("h")} />}
           {count > 2 && <Btn icon="distribute-v" label="Distribuir verticalmente" onClick={() => onDistribute("v")} />}
+          {canSortByVotes && <Btn icon="star" label="Ordenar por votos (los más votados primero)" onClick={onSortByVotes} />}
           <Btn icon="grid" label="Ordenar en cuadrícula" onClick={onTidy} />
         </Row>
       )}
