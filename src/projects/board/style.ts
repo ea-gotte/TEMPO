@@ -57,6 +57,7 @@ export function readStyle(o: FabricObject): StyleState {
     return { ...base, stroke: String(t.fill), fontSize: t.fontSize, strokeLabel: "Color del texto", weight: t.fontWeight === "bold" ? "bold" : "normal" };
   }
   if (o.kind === "marker") return { ...base, stroke: String((o as Group).getObjects()[0].fill), strokeLabel: "Color" };
+  if (o.kind === "frame") return { ...base, fill: String(o.fill), stroke: String(o.stroke) };
   // el resaltador se guarda con transparencia: el panel muestra su color pleno
   if (o.kind === "highlight") return { ...base, stroke: toHex(String(o.stroke)), strokeWidth: o.strokeWidth, strokeLabel: "Resaltador" };
   if (o.kind && LINES.includes(o.kind)) {
@@ -87,6 +88,9 @@ export function applyStyle(o: FabricObject, p: StylePatch): FabricObject {
       (o as Group).getObjects()[0].set({ fill: rest.stroke });
       o.set({ dirty: true });
     }
+  } else if (o.kind === "frame") {
+    if (rest.fill) o.set({ fill: rest.fill });
+    if (rest.stroke) o.set({ stroke: rest.stroke });
   } else if (o.kind === "highlight") {
     if (rest.stroke) o.set({ stroke: withAlpha(toHex(rest.stroke), HIGHLIGHT_ALPHA) });
     if (rest.strokeWidth) o.set({ strokeWidth: rest.strokeWidth });

@@ -11,7 +11,7 @@ import { FONT, INK, REVIEW_RED } from "./tools";
  * objeto es su CENTRO, así que left/top = centro.
  */
 
-export type Kind = "note" | "rect" | "ellipse" | "diamond" | "line" | "arrow" | "cloud" | "text" | "path" | "highlight" | "marker" | "measure" | "area" | "image";
+export type Kind = "note" | "rect" | "ellipse" | "diamond" | "line" | "arrow" | "cloud" | "text" | "path" | "highlight" | "marker" | "measure" | "area" | "image" | "frame";
 
 declare module "fabric" {
   interface FabricObject {
@@ -32,7 +32,7 @@ declare module "fabric" {
     mPerPx?: number;
     /** Cota: el texto que muestra (longitud) */
     measureLabel?: string;
-    /** Flecha o línea: texto escrito en su punto medio ("Sí", "No"…) */
+    /** Flecha o línea: texto escrito en su punto medio ("Sí", "No"…); sección: su título */
     caption?: string;
     /** Observación numerada: qué se observa, y si ya se resolvió */
     detail?: string;
@@ -233,6 +233,8 @@ export function prepareObject(o: FabricObject) {
   if (o.kind && STRAIGHT.includes(o.kind)) o.padding = 8;
   // una imagen (un plano) se agranda o achica solo desde las esquinas: estirarla la deformaría y arruinaría su escala
   if (o.kind === "image") o.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
+  // una sección no se gira (su título quedaría de costado)
+  if (o.kind === "frame") o.setControlsVisibility({ mtr: false });
   applyLock(o, !!o.lockedByUser);
 }
 

@@ -20,7 +20,7 @@ export type IconName =
   // Tablero del proyecto
   | "mouse-pointer" | "sticky-note" | "square" | "circle" | "diamond" | "arrow-up-right" | "line" | "cloud" | "type"
   | "undo" | "redo" | "zoom-in" | "zoom-out" | "maximize" | "minimize" | "unlock" | "bring-front" | "send-back" | "scan"
-  | "align-left" | "align-hcenter" | "align-right" | "align-top" | "align-vmiddle" | "align-bottom" | "distribute-h" | "distribute-v" | "grid" | "ruler" | "area" | "rotate-cw" | "stamp";
+  | "align-left" | "align-hcenter" | "align-right" | "align-top" | "align-vmiddle" | "align-bottom" | "distribute-h" | "distribute-v" | "grid" | "ruler" | "area" | "rotate-cw" | "stamp" | "frame" | "list";
 
 const P: Record<IconName, React.ReactNode> = {
   clock: (<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>),
@@ -136,6 +136,8 @@ const P: Record<IconName, React.ReactNode> = {
   grid: (<><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18M15 3v18" /></>),
   "rotate-cw": (<><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /></>),
   stamp: (<><path d="M5 22h14" /><path d="M19.27 13.73A2.5 2.5 0 0 0 17.5 13h-11A2.5 2.5 0 0 0 4 15.5V17a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1.5c0-.66-.26-1.3-.73-1.77Z" /><path d="M14 13V8.5C14 7 15 7 15 5a3 3 0 0 0-3-3c-1.66 0-3 1-3 3s1 2 1 3.5V13" /></>),
+  frame: (<><path d="M22 6H2M22 18H2M6 2v20M18 2v20" /></>),
+  list: (<><path d="M3 6h.01M3 12h.01M3 18h.01M8 6h13M8 12h13M8 18h13" /></>),
   area: (<><path d="M4 8 12 3l8 6-3 11H6Z" /><circle cx="4" cy="8" r="1.4" /><circle cx="12" cy="3" r="1.4" /><circle cx="20" cy="9" r="1.4" /><circle cx="17" cy="20" r="1.4" /><circle cx="6" cy="20" r="1.4" /></>),
 };
 

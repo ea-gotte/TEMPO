@@ -2,7 +2,9 @@ import { Line, Polyline, Rect, type Canvas, type FabricObject } from "fabric";
 import { shapeAt, shapeBox } from "./connectors";
 import { boxFromPoints, connectorEnds, constrainAngle, nextMarkerNumber, snap, squareFromPoints, type Box, type Pt } from "./geometry";
 import { createLabeled } from "./labels";
+import { createSection, isSection } from "./frames";
 import { polygonArea } from "./measure";
+import { nextSectionTitle } from "./sections";
 import { createArea, createCloud, createConnector, createMarker, createMeasure, createText, markTransient } from "./shapes";
 import type { Tool } from "./tools";
 
@@ -12,7 +14,7 @@ import type { Tool } from "./tools";
  * Adaptado de handleCanvasMouseDown/Move/Up de Figma_Clone (github.com/Lyam0udi/Figma_Clone).
  */
 
-const DRAG_TOOLS: Tool[] = ["note", "rect", "ellipse", "diamond", "arrow", "line", "cloud", "measure", "calibrate"];
+const DRAG_TOOLS: Tool[] = ["note", "rect", "ellipse", "diamond", "arrow", "line", "cloud", "measure", "calibrate", "frame"];
 const PREVIEW = { stroke: "#5b6cff", strokeWidth: 1.5, strokeDashArray: [6, 4], strokeUniform: true, selectable: false, evented: false };
 
 export interface DrawOptions {
@@ -175,6 +177,10 @@ function finish(c: Canvas, tool: Tool, a: Pt, b: Pt, shift: boolean, noteColor: 
       });
     case "cloud":
       return dragged ? createCloud(boxFromPoints(a, b)) : null;
+    case "frame": {
+      const title = nextSectionTitle(c.getObjects().filter(isSection).map((f) => f.caption ?? ""));
+      return createSection(dragged ? boxFromPoints(a, b) : place({ left: a.x - 400, top: a.y - 300, width: 800, height: 600 }), title);
+    }
     case "measure":
       return dragged ? createMeasure(a, b) : null;
     case "arrow":

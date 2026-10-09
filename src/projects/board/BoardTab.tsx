@@ -28,6 +28,7 @@ import { insertCopies, restore, snapshot } from "./serialize";
 import { decodeBoardFile, encodeBoardFile, itemsBounds } from "./boardFile";
 import { relinkAfterAltDrag, type Link } from "./altDrag";
 import { normalizeLink } from "./links";
+import { attachSectionPicking, editSectionTitle, isSection, keepSectionsBack, sectionContents } from "./frames";
 import { STAMPS, stampText, type Stamp } from "./stamps";
 import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject, setMarkerNumber, setMarkerResolved } from "./shapes";
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
@@ -57,6 +58,14 @@ function download(blob: Blob, name: string) {
   a.download = name;
   a.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Sección que se está arrastrando: lo de adentro, con su posición (o sus extremos, si es una flecha) al empezar */
+interface SectionDrag {
+  frame: FabricObject;
+  left: number;
+  top: number;
+  items: { o: FabricObject; left: number; top: number; ends?: { start: Pt; end: Pt } }[];
 }
 
 export default function BoardTab({ projectId, fileLabel }: { projectId: string; fileLabel: string }) {
@@ -183,6 +192,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const c = cRef.current;
     if (!c || !loaded.current || restoring.current) return;
     refreshMeasures(c); // las cotas muestran la longitud según la escala de la imagen que tienen debajo
+    keepSectionsBack(c);
     const snap = snapshot(c);
     if (!history.push(snap.json)) return;
     lastData.current = snap.data;
@@ -514,7 +524,9 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const c = cRef.current;
     const objs = takeSelection();
     if (!c || !objs.length) return;
-    const res = await exportPng(c, objs);
+    // una sección se exporta con lo que tiene adentro
+    const all = [...new Set(objs.flatMap((o) => (isSection(o) ? [o, ...sectionContents(c, o)] : [o])))];
+    const res = await exportPng(c, all);
     select(objs);
     if (res === "failed") notify("No se pudo exportar la selección: la imagen resultante es demasiado grande para el navegador.");
     else if (res !== "empty") download(res, `tablero-${slug(fileLabel)}-seleccion-${today()}.png`);
@@ -717,6 +729,20 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     commit();
   };
 
+  /** Lista de secciones (por posición, de arriba a abajo): elegir una encuadra la vista en ella. */
+  const openSections = (x: number, y: number) => {
+    const c = cRef.current;
+    if (!c) return;
+    const sections = c.getObjects().filter(isSection).sort((a, b) => a.top - b.top || a.left - b.left);
+    setMenu({
+      x,
+      y,
+      items: sections.length
+        ? sections.map((s) => ({ label: s.caption || "Sección", onClick: () => { fitToObjects(c, [s]); onViewport(); } }))
+        : [{ label: "No hay secciones: creá una con la herramienta Sección (F)", onClick: () => setTool("frame") }],
+    });
+  };
+
   const openStamps = (x: number, y: number) =>
     setMenu({ x, y, items: STAMPS.map((s) => ({ label: s.label, onClick: () => insertStamp(s) })) });
 
@@ -729,7 +755,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     if (o.kind === "text") return (o as IText).text;
     if (o.kind === "marker") return `Observación ${o.num} ${o.detail ?? ""}`;
     if (o.kind === "measure" || o.kind === "area") return o.measureLabel ?? "";
-    if (isConnector(o)) return o.caption ?? "";
+    if (isConnector(o) || isSection(o)) return o.caption ?? "";
     return "";
   };
 
@@ -807,7 +833,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const rotateSelection = () => {
     const c = cRef.current;
     const t = c?.getActiveObject();
-    if (!c || !t) return;
+    if (!c || !t || isSection(t)) return;
     t.rotate((Math.round(t.angle / 90) * 90 + 90) % 360);
     t.setCoords();
     c.fire("object:modified", { target: t } as Parameters<typeof c.fire<"object:modified">>[1]);
@@ -874,7 +900,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
-    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openStamps, openExportMenu, importFile, rotateSelection,
+    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openStamps, openSections, openExportMenu, importFile, rotateSelection,
     setMarkerInfo, copyObservations, renumberMarkers, setLink, openLink,
   };
   const act = useRef(actions);
@@ -931,8 +957,21 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
      * arrastre, se deshace todo; si lo hubo, queda en un solo paso de deshacer (ver altDrag.ts).
      */
     let alt: { links: Link[]; ready: Promise<FabricObject[]> } | null = null;
+    /** Sección que se está arrastrando: lo de adentro, con su posición al empezar */
+    let section: SectionDrag | null = null;
+    /** Lleva lo de adentro de la sección a donde está ahora la sección */
+    const moveSection = (s: SectionDrag) => {
+      const dx = s.frame.left - s.left;
+      const dy = s.frame.top - s.top;
+      for (const it of s.items) {
+        if (it.ends) setLineEnds(it.o as Line, { x: it.ends.start.x + dx, y: it.ends.start.y + dy }, { x: it.ends.end.x + dx, y: it.ends.end.y + dy });
+        else it.o.set({ left: it.left + dx, top: it.top + dy });
+        it.o.setCoords();
+      }
+      refreshConnectors(c, new Set(s.items.map((it) => it.o.id).filter((id): id is string => !!id)));
+    };
     const startAltDrag = (target: FabricObject) => {
-      const objs = (target instanceof ActiveSelection ? target.getObjects() : [target]).filter((o) => o.id);
+      const objs = (target instanceof ActiveSelection ? target.getObjects() : isSection(target) ? [target, ...sectionContents(c, target)] : [target]).filter((o) => o.id);
       if (!objs.length) return;
       const ids = new Set(objs.map((o) => o.id!));
       // toObject del lienzo da coordenadas reales aunque estén dentro de una selección múltiple
@@ -989,6 +1028,10 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         return;
       }
       if (isConnector(t)) t.set({ fromId: null, toId: null }); // mover una flecha a mano la desengancha
+      if (isSection(t) && (t.scaleX !== 1 || t.scaleY !== 1)) {
+        t.set({ width: t.width * t.scaleX, height: t.height * t.scaleY, scaleX: 1, scaleY: 1 });
+        t.setCoords();
+      }
       if (t.kind === "measure") {
         // una cota escalada o girada vuelve a escala 1 (así sus marcas y su texto no se deforman)
         const ends = lineEnds(t as Line);
@@ -1023,6 +1066,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         const p = c.getScenePoint(e);
         act.current.openMenu(e.clientX, e.clientY, o.target, { x: p.x, y: p.y });
       }),
+      attachSectionPicking(c),
       attachPanZoom(c, { panMode: () => toolRef.current === "hand" || spaceHeld.current, onChange: onViewport }),
       attachDrawing(c, {
         // con Espacio apretado se desplaza la vista: no se dibuja aunque haya una herramienta de dibujo elegida
@@ -1049,6 +1093,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             t.setCoords();
           }
         }
+        if (section && e.target === section.frame) moveSection(section);
         live(e.target);
       }),
       c.on("object:scaling", (e) => live(e.target)),
@@ -1061,9 +1106,15 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         const t = e.target;
         if (!t || isTransient(t)) return;
         const pending = alt;
+        const s = section;
         alt = null;
-        // Alt+arrastrar: se registra cuando las copias del origen están listas (suele ser enseguida)
-        if (pending) void pending.ready.then(() => { if (cRef.current === c) afterModified(t); });
+        // Alt+arrastrar: se registra cuando las copias del origen están listas (suele ser enseguida); si se
+        // soltó antes, las flechas recién quedaron sueltas: lo de adentro de la sección se vuelve a ubicar
+        if (pending) void pending.ready.then(() => {
+          if (cRef.current !== c) return;
+          if (s && s.frame === t) moveSection(s);
+          afterModified(t);
+        });
         else afterModified(t);
       }),
       c.on("mouse:down", (e) => {
@@ -1073,6 +1124,15 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       }),
       // presionar con Alt sin arrastrar no duplica nada
       c.on("mouse:up", cancelAltDrag),
+      c.on("mouse:down", (e) => {
+        const tr = e.transform;
+        section = null;
+        if (toolRef.current !== "select" || tr?.action !== "drag" || !isSection(tr.target)) return;
+        // las flechas se mueven por sus extremos: el suelto se desplaza y el enganchado lo recalcula refreshConnectors
+        const items = sectionContents(c, tr.target).map((o) => ({ o, left: o.left, top: o.top, ends: isConnector(o) ? lineEnds(o) : undefined }));
+        section = { frame: tr.target, left: tr.target.left, top: tr.target.top, items };
+      }),
+      c.on("mouse:up", () => { section = null; }),
       // distintivo de los objetos con enlace (en pantalla, no al exportar)
       c.on("after:render", ({ ctx }) => {
         if (ctx !== c.getContext()) return;
@@ -1116,6 +1176,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         const t = e.target;
         if (toolRef.current !== "select" || !t || t.lockedByUser) return;
         if (isLabeled(t)) edit(t);
+        else if (isSection(t)) editSectionTitle(c, t, () => { refreshPanel(); commit(); });
         else if (isConnector(t)) editCaption(c, t, () => { refreshPanel(); commit(); });
       }),
       c.on("selection:created", () => { setLockedFocus(null); refreshPanel(); }),
@@ -1349,6 +1410,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         onTemplates={(x, y) => act.current.openTemplates(x, y)}
         onStamps={(x, y) => act.current.openStamps(x, y)}
         onSearch={() => setSearch((s) => s ?? { query: "", ids: [], index: 0 })}
+        onSections={(x, y) => act.current.openSections(x, y)}
         observations={obsOpen}
         onObservations={() => setObsOpen((o) => !o)}
       />

@@ -51,6 +51,8 @@ export interface ToolbarProps {
   /** Abre el menú de sellos de revisión junto al botón */
   onStamps: (x: number, y: number) => void;
   onSearch: () => void;
+  /** Abre la lista de secciones (para ir a cada una) junto al botón */
+  onSections: (x: number, y: number) => void;
   observations: boolean;
   onObservations: () => void;
   snap: boolean;
@@ -127,6 +129,18 @@ export function Toolbar(p: ToolbarProps) {
             }}
           >
             <Icon name="dashboard" size={17} />
+          </button>
+          <button
+            type="button"
+            className="bd-btn"
+            title="Ir a una sección"
+            aria-label="Ir a una sección"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              p.onSections(r.left, r.bottom + 4);
+            }}
+          >
+            <Icon name="list" size={17} />
           </button>
           <Btn icon="search" label="Buscar en el tablero (Ctrl+F)" onClick={p.onSearch} />
           <Btn icon="clipboard" label="Lista de observaciones" on={p.observations} onClick={p.onObservations} />

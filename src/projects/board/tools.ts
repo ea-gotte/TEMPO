@@ -5,7 +5,7 @@ import type { IconName } from "../../components/Icon";
  * Adaptado de constants/index.ts de Figma_Clone (github.com/Lyam0udi/Figma_Clone).
  */
 
-export type Tool = "select" | "hand" | "note" | "rect" | "ellipse" | "diamond" | "arrow" | "line" | "cloud" | "pencil" | "marker" | "measure" | "area" | "image" | "text"
+export type Tool = "select" | "hand" | "note" | "rect" | "ellipse" | "diamond" | "arrow" | "line" | "cloud" | "pencil" | "marker" | "measure" | "area" | "image" | "text" | "frame"
   /** interna: trazar la línea con la que se calibra la escala de una imagen */
   | "calibrate";
 export type ToolGroup = "nav" | "ideas" | "diagram" | "markup" | "common";
@@ -22,6 +22,7 @@ export const TOOLS: ToolDef[] = [
   { key: "select", label: "Seleccionar", icon: "mouse-pointer", shortcut: "V", group: "nav" },
   { key: "hand", label: "Mano (o mantené Espacio)", icon: "hand", shortcut: "H", group: "nav" },
   { key: "note", label: "Nota adhesiva", icon: "sticky-note", shortcut: "N", group: "ideas" },
+  { key: "frame", label: "Sección (ordena el tablero en zonas; lo de adentro se mueve con ella)", icon: "frame", shortcut: "F", group: "ideas" },
   { key: "rect", label: "Rectángulo", icon: "square", shortcut: "R", group: "diagram" },
   { key: "ellipse", label: "Elipse", icon: "circle", shortcut: "O", group: "diagram" },
   { key: "diamond", label: "Rombo", icon: "diamond", shortcut: "D", group: "diagram" },
