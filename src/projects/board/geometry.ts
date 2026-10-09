@@ -96,7 +96,8 @@ export function gridSpec(v: Viewport, base = 24): { size: number; x: number; y: 
   const size = base * v.zoom;
   if (size < 8) return null;
   const mod = (n: number) => ((n % size) + size) % size;
-  return { size, x: mod(v.x), y: mod(v.y) };
+  // el punto se dibuja en el centro de cada baldosa: se corre medio paso para que caiga en múltiplos de `base`
+  return { size, x: mod(v.x - size / 2), y: mod(v.y - size / 2) };
 }
 
 /**
@@ -118,6 +119,18 @@ export function cloudPath(w: number, h: number): string {
   for (let i = ny - 1; i >= 0; i--) a(sy / 2, 0, i * sy); // izquierda, hacia arriba
   parts.push("Z");
   return parts.join(" ");
+}
+
+/* ---------- Ajustar a la cuadrícula ---------- */
+
+/** Paso de la cuadrícula en escena (el mismo de los puntos del fondo) */
+export const GRID = 24;
+
+export const snap = (v: number, grid = GRID) => Math.round(v / grid) * grid;
+
+/** Cuánto mover una caja para que su esquina superior izquierda caiga en la cuadrícula. */
+export function snapDelta(box: Box, grid = GRID): { dx: number; dy: number } {
+  return { dx: snap(box.left, grid) - box.left, dy: snap(box.top, grid) - box.top };
 }
 
 /* ---------- Formas con texto ---------- */

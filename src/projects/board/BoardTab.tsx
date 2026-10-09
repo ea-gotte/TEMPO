@@ -5,9 +5,10 @@ import { ContextMenu, type CtxItem } from "../../components/ui";
 import { today, uid } from "../../utils";
 import { boardEpoch, loadBoard, saveBoard, type BoardDoc } from "./boardStore";
 import { applyToolMode, attachPanZoom, createBoardCanvas, exportPng, fitToContent, getViewport, setViewport, viewCenter, zoomAt, zoomStep } from "./canvas";
-import { isConnector, refreshConnectors } from "./connectors";
+import { isConnector, refreshConnectors, shapeBox } from "./connectors";
 import { attachDrawing } from "./draw";
-import { fitScale, gridSpec, type Pt } from "./geometry";
+import { fitScale, gridSpec, snapDelta, type Box, type Pt } from "./geometry";
+import { alignDeltas, distributeDeltas, type AlignMode } from "./align";
 import { createHistory } from "./history";
 import { readImage, validateImageFile } from "./image";
 import { attachKeys, shouldIntercept, type KeyAction } from "./keys";
@@ -29,6 +30,8 @@ import "./board.css";
  * resto de la demo. Basado en la idea de Figma_Clone (github.com/Lyam0udi/Figma_Clone),
  * sin Liveblocks. Spec: docs/superpowers/specs/2026-10-08-tablero-proyecto-design.md
  */
+
+const SNAP_KEY = "tempo-tablero-cuadricula";
 
 type Banner = { kind: "unavailable" } | { kind: "quota"; mb: number } | { kind: "corrupt"; raw: unknown };
 
@@ -91,6 +94,16 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const [notice, setNotice] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [help, setHelp] = useState(false);
+  // ajustar a la cuadrícula: preferencia de quien mira, recordada en este navegador
+  const [snapOn, setSnapOn] = useState(() => {
+    try {
+      return localStorage.getItem(SNAP_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const snapRef = useRef(snapOn);
+  snapRef.current = snapOn;
   const [menu, setMenu] = useState<{ x: number; y: number; items: CtxItem[] } | null>(null);
   const noticeTimer = useRef(0);
 
@@ -430,6 +443,9 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       case "selectAll": selectAll(); break;
       case "delete": removeSelection(); break;
       case "nudge": nudge(a.dx, a.dy); break;
+      case "toggleSnap":
+        toggleSnap();
+        break;
       case "help":
         setHelp((h) => !h);
         break;
@@ -458,6 +474,35 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         break;
     }
   };
+
+  const toggleSnap = () => {
+    setSnapOn((v) => {
+      try {
+        localStorage.setItem(SNAP_KEY, v ? "0" : "1");
+      } catch {
+        /* sin almacenamiento: vale para esta sesión */
+      }
+      return !v;
+    });
+  };
+
+  /** Alinear o distribuir la selección; las flechas no se mueven solas: siguen a sus formas. */
+  const arrange = (deltasFor: (boxes: Box[]) => { dx: number; dy: number }[]) => {
+    const c = cRef.current;
+    if (!c) return;
+    const objs = takeSelection();
+    const movable = objs.filter((o) => !isConnector(o));
+    deltasFor(movable.map(shapeBox)).forEach((d, i) => {
+      const o = movable[i];
+      o.set({ left: o.left + d.dx, top: o.top + d.dy });
+      o.setCoords();
+    });
+    refreshConnectors(c);
+    select(objs);
+    commit();
+  };
+  const alignSelection = (mode: AlignMode) => arrange((boxes) => alignDeltas(boxes, mode));
+  const distributeSelection = (axis: "h" | "v") => arrange((boxes) => distributeDeltas(boxes, axis));
 
   /** Menú del clic derecho: acciones sobre lo seleccionado, o sobre el lienzo si se hizo en vacío. */
   const openMenu = (x: number, y: number, target: FabricObject | undefined, at: Pt) => {
@@ -496,7 +541,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
-    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu,
+    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, toggleSnap,
   };
   const act = useRef(actions);
   act.current = actions;
@@ -544,6 +589,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         // con Espacio apretado se desplaza la vista: no se dibuja aunque haya una herramienta de dibujo elegida
         tool: () => (spaceHeld.current ? "hand" : toolRef.current),
         noteColor: () => noteColorRef.current,
+        snap: () => snapRef.current,
         onCreated: (obj, editing) => {
           setTool("select");
           if (editing) return; // el texto nuevo se registra al salir de la edición
@@ -552,7 +598,19 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
           if (isLabeled(obj) && obj.kind === "note") edit(obj); // una nota nueva entra directo a escribir
         },
       }),
-      c.on("object:moving", (e) => live(e.target)),
+      c.on("object:moving", (e) => {
+        if (snapRef.current) {
+          // con la cuadrícula, la esquina superior izquierda de lo que se mueve cae en ella
+          const t = e.target;
+          t.setCoords(); // durante el arrastre las coordenadas quedan de la posición anterior
+          const d = snapDelta(t.getBoundingRect());
+          if (d.dx || d.dy) {
+            t.set({ left: t.left + d.dx, top: t.top + d.dy });
+            t.setCoords();
+          }
+        }
+        live(e.target);
+      }),
       c.on("object:scaling", (e) => live(e.target)),
       c.on("object:rotating", (e) => live(e.target)),
       c.on("object:modified", (e) => {
@@ -835,6 +893,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         onClear={() => act.current.clearBoard()}
         saveState={saveState}
         onHelp={() => setHelp((h) => !h)}
+        snap={snapOn}
+        onToggleSnap={() => act.current.toggleSnap()}
       />
 
       {banner?.kind === "unavailable" && (
@@ -893,6 +953,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             onLock={() => act.current.setLocked(act.current.takeSelection(), true)}
             onDuplicate={() => void act.current.duplicate()}
             onDelete={() => act.current.removeSelection()}
+            onAlign={(m) => act.current.alignSelection(m)}
+            onDistribute={(a) => act.current.distributeSelection(a)}
           />
         ) : lockedFocus ? (
           <aside className="bd-panel" aria-label="Elemento bloqueado">

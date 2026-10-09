@@ -19,7 +19,8 @@ export type IconName =
   | "chevron-right" | "eye" | "eye-off" | "map-pin" | "cross" | "sliders" | "upload" | "share-2" | "lightbulb" | "info" | "archive" | "external-link" | "image"
   // Tablero del proyecto
   | "mouse-pointer" | "sticky-note" | "square" | "circle" | "diamond" | "arrow-up-right" | "line" | "cloud" | "type"
-  | "undo" | "redo" | "zoom-in" | "zoom-out" | "maximize" | "minimize" | "unlock" | "bring-front" | "send-back" | "scan";
+  | "undo" | "redo" | "zoom-in" | "zoom-out" | "maximize" | "minimize" | "unlock" | "bring-front" | "send-back" | "scan"
+  | "align-left" | "align-hcenter" | "align-right" | "align-top" | "align-vmiddle" | "align-bottom" | "distribute-h" | "distribute-v" | "grid";
 
 const P: Record<IconName, React.ReactNode> = {
   clock: (<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>),
@@ -123,6 +124,15 @@ const P: Record<IconName, React.ReactNode> = {
   "bring-front": (<><path d="M5 3h14" /><path d="m18 13-6-6-6 6" /><path d="M12 7v14" /></>),
   "send-back": (<><path d="M12 17V3" /><path d="m6 11 6 6 6-6" /><path d="M19 21H5" /></>),
   scan: (<><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" /><rect x="8" y="8" width="8" height="8" rx="1" /></>),
+  "align-left": (<><path d="M4 3v18" /><rect x="8" y="6" width="12" height="4" rx="1" /><rect x="8" y="14" width="7" height="4" rx="1" /></>),
+  "align-hcenter": (<><path d="M12 3v18" /><rect x="5" y="6" width="14" height="4" rx="1" /><rect x="8" y="14" width="8" height="4" rx="1" /></>),
+  "align-right": (<><path d="M20 3v18" /><rect x="4" y="6" width="12" height="4" rx="1" /><rect x="9" y="14" width="7" height="4" rx="1" /></>),
+  "align-top": (<><path d="M3 4h18" /><rect x="6" y="8" width="4" height="12" rx="1" /><rect x="14" y="8" width="4" height="7" rx="1" /></>),
+  "align-vmiddle": (<><path d="M3 12h18" /><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="8" width="4" height="8" rx="1" /></>),
+  "align-bottom": (<><path d="M3 20h18" /><rect x="6" y="4" width="4" height="12" rx="1" /><rect x="14" y="9" width="4" height="7" rx="1" /></>),
+  "distribute-h": (<><path d="M4 3v18M20 3v18" /><rect x="9" y="7" width="6" height="10" rx="1" /></>),
+  "distribute-v": (<><path d="M3 4h18M3 20h18" /><rect x="7" y="9" width="10" height="6" rx="1" /></>),
+  grid: (<><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18M15 3v18" /></>),
 };
 
 export function Icon({

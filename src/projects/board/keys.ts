@@ -20,7 +20,8 @@ export type KeyAction =
   | { type: "fit" }
   | { type: "spaceDown" }
   | { type: "spaceUp" }
-  | { type: "help" };
+  | { type: "help" }
+  | { type: "toggleSnap" };
 
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
@@ -42,6 +43,7 @@ export function keyToAction(e: KeyLike, phase: "down" | "up", editing: boolean):
   if (e.key === "Delete" || e.key === "Backspace") return { type: "delete" };
   if (e.key === "Escape") return { type: "escape" };
   if (e.key === "?") return { type: "help" };
+  if (!e.shiftKey && e.key.toLowerCase() === "g") return { type: "toggleSnap" };
   const arrow = ARROWS[e.key];
   if (arrow) {
     const step = e.shiftKey ? 10 : 1;

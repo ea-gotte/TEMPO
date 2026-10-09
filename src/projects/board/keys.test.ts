@@ -82,3 +82,10 @@ describe("ayuda de atajos", () => {
     expect(keyToAction(k("?", { shiftKey: true, code: "Slash" }), "down", false)).toEqual({ type: "help" });
   });
 });
+
+describe("cuadrícula", () => {
+  it("G activa o desactiva el ajuste a la cuadrícula", () => {
+    expect(keyToAction(k("g"), "down", false)).toEqual({ type: "toggleSnap" });
+    expect(keyToAction(k("g"), "down", true)).toBeNull();
+  });
+});

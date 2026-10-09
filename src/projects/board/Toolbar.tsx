@@ -44,6 +44,8 @@ export interface ToolbarProps {
   onClear: () => void;
   saveState: SaveState;
   onHelp: () => void;
+  snap: boolean;
+  onToggleSnap: () => void;
 }
 
 const GROUPS: ToolGroup[] = ["nav", "ideas", "diagram", "markup", "common"];
@@ -86,6 +88,7 @@ export function Toolbar(p: ToolbarProps) {
           <button type="button" className="bd-zoom" title="Volver a 100 %" onClick={p.onZoomReset}>{Math.round(p.zoom * 100)} %</button>
           <Btn icon="zoom-in" label="Acercar" onClick={p.onZoomIn} />
           <Btn icon="scan" label="Ajustar al contenido (Shift+1)" onClick={p.onFit} />
+          <Btn icon="grid" label="Ajustar a la cuadrícula (G)" on={p.snap} onClick={p.onToggleSnap} />
         </div>
         <span className="bd-spacer" />
         <span className={`bd-save ${p.saveState}`} role="status" aria-live="polite">{SAVE_LABEL[p.saveState]}</span>

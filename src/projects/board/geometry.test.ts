@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   anchorOnBox, boxFromPoints, clampZoom, cloudPath, connectorEnds, exportScale, fitScale, fitViewport, gridSpec,
-  heightForText, sizeForText, squareFromPoints, textArea, unionBoxes,
+  heightForText, sizeForText, snap, snapDelta, squareFromPoints, textArea, unionBoxes,
 } from "./geometry";
 
 // Caja de 100 × 50 con centro en (50, 25)
@@ -74,8 +74,9 @@ describe("vista", () => {
     expect(exportScale(16000, 100)).toBe(0.5);
   });
   it("gridSpec sigue al desplazamiento y se oculta con poco zoom", () => {
-    expect(gridSpec({ x: 30, y: -10, zoom: 1 })).toEqual({ size: 24, x: 6, y: 14 });
-    expect(gridSpec({ x: 0, y: 0, zoom: 2 })).toEqual({ size: 48, x: 0, y: 0 });
+    // los puntos caen en múltiplos de 24 de la escena (donde ajusta la cuadrícula): el fondo se corre medio paso
+    expect(gridSpec({ x: 30, y: -10, zoom: 1 })).toEqual({ size: 24, x: 18, y: 2 });
+    expect(gridSpec({ x: 0, y: 0, zoom: 2 })).toEqual({ size: 48, x: 24, y: 24 });
     expect(gridSpec({ x: 0, y: 0, zoom: 0.25 })).toBeNull();
   });
 });
@@ -138,5 +139,17 @@ describe("sizeForText", () => {
   it("rectángulo y nota crecen solo en alto", () => {
     expect(sizeForText("rect", 100, 40, measure)).toEqual({ w: 100, h: 156 }); // 10000 / 76 + 24
     expect(sizeForText("note", 100, 40, measure).w).toBe(100);
+  });
+});
+
+describe("ajustar a la cuadrícula", () => {
+  it("redondea al múltiplo de 24 más cercano", () => {
+    expect(snap(35)).toBe(24);
+    expect(snap(37)).toBe(48);
+    expect(snap(-13)).toBe(-24);
+  });
+  it("lleva la esquina superior izquierda de la caja a la cuadrícula", () => {
+    expect(snapDelta({ left: 30, top: 50, width: 100, height: 80 })).toEqual({ dx: -6, dy: -2 });
+    expect(snapDelta({ left: 48, top: 72, width: 10, height: 10 })).toEqual({ dx: 0, dy: 0 });
   });
 });

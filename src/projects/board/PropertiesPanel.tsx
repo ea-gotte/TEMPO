@@ -1,4 +1,5 @@
 import React from "react";
+import type { AlignMode } from "./align";
 import type { StylePatch, StyleState } from "./style";
 import type { DashStyle, HeadStyle } from "./strokes";
 import { Btn, Swatch } from "./Toolbar";
@@ -20,6 +21,8 @@ export interface PanelProps {
   onLock: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onAlign: (mode: AlignMode) => void;
+  onDistribute: (axis: "h" | "v") => void;
 }
 
 /** Selector de color libre (además de la paleta). Con valores mixtos o sin color parte de un gris. */
@@ -37,7 +40,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onDelete }: PanelProps) {
+export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onDelete, onAlign, onDistribute }: PanelProps) {
   const fills = s.kind === "note" ? NOTE_COLORS : FILL_COLORS;
   // el resaltador tiene sus propios colores claros y trazos anchos
   const hl = s.strokeLabel === "Resaltador";
@@ -93,6 +96,18 @@ export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onL
       <Row label={`Opacidad · ${opacity} %`}>
         <input type="range" min={10} max={100} step={5} value={opacity} onChange={(e) => onStyle({ opacity: Number(e.target.value) / 100 })} style={{ width: "100%" }} aria-label="Opacidad" />
       </Row>
+      {count > 1 && (
+        <Row label="Alinear">
+          <Btn icon="align-left" label="Alinear a la izquierda" onClick={() => onAlign("left")} />
+          <Btn icon="align-hcenter" label="Centrar horizontalmente" onClick={() => onAlign("hcenter")} />
+          <Btn icon="align-right" label="Alinear a la derecha" onClick={() => onAlign("right")} />
+          <Btn icon="align-top" label="Alinear arriba" onClick={() => onAlign("top")} />
+          <Btn icon="align-vmiddle" label="Centrar verticalmente" onClick={() => onAlign("vmiddle")} />
+          <Btn icon="align-bottom" label="Alinear abajo" onClick={() => onAlign("bottom")} />
+          {count > 2 && <Btn icon="distribute-h" label="Distribuir horizontalmente" onClick={() => onDistribute("h")} />}
+          {count > 2 && <Btn icon="distribute-v" label="Distribuir verticalmente" onClick={() => onDistribute("v")} />}
+        </Row>
+      )}
       <div className="bd-actions">
         <Btn icon="bring-front" label="Traer al frente" onClick={onFront} />
         <Btn icon="send-back" label="Enviar al fondo" onClick={onBack} />

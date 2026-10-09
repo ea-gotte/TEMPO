@@ -1,6 +1,6 @@
 import { Line, Rect, type Canvas, type FabricObject } from "fabric";
 import { shapeAt, shapeBox } from "./connectors";
-import { boxFromPoints, connectorEnds, squareFromPoints, type Pt } from "./geometry";
+import { boxFromPoints, connectorEnds, snap, squareFromPoints, type Box, type Pt } from "./geometry";
 import { createLabeled } from "./labels";
 import { createCloud, createConnector, createText, markTransient } from "./shapes";
 import type { Tool } from "./tools";
@@ -19,9 +19,12 @@ export interface DrawOptions {
   noteColor: () => string;
   /** Se creó un objeto (ya agregado y seleccionado). `editing` = quedó escribiéndose (texto). */
   onCreated: (obj: FabricObject, editing: boolean) => void;
+  /** Ajustar a la cuadrícula: los puntos del arrastre caen en la cuadrícula */
+  snap: () => boolean;
 }
 
 export function attachDrawing(c: Canvas, opts: DrawOptions): () => void {
+  const at = (p: Pt): Pt => (opts.snap() ? { x: snap(p.x), y: snap(p.y) } : { x: p.x, y: p.y });
   let start: Pt | null = null;
   let preview: FabricObject | null = null;
 
@@ -30,7 +33,7 @@ export function attachDrawing(c: Canvas, opts: DrawOptions): () => void {
       if ((o.e as MouseEvent).button === 1) return; // botón del medio = desplazar
       const tool = opts.tool();
       if (tool === "text") {
-        const t = createText(o.scenePoint);
+        const t = createText(at(o.scenePoint));
         c.add(t);
         c.setActiveObject(t);
         t.enterEditing();
@@ -38,7 +41,7 @@ export function attachDrawing(c: Canvas, opts: DrawOptions): () => void {
         return;
       }
       if (!DRAG_TOOLS.includes(tool)) return;
-      start = { x: o.scenePoint.x, y: o.scenePoint.y };
+      start = at(o.scenePoint);
       preview = markTransient(
         tool === "arrow" || tool === "line"
           ? new Line([start.x, start.y, start.x, start.y], PREVIEW)
@@ -48,7 +51,7 @@ export function attachDrawing(c: Canvas, opts: DrawOptions): () => void {
     }),
     c.on("mouse:move", (o) => {
       if (!start || !preview) return;
-      const p = o.scenePoint;
+      const p = at(o.scenePoint);
       if (preview instanceof Line) preview.set({ x2: p.x, y2: p.y });
       else {
         const b = (o.e as MouseEvent).shiftKey ? squareFromPoints(start, p) : boxFromPoints(start, p);
@@ -59,11 +62,11 @@ export function attachDrawing(c: Canvas, opts: DrawOptions): () => void {
     c.on("mouse:up", (o) => {
       if (!start || !preview) return;
       const a = start;
-      const b = { x: o.scenePoint.x, y: o.scenePoint.y };
+      const b = at(o.scenePoint);
       c.remove(preview);
       start = null;
       preview = null;
-      const obj = finish(c, opts.tool(), a, b, (o.e as MouseEvent).shiftKey, opts.noteColor());
+      const obj = finish(c, opts.tool(), a, b, (o.e as MouseEvent).shiftKey, opts.noteColor(), opts.snap());
       if (obj) {
         c.add(obj);
         c.setActiveObject(obj);
@@ -75,18 +78,20 @@ export function attachDrawing(c: Canvas, opts: DrawOptions): () => void {
   return () => offs.forEach((off) => off());
 }
 
-function finish(c: Canvas, tool: Tool, a: Pt, b: Pt, shift: boolean, noteColor: string): FabricObject | null {
+function finish(c: Canvas, tool: Tool, a: Pt, b: Pt, shift: boolean, noteColor: string, snapOn: boolean): FabricObject | null {
+  // tamaño por defecto (clic sin arrastre): con la cuadrícula, la esquina también cae en ella
+  const place = (box: Box): Box => (snapOn ? { ...box, left: snap(box.left), top: snap(box.top) } : box);
   // menos de 4 px de pantalla es un clic, no un arrastre
   const dragged = Math.hypot(b.x - a.x, b.y - a.y) * c.getZoom() > 4;
   switch (tool) {
     case "note":
-      return createLabeled({ kind: "note", fill: noteColor, box: dragged ? boxFromPoints(a, b) : { left: a.x - 100, top: a.y - 100, width: 200, height: 200 } });
+      return createLabeled({ kind: "note", fill: noteColor, box: dragged ? boxFromPoints(a, b) : place({ left: a.x - 100, top: a.y - 100, width: 200, height: 200 }) });
     case "rect":
     case "ellipse":
     case "diamond":
       return createLabeled({
         kind: tool,
-        box: dragged ? (shift ? squareFromPoints(a, b) : boxFromPoints(a, b)) : { left: a.x - 80, top: a.y - 50, width: 160, height: 100 },
+        box: dragged ? (shift ? squareFromPoints(a, b) : boxFromPoints(a, b)) : place({ left: a.x - 80, top: a.y - 50, width: 160, height: 100 }),
       });
     case "cloud":
       return dragged ? createCloud(boxFromPoints(a, b)) : null;
