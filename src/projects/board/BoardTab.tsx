@@ -26,6 +26,7 @@ import { SearchBar } from "./SearchBar";
 import { findMatches } from "./search";
 import { insertCopies, restore, snapshot } from "./serialize";
 import { decodeBoardFile, encodeBoardFile, itemsBounds } from "./boardFile";
+import { relinkAfterAltDrag, type Link } from "./altDrag";
 import { STAMPS, stampText, type Stamp } from "./stamps";
 import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject, setMarkerResolved } from "./shapes";
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
@@ -876,6 +877,96 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     // si el texto nuevo agranda la forma, las flechas enganchadas se reacomodan en el mismo paso
     const edit = (g: Parameters<typeof editLabel>[1]) => editLabel(c, g, () => { refreshConnectors(c); refreshPanel(); commit(); });
 
+    /**
+     * Alt+arrastrar duplica, como en Figma: al presionar se crean copias de lo arrastrado en el lugar
+     * de origen y las flechas de afuera pasan a ellas; lo que se arrastra es el duplicado. Si no hubo
+     * arrastre, se deshace todo; si lo hubo, queda en un solo paso de deshacer (ver altDrag.ts).
+     */
+    let alt: { links: Link[]; ready: Promise<FabricObject[]> } | null = null;
+    const startAltDrag = (target: FabricObject) => {
+      const objs = (target instanceof ActiveSelection ? target.getObjects() : [target]).filter((o) => o.id);
+      if (!objs.length) return;
+      const ids = new Set(objs.map((o) => o.id!));
+      // toObject del lienzo da coordenadas reales aunque estén dentro de una selección múltiple
+      const data = (c.toObject().objects as Record<string, unknown>[]).filter((d) => ids.has(d.id as string));
+      const links: Link[] = c.getObjects().filter(isConnector).map((l) => ({ id: l.id!, fromId: l.fromId ?? null, toId: l.toId ?? null }));
+      const ready = insertCopies(c, data, 0, 0).then((copies) => {
+        const copyOf = new Map<string, string>();
+        copies.forEach((copy, i) => {
+          const orig = c.getObjects().find((o) => o.id === data[i].id);
+          copyOf.set(data[i].id as string, copy.id!);
+          // la copia queda en el lugar del original en el apilado (justo debajo de él)
+          if (orig) c.moveObjectTo(copy, c.getObjects().indexOf(orig));
+        });
+        const byId = new Map(c.getObjects().map((o) => [o.id, o]));
+        for (const [id, ends] of relinkAfterAltDrag(links, ids, copyOf)) byId.get(id)?.set(ends);
+        refreshConnectors(c);
+        c.requestRenderAll();
+        return copies;
+      });
+      alt = { links, ready };
+    };
+    const cancelAltDrag = () => {
+      const pending = alt;
+      alt = null;
+      if (!pending) return;
+      void pending.ready.then((copies) => {
+        copies.forEach((o) => c.remove(o));
+        const byId = new Map(c.getObjects().map((o) => [o.id, o]));
+        for (const l of pending.links) byId.get(l.id)?.set({ fromId: l.fromId, toId: l.toId });
+        refreshConnectors(c);
+        c.requestRenderAll();
+      });
+    };
+
+    /** Al terminar de mover, escalar o girar a mano: rehace lo que haga falta, reacomoda las flechas y registra. */
+    function afterModified(t: FabricObject) {
+      if (t instanceof ActiveSelection) {
+        // Una selección por área también atrapa flechas que tocan una sola de sus formas y se mueven con ella.
+        // Al soltar se desarma la selección (fuera del evento, por lo mismo que abajo), se rehacen las formas
+        // escaladas, se reacomodan las flechas y recién ahí se registra UN paso de deshacer.
+        const objs = t.getObjects();
+        window.setTimeout(() => {
+          if (cRef.current !== c) return;
+          quiet.current = true;
+          c.discardActiveObject();
+          quiet.current = false;
+          // las cotas giradas o escaladas en grupo vuelven a escala 1 y sin giro, como al tocarlas solas
+          for (const o of objs) if (o.kind === "measure") { const e = lineEnds(o as Line); setLineEnds(o as Line, e.start, e.end); }
+          const baked = new Map(bakeScaledLabels(c, objs).map((g) => [g.id, g]));
+          refreshConnectors(c);
+          act.current.select(objs.map((o) => (o.id && baked.get(o.id)) || o));
+          commit();
+        }, 0);
+        return;
+      }
+      if (isConnector(t)) t.set({ fromId: null, toId: null }); // mover una flecha a mano la desengancha
+      if (t.kind === "measure") {
+        // una cota escalada o girada vuelve a escala 1 (así sus marcas y su texto no se deforman)
+        const ends = lineEnds(t as Line);
+        setLineEnds(t as Line, ends.start, ends.end);
+      }
+      if (isLabeled(t) && (t.scaleX !== 1 || t.scaleY !== 1)) {
+        // Fabric dispara object:modified ANTES de cerrar la transformación: si acá se saca la forma
+        // del lienzo, cerrarla vuelve a disparar el evento sin fin. Se rehace cuando Fabric terminó.
+        window.setTimeout(() => {
+          if (cRef.current !== c) return;
+          quiet.current = true;
+          c.discardActiveObject();
+          quiet.current = false;
+          const [next] = bakeScaledLabels(c, [t]);
+          if (next) c.setActiveObject(next);
+          refreshConnectors(c);
+          refreshPanel();
+          commit();
+        }, 0);
+        return;
+      }
+      refreshConnectors(c);
+      refreshPanel();
+      commit();
+    }
+
     const offs: (() => void)[] = [
       // clic derecho: Fabric corta la propagación del evento del navegador, así que se usa el suyo
       c.on("contextmenu", (o) => {
@@ -921,51 +1012,19 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       c.on("object:modified", (e) => {
         const t = e.target;
         if (!t || isTransient(t)) return;
-        if (t instanceof ActiveSelection) {
-          // Una selección por área también atrapa flechas que tocan una sola de sus formas y se mueven con ella.
-          // Al soltar se desarma la selección (fuera del evento, por lo mismo que abajo), se rehacen las formas
-          // escaladas, se reacomodan las flechas y recién ahí se registra UN paso de deshacer.
-          const objs = t.getObjects();
-          window.setTimeout(() => {
-            if (cRef.current !== c) return;
-            quiet.current = true;
-            c.discardActiveObject();
-            quiet.current = false;
-            // las cotas giradas o escaladas en grupo vuelven a escala 1 y sin giro, como al tocarlas solas
-            for (const o of objs) if (o.kind === "measure") { const e = lineEnds(o as Line); setLineEnds(o as Line, e.start, e.end); }
-            const baked = new Map(bakeScaledLabels(c, objs).map((g) => [g.id, g]));
-            refreshConnectors(c);
-            act.current.select(objs.map((o) => (o.id && baked.get(o.id)) || o));
-            commit();
-          }, 0);
-          return;
-        }
-        if (isConnector(t)) t.set({ fromId: null, toId: null }); // mover una flecha a mano la desengancha
-        if (t.kind === "measure") {
-          // una cota escalada o girada vuelve a escala 1 (así sus marcas y su texto no se deforman)
-          const ends = lineEnds(t as Line);
-          setLineEnds(t as Line, ends.start, ends.end);
-        }
-        if (isLabeled(t) && (t.scaleX !== 1 || t.scaleY !== 1)) {
-          // Fabric dispara object:modified ANTES de cerrar la transformación: si acá se saca la forma
-          // del lienzo, cerrarla vuelve a disparar el evento sin fin. Se rehace cuando Fabric terminó.
-          window.setTimeout(() => {
-            if (cRef.current !== c) return;
-            quiet.current = true;
-            c.discardActiveObject();
-            quiet.current = false;
-            const [next] = bakeScaledLabels(c, [t]);
-            if (next) c.setActiveObject(next);
-            refreshConnectors(c);
-            refreshPanel();
-            commit();
-          }, 0);
-          return;
-        }
-        refreshConnectors(c);
-        refreshPanel();
-        commit();
+        const pending = alt;
+        alt = null;
+        // Alt+arrastrar: se registra cuando las copias del origen están listas (suele ser enseguida)
+        if (pending) void pending.ready.then(() => { if (cRef.current === c) afterModified(t); });
+        else afterModified(t);
       }),
+      c.on("mouse:down", (e) => {
+        const tr = e.transform;
+        if (toolRef.current !== "select" || spaceHeld.current || !(e.e as MouseEvent).altKey) return;
+        if (tr?.action === "drag" && tr.target && !tr.target.lockedByUser) startAltDrag(tr.target);
+      }),
+      // presionar con Alt sin arrastrar no duplica nada
+      c.on("mouse:up", cancelAltDrag),
       c.on("path:created", (e) => {
         // el resaltador se multiplica con lo de abajo: marca el plano sin taparlo
         const hl = penRef.current.highlighter;

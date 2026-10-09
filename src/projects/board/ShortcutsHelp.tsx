@@ -8,7 +8,7 @@ const EDIT: [string, string][] = [
   ["Ctrl + Z", "Deshacer"],
   ["Ctrl + Y  ·  Ctrl + Shift + Z", "Rehacer"],
   ["Ctrl + C  ·  Ctrl + X  ·  Ctrl + V", "Copiar, cortar y pegar (también entre proyectos)"],
-  ["Ctrl + D", "Duplicar"],
+  ["Ctrl + D  ·  Alt + arrastrar", "Duplicar"],
   ["Ctrl + A", "Seleccionar todo (menos lo bloqueado)"],
   ["Ctrl + F", "Buscar texto en el tablero"],
   ["Ctrl + ]  ·  Ctrl + [", "Traer al frente  ·  Enviar al fondo"],
