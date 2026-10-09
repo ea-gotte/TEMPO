@@ -97,6 +97,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const altBusy = useRef<Promise<void>>(Promise.resolve());
   /** Lo de adentro de las secciones que se están moviendo con el teclado (hasta que se registra el movimiento) */
   const nudgeInside = useRef<{ key: FabricObject; objs: FabricObject[] } | null>(null);
+  /** El último clic empezó en una manija del objeto seleccionado */
+  const downOnHandle = useRef(false);
   /** Operación propia en curso: el evento selection:cleared no debe registrar pasos intermedios. */
   const quiet = useRef(false);
   const clipboard = useRef<Record<string, unknown>[]>([]);
@@ -1182,11 +1184,14 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       });
     };
 
-    /** Dónde va el distintivo de enlace de un objeto, en px de la pantalla: su esquina de arriba a la derecha. */
+    /**
+     * Dónde va el distintivo de enlace de un objeto, en px de la pantalla: apenas afuera de su esquina de arriba
+     * a la derecha (en la esquina misma taparía la manija de cambiar el tamaño).
+     */
     const badgeAt = (o: FabricObject) => {
       const v = c.viewportTransform;
       const r = o.getBoundingRect();
-      return { x: (r.left + r.width) * v[0] + v[4], y: r.top * v[3] + v[5] };
+      return { x: (r.left + r.width) * v[0] + v[4] + 16, y: r.top * v[3] + v[5] - 16 };
     };
     /** El objeto cuyo distintivo de enlace está bajo el puntero (el de más arriba), si hay */
     const badgeHit = (p: Pt) => {
@@ -1203,9 +1208,11 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     /** Una selección múltiple con alguna sección no se gira ni se espeja (como la sección sola). */
     const guardSections = () => {
       const a = c.getActiveObject();
-      if (!(a instanceof ActiveSelection) || !a.getObjects().some(isSection)) return;
-      a.set({ lockRotation: true, lockScalingFlip: true });
-      a.setControlsVisibility({ mtr: false });
+      if (!(a instanceof ActiveSelection)) return;
+      // Shift+clic agrega o saca objetos de la misma selección: si ya no tiene secciones, vuelve a poder girarse
+      const has = a.getObjects().some(isSection);
+      a.set({ lockRotation: has, lockScalingFlip: has });
+      a.setControlsVisibility({ mtr: !has });
     };
 
     /** Al terminar de mover, escalar o girar a mano: rehace lo que haga falta, reacomoda las flechas y registra. */
@@ -1422,7 +1429,11 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         const baked = bakeScaledLabels(c);
         if (refreshConnectors(c) || baked.length) commit();
       }),
-      c.on("mouse:down", (e) => { downAt.current = { x: e.viewportPoint.x, y: e.viewportPoint.y }; }),
+      c.on("mouse:down", (e) => {
+        downAt.current = { x: e.viewportPoint.x, y: e.viewportPoint.y };
+        // la manija de arriba a la derecha queda debajo del distintivo de enlace: un clic en ella no lo abre
+        downOnHandle.current = !!e.transform?.corner;
+      }),
       c.on("mouse:move", (e) => {
         pointer.current = { x: e.scenePoint.x, y: e.scenePoint.y };
         if (toolRef.current === "select" && badgeHit(e.viewportPoint)) c.setCursor("pointer");
@@ -1434,8 +1445,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         if (toolRef.current !== "select" || spaceHeld.current || !d) return;
         if (Math.hypot(e.viewportPoint.x - d.x, e.viewportPoint.y - d.y) >= 4) return;
         const me = e.e as MouseEvent;
-        // un clic en el distintivo ↗ abre el enlace
-        const badge = badgeHit(e.viewportPoint);
+        // un clic en el distintivo ↗ abre el enlace (salvo que fuera en una manija)
+        const badge = downOnHandle.current ? null : badgeHit(e.viewportPoint);
         if (badge) return act.current.openLink(badge);
         // Ctrl+clic (o Cmd+clic) sobre algo con enlace lo abre, aunque esté bloqueado o dentro de una selección
         if (me.ctrlKey || me.metaKey) {
@@ -1593,9 +1604,12 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     if (present === null) return;
     const t = window.setTimeout(() => {
       const c = cRef.current;
-      const s = act.current.sectionsInOrder()[present];
-      if (!c || !s) return;
-      fitToObjects(c, [s]);
+      const list = act.current.sectionsInOrder();
+      // si se borraron secciones durante la presentación: a la última que quede, o se termina
+      if (!list.length) return act.current.stopPresent();
+      if (present >= list.length) return setPresent(list.length - 1);
+      if (!c) return;
+      fitToObjects(c, [list[present]]);
       onViewport();
     }, 120);
     return () => window.clearTimeout(t);
@@ -1606,7 +1620,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     if (present === null) return;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target;
-      if (t instanceof HTMLElement && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      if (t instanceof HTMLElement && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return; // Alt+← (volver) y los atajos del navegador siguen andando
       const n = act.current.sectionsInOrder().length;
       if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") setPresent((i) => Math.min(n - 1, (i ?? 0) + 1));
       else if (e.key === "ArrowLeft" || e.key === "PageUp") setPresent((i) => Math.max(0, (i ?? 0) - 1));
