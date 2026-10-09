@@ -4,6 +4,17 @@ import { NOTE_COLORS, PALETTE, PEN_WIDTHS, TOOLS, type Tool, type ToolGroup } fr
 
 /** Barra superior del tablero. Adaptado de Navbar/ShapesMenu de Figma_Clone (github.com/Lyam0udi/Figma_Clone). */
 
+/** Estado del guardado en este navegador, para el indicador de la barra */
+export type SaveState = "saved" | "pending" | "saving" | "error" | "off";
+
+const SAVE_LABEL: Record<SaveState, string> = {
+  saved: "Guardado",
+  pending: "Guardando…",
+  saving: "Guardando…",
+  error: "No se pudo guardar",
+  off: "Sin guardar",
+};
+
 export interface Pen {
   color: string;
   width: number;
@@ -29,6 +40,7 @@ export interface ToolbarProps {
   fullscreen: boolean;
   onFullscreen: () => void;
   onClear: () => void;
+  saveState: SaveState;
 }
 
 const GROUPS: ToolGroup[] = ["nav", "ideas", "diagram", "markup", "common"];
@@ -73,6 +85,7 @@ export function Toolbar(p: ToolbarProps) {
           <Btn icon="scan" label="Ajustar al contenido (Shift+1)" onClick={p.onFit} />
         </div>
         <span className="bd-spacer" />
+        <span className={`bd-save ${p.saveState}`} role="status" aria-live="polite">{SAVE_LABEL[p.saveState]}</span>
         <div className="bd-group">
           <Btn icon="download" label="Exportar PNG" onClick={p.onExport} />
           <Btn icon={p.fullscreen ? "minimize" : "maximize"} label={p.fullscreen ? "Salir de pantalla completa" : "Pantalla completa"} onClick={p.onFullscreen} />

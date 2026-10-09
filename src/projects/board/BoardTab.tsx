@@ -9,14 +9,15 @@ import { attachDrawing } from "./draw";
 import { fitScale, gridSpec, type Pt } from "./geometry";
 import { createHistory } from "./history";
 import { readImage, validateImageFile } from "./image";
-import { attachKeys, type KeyAction } from "./keys";
-import { bakeScaledLabels, editLabel, isLabeled } from "./labels";
+import { attachKeys, shouldIntercept, type KeyAction } from "./keys";
+import { BOARD_MIME, decodeClip, encodeClip, pasteOffset, textOf } from "./clipboard";
+import { bakeScaledLabels, createLabeled, editLabel, isLabeled } from "./labels";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { insertCopies, restore, snapshot } from "./serialize";
 import { applyLock, createImage, isTransient, prepareObject, replaceObject } from "./shapes";
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
 import { mergeStyles } from "./styleMerge";
-import { Toolbar, type Pen } from "./Toolbar";
+import { Toolbar, type Pen, type SaveState } from "./Toolbar";
 import { INK, NOTE_COLORS, type Tool } from "./tools";
 import "./board.css";
 
@@ -62,6 +63,10 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const quiet = useRef(false);
   const clipboard = useRef<Record<string, unknown>[]>([]);
   const pasteCount = useRef(0);
+  /** Proyecto del que salió lo copiado en memoria */
+  const clipSource = useRef("");
+  /** Último punto del puntero sobre el lienzo (escena), para pegar donde está el cursor */
+  const pointer = useRef<Pt | null>(null);
   const spaceHeld = useRef(false);
   const downAt = useRef<Pt | null>(null);
 
@@ -82,6 +87,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const [fullscreen, setFullscreen] = useState(false);
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>("saved");
   const noticeTimer = useRef(0);
 
   /** Aviso dentro del tablero: a diferencia de los toasts de la app, también se ve en pantalla completa. */
@@ -98,14 +104,18 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const c = cRef.current;
     if (!c || !loaded.current || !dirty.current || blockSave.current || epoch.current !== boardEpoch()) return;
     dirty.current = false;
+    setSaveState("saving");
     const res = await saveBoard({
       projectId, version: 1, fabric: lastData.current ?? { objects: [] }, viewport: getViewport(c), updatedAt: new Date().toISOString(),
     });
     if (res === "ok") {
       setBanner((b) => (b?.kind === "quota" ? null : b));
+      // si hubo otro cambio mientras se guardaba, sigue pendiente
+      setSaveState(dirty.current ? "pending" : "saved");
       return;
     }
     dirty.current = true; // se reintenta con el próximo cambio
+    setSaveState(res === "unavailable" ? "off" : "error");
     if (res === "quota") setBanner({ kind: "quota", mb: (history.current()?.length ?? 0) / 1e6 });
     else if (res === "unavailable") setBanner({ kind: "unavailable" });
     else notify("No se pudo guardar el tablero.");
@@ -113,6 +123,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const scheduleSave = useCallback(() => {
     dirty.current = true;
+    if (!blockSave.current) setSaveState("pending");
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => void flushSave(), 800);
   }, [flushSave]);
@@ -271,21 +282,44 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     commit();
   };
 
-  const copySelection = () => {
+  /** Copia la selección: devuelve los objetos serializados (o null si no hay nada seleccionado). */
+  const copySelection = (): Record<string, unknown>[] | null => {
     const objs = takeSelection();
-    if (!objs.length) return;
+    if (!objs.length) return null;
     clipboard.current = objs.map((o) => o.toObject() as Record<string, unknown>);
+    clipSource.current = projectId;
     pasteCount.current = 0;
     select(objs);
+    return clipboard.current;
   };
 
-  const pasteClipboard = async () => {
+  /** Dónde va lo pegado: donde está el puntero si está sobre el lienzo; si no, al centro de la vista. */
+  const pastePoint = (): Pt => {
     const c = cRef.current;
-    if (!c || !clipboard.current.length) return;
-    pasteCount.current += 1;
-    const objs = await insertCopies(c, clipboard.current, 20 * pasteCount.current);
+    return pointer.current ?? (c ? viewCenter(c) : { x: 0, y: 0 });
+  };
+
+  const pasteObjects = async (items: Record<string, unknown>[], sourceProject: string) => {
+    const c = cRef.current;
+    if (!c || !items.length) return;
+    const same = sourceProject === projectId;
+    pasteCount.current = same ? pasteCount.current + 1 : 0;
+    const { dx, dy } = pasteOffset(items, pastePoint(), same, pasteCount.current);
+    const objs = await insertCopies(c, items, dx, dy);
     refreshConnectors(c);
     select(objs);
+    commit();
+  };
+
+  /** Texto pegado desde otra aplicación: una nota con ese texto (crece si hace falta). */
+  const pasteText = (text: string) => {
+    const c = cRef.current;
+    if (!c) return;
+    const p = pastePoint();
+    const note = createLabeled({ kind: "note", box: { left: p.x - 100, top: p.y - 100, width: 200, height: 200 }, text: text.slice(0, 2000), fill: noteColorRef.current });
+    c.add(note);
+    c.setActiveObject(note);
+    refreshPanel();
     commit();
   };
 
@@ -344,7 +378,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         const img = await readImage(file);
         const z = getViewport(c).zoom;
         const scale = fitScale(img.width, img.height, (c.width * 0.8) / z, (c.height * 0.8) / z);
-        const p = at ?? viewCenter(c);
+        const p = at ?? pastePoint();
         const obj = await createImage(img.dataUrl, { x: p.x + shift, y: p.y + shift }, scale);
         shift += 24;
         c.add(obj);
@@ -388,7 +422,6 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       case "tool": setTool(a.tool); break;
       case "undo": undo(); break;
       case "redo": redo(); break;
-      case "copy": copySelection(); break;
       case "duplicate": void duplicate(); break;
       case "selectAll": selectAll(); break;
       case "delete": removeSelection(); break;
@@ -418,8 +451,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   };
 
   const actions = {
-    undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteClipboard, duplicate,
-    clearBoard, addImages, exportBoard, startOver, onKey, hasClipboard: () => clipboard.current.length > 0,
+    undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
+    duplicate, clearBoard, addImages, exportBoard, startOver, onKey,
   };
   const act = useRef(actions);
   act.current = actions;
@@ -538,6 +571,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         if (refreshConnectors(c) || baked.length) commit();
       }),
       c.on("mouse:down", (e) => { downAt.current = { x: e.viewportPoint.x, y: e.viewportPoint.y }; }),
+      c.on("mouse:move", (e) => { pointer.current = { x: e.scenePoint.x, y: e.scenePoint.y }; }),
+      c.on("mouse:out", () => { pointer.current = null; }),
       c.on("mouse:up", (e) => {
         const d = downAt.current;
         downAt.current = null;
@@ -584,6 +619,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       dirty.current = false; // la vista recién cargada no es un cambio
       window.clearTimeout(saveTimer.current);
       applyToolMode(c, toolRef.current, penRef.current);
+      setSaveState(blockSave.current ? "off" : "saved"); // la vista recién cargada no deja nada pendiente
       setReady(true);
     })();
 
@@ -634,20 +670,53 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   /* ---------- Pegar, pantalla completa, grosor del lápiz ---------- */
 
   useEffect(() => {
+    const typingIn = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+    // el foco está en el tablero o en ningún lado: no en un botón o campo del resto de la página
+    const focusOk = (t: EventTarget | null) => t === document.body || t === document.documentElement || (t instanceof Node && !!rootRef.current?.contains(t));
+
+    const onCopy = (e: ClipboardEvent, cut: boolean) => {
+      const c = cRef.current;
+      if (!c || !e.clipboardData || typingIn(e.target)) return;
+      const ctx = { focusInBoard: focusOk(e.target), hasSelection: c.getActiveObjects().length > 0, textSelected: !!window.getSelection()?.toString() };
+      if (!shouldIntercept({ type: "copy" }, ctx)) return; // texto de la página: copia normal
+      const items = act.current.copySelection();
+      if (!items) return;
+      e.preventDefault();
+      e.clipboardData.setData(BOARD_MIME, encodeClip(projectId, items));
+      e.clipboardData.setData("text/plain", textOf(items) || "Elementos del tablero de TEMPO");
+      if (cut) act.current.removeSelection();
+    };
+    const copy = (e: ClipboardEvent) => onCopy(e, false);
+    const cutEv = (e: ClipboardEvent) => onCopy(e, true);
+
     const onPaste = (e: ClipboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
-      if (files.length) {
+      if (typingIn(e.target) || !focusOk(e.target) || !e.clipboardData) return;
+      const board = decodeClip(e.clipboardData.getData(BOARD_MIME));
+      const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith("image/"));
+      const text = e.clipboardData.getData("text/plain").trim();
+      if (board) {
+        e.preventDefault();
+        void act.current.pasteObjects(board.objects, board.projectId);
+      } else if (files.length) {
         e.preventDefault();
         void act.current.addImages(files);
-      } else if (act.current.hasClipboard()) {
+      } else if (text) {
         e.preventDefault();
-        void act.current.pasteClipboard();
+        act.current.pasteText(text);
+      } else if (clipboard.current.length) {
+        // el navegador no conservó el tipo propio: se usa la copia en memoria
+        e.preventDefault();
+        void act.current.pasteObjects(clipboard.current, clipSource.current);
       }
     };
+    document.addEventListener("copy", copy);
+    document.addEventListener("cut", cutEv);
     window.addEventListener("paste", onPaste);
-    return () => window.removeEventListener("paste", onPaste);
+    return () => {
+      document.removeEventListener("copy", copy);
+      document.removeEventListener("cut", cutEv);
+      window.removeEventListener("paste", onPaste);
+    };
   }, []);
 
   useEffect(() => {
@@ -711,6 +780,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
           else void rootRef.current?.requestFullscreen();
         }}
         onClear={() => act.current.clearBoard()}
+        saveState={saveState}
       />
 
       {banner?.kind === "unavailable" && (

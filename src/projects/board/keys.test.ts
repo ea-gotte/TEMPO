@@ -20,10 +20,11 @@ describe("keyToAction", () => {
     expect(down(k("y", { ctrlKey: true }))).toEqual({ type: "redo" });
     expect(down(k("z", { metaKey: true }))).toEqual({ type: "undo" });
   });
-  it("copiar, duplicar y seleccionar todo; Ctrl+V lo maneja el evento paste", () => {
-    expect(down(k("c", { ctrlKey: true }))).toEqual({ type: "copy" });
+  it("duplicar y seleccionar todo; copiar, cortar y pegar los manejan los eventos copy/cut/paste", () => {
     expect(down(k("d", { ctrlKey: true }))).toEqual({ type: "duplicate" });
     expect(down(k("a", { ctrlKey: true }))).toEqual({ type: "selectAll" });
+    expect(down(k("c", { ctrlKey: true }))).toBeNull();
+    expect(down(k("x", { ctrlKey: true }))).toBeNull();
     expect(down(k("v", { ctrlKey: true }))).toBeNull();
   });
   it("Supr y Retroceso borran; Esc sale", () => {

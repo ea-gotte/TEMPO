@@ -32,10 +32,9 @@ export function keyToAction(e: KeyLike, phase: "down" | "up", editing: boolean):
   if (e.ctrlKey || e.metaKey) {
     if (key === "z") return e.shiftKey ? { type: "redo" } : { type: "undo" };
     if (key === "y") return { type: "redo" };
-    if (key === "c") return { type: "copy" };
     if (key === "d") return { type: "duplicate" };
     if (key === "a") return { type: "selectAll" };
-    return null; // Ctrl+V y el resto quedan para el navegador
+    return null; // Ctrl+C, Ctrl+X y Ctrl+V: los manejan los eventos copy/cut/paste del tablero
   }
   if (e.altKey) return null;
   if (space) return { type: "spaceDown" };
