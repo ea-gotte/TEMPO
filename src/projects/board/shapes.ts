@@ -33,6 +33,9 @@ declare module "fabric" {
     measureLabel?: string;
     /** Flecha o línea: texto escrito en su punto medio ("Sí", "No"…) */
     caption?: string;
+    /** Observación numerada: qué se observa, y si ya se resolvió */
+    detail?: string;
+    resolved?: boolean;
   }
   interface SerializedObjectProps {
     id?: string;
@@ -47,11 +50,13 @@ declare module "fabric" {
     mPerPx?: number;
     measureLabel?: string;
     caption?: string;
+    detail?: string;
+    resolved?: boolean;
   }
 }
 
 // Propiedades propias que viajan al guardar (spec §4)
-FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads", "num", "mPerPx", "measureLabel", "caption"];
+FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads", "num", "mPerPx", "measureLabel", "caption", "detail", "resolved"];
 
 /** Tamaño de letra del texto de flechas y líneas. */
 export const CAPTION_SIZE = 14;
@@ -228,6 +233,8 @@ export function createCloud(box: Box, stroke = REVIEW_RED, strokeWidth = 2): Pat
   return tag(p, "cloud");
 }
 
+export const RESOLVED_GREEN = "#16a34a";
+
 /** Observación numerada (revisión de planos): círculo con el número, de tamaño fijo. */
 export function createMarker(at: Pt, num: number, color = REVIEW_RED): Group {
   const circle = new Circle({ left: 0, top: 0, radius: 14, fill: color, stroke: "#ffffff", strokeWidth: 2 });
@@ -235,6 +242,14 @@ export function createMarker(at: Pt, num: number, color = REVIEW_RED): Group {
   const g = new Group([circle, label]);
   g.set({ left: at.x, top: at.y, num });
   return tag(g, "marker");
+}
+
+/** Una observación resuelta se ve apagada y con el borde verde (sigue mostrando su número). */
+export function setMarkerResolved(g: Group, resolved: boolean) {
+  const [circle, label] = g.getObjects();
+  circle.set({ stroke: resolved ? RESOLVED_GREEN : "#ffffff", opacity: resolved ? 0.5 : 1 });
+  label.set({ opacity: resolved ? 0.8 : 1 });
+  g.set({ resolved: resolved || undefined, dirty: true });
 }
 
 export function createText(at: Pt): Textbox {

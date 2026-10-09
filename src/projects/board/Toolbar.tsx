@@ -47,6 +47,8 @@ export interface ToolbarProps {
   /** Abre el menú de plantillas debajo del botón (coordenadas de la ventana) */
   onTemplates: (x: number, y: number) => void;
   onSearch: () => void;
+  observations: boolean;
+  onObservations: () => void;
   snap: boolean;
   onToggleSnap: () => void;
 }
@@ -109,6 +111,7 @@ export function Toolbar(p: ToolbarProps) {
             <Icon name="dashboard" size={17} />
           </button>
           <Btn icon="search" label="Buscar en el tablero (Ctrl+F)" onClick={p.onSearch} />
+          <Btn icon="clipboard" label="Lista de observaciones" on={p.observations} onClick={p.onObservations} />
           <Btn icon="info" label="Atajos de teclado (?)" onClick={p.onHelp} />
           <Btn icon="download" label="Exportar PNG" onClick={p.onExport} />
           <Btn icon={p.fullscreen ? "minimize" : "maximize"} label={p.fullscreen ? "Salir de pantalla completa" : "Pantalla completa"} onClick={p.onFullscreen} />

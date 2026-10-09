@@ -3,6 +3,7 @@ import type { AlignMode } from "./align";
 import type { StylePatch, StyleState } from "./style";
 import type { DashStyle, HeadStyle } from "./strokes";
 import { Btn, Swatch } from "./Toolbar";
+import { DetailField } from "./ObservationsPanel";
 import { FILL_COLORS, HIGHLIGHT_COLORS, HIGHLIGHT_WIDTHS, NOTE_COLORS, PALETTE, STROKE_WIDTHS } from "./tools";
 
 /** Panel derecho (solo con selección). Adaptado de RightSidebar de Figma_Clone (github.com/Lyam0udi/Figma_Clone). */
@@ -27,6 +28,9 @@ export interface PanelProps {
   /** Una imagen sola seleccionada: estado de su escala (para medir sobre el plano) */
   image: { calibrated: boolean } | null;
   onCalibrate: () => void;
+  /** Una observación numerada sola seleccionada: su descripción y estado */
+  marker: { id: string; num: number; detail: string; resolved: boolean } | null;
+  onMarker: (id: string, patch: { detail?: string; resolved?: boolean }) => void;
 }
 
 /** Selector de color libre (además de la paleta). Con valores mixtos o sin color parte de un gris. */
@@ -44,7 +48,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onDelete, onAlign, onDistribute, onExport, image, onCalibrate }: PanelProps) {
+export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onDelete, onAlign, onDistribute, onExport, image, onCalibrate, marker, onMarker }: PanelProps) {
   const fills = s.kind === "note" ? NOTE_COLORS : FILL_COLORS;
   // el resaltador tiene sus propios colores claros y trazos anchos
   const hl = s.strokeLabel === "Resaltador";
@@ -52,6 +56,14 @@ export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onL
   return (
     <aside className="bd-panel" aria-label="Propiedades de la selección">
       <div className="bd-panel-title">{count > 1 ? `${count} elementos` : "Propiedades"}</div>
+      {marker && (
+        <Row label={`Observación ${marker.num}`}>
+          <DetailField key={marker.id + marker.detail} value={marker.detail} onSave={(t) => onMarker(marker.id, { detail: t })} />
+          <label className="bd-obs-check">
+            <input type="checkbox" checked={marker.resolved} onChange={(e) => onMarker(marker.id, { resolved: e.target.checked })} /> Resuelta
+          </label>
+        </Row>
+      )}
       {s.fill !== null && (
         <Row label="Relleno">
           {fills.map((c) => <Swatch key={c} color={c} on={s.fill === c} onClick={() => onStyle({ fill: c })} />)}

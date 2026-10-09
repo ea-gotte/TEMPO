@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActiveSelection, IText, type Canvas, type FabricObject, type Line } from "fabric";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActiveSelection, IText, type Canvas, type FabricObject, type Group, type Line } from "fabric";
 import { Icon } from "../../components/Icon";
 import { ContextMenu, type CtxItem } from "../../components/ui";
 import { today, uid } from "../../utils";
@@ -19,11 +19,13 @@ import { BOARD_MIME, decodeClip, encodeClip, pasteOffset, textOf } from "./clipb
 import { bakeScaledLabels, createLabeled, editLabel, isLabeled, readLabeled } from "./labels";
 import { editCaption } from "./captions";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { ObservationsPanel, type ObservationItem } from "./ObservationsPanel";
+import { observationsTable } from "./observations";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { SearchBar } from "./SearchBar";
 import { findMatches } from "./search";
 import { insertCopies, restore, snapshot } from "./serialize";
-import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject } from "./shapes";
+import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject, setMarkerResolved } from "./shapes";
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
 import { mergeStyles } from "./styleMerge";
 import { Toolbar, type Pen, type SaveState } from "./Toolbar";
@@ -91,7 +93,15 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   penRef.current = pen;
   const [hist, setHist] = useState({ undo: false, redo: false });
   const [zoom, setZoom] = useState(1);
-  const [sel, setSel] = useState<{ count: number; style: StyleState; image: { calibrated: boolean } | null } | null>(null);
+  const [sel, setSel] = useState<{
+    count: number;
+    style: StyleState;
+    image: { calibrated: boolean } | null;
+    marker: { id: string; num: number; detail: string; resolved: boolean } | null;
+  } | null>(null);
+  const [obsOpen, setObsOpen] = useState(false);
+  /** Sube con cada cambio registrado (y al deshacer): la lista de observaciones se vuelve a leer del lienzo */
+  const [rev, setRev] = useState(0);
   /** Calibrando la escala de esta imagen (se espera que se trace una línea) */
   const [calibrating, setCalibrating] = useState(false);
   const calibImg = useRef<FabricObject | null>(null);
@@ -155,7 +165,10 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     saveTimer.current = window.setTimeout(() => void flushSave(), 800);
   }, [flushSave]);
 
-  const syncHistory = useCallback(() => setHist({ undo: history.canUndo(), redo: history.canRedo() }), [history]);
+  const syncHistory = useCallback(() => {
+    setHist({ undo: history.canUndo(), redo: history.canRedo() });
+    setRev((r) => r + 1);
+  }, [history]);
 
   /** Registra el estado actual como un paso de deshacer y programa el guardado. */
   const commit = useCallback(() => {
@@ -182,7 +195,13 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const objs = c ? c.getActiveObjects().filter((o) => !isTransient(o)) : [];
     // con varios objetos, el panel ofrece lo que tenga cualquiera de ellos (no solo el primero)
     const img = objs.length === 1 && objs[0].kind === "image" ? objs[0] : null;
-    setSel(objs.length ? { count: objs.length, style: mergeStyles(objs.map(readStyle)), image: img ? { calibrated: !!img.mPerPx } : null } : null);
+    const mk = objs.length === 1 && objs[0].kind === "marker" && objs[0].id ? objs[0] : null;
+    setSel(objs.length ? {
+      count: objs.length,
+      style: mergeStyles(objs.map(readStyle)),
+      image: img ? { calibrated: !!img.mPerPx } : null,
+      marker: mk ? { id: mk.id!, num: mk.num ?? 0, detail: mk.detail ?? "", resolved: !!mk.resolved } : null,
+    } : null);
   }, []);
 
   /** Tras cambiar la vista: zoom en la barra, cuadrícula del fondo y guardado. */
@@ -609,7 +628,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const objectText = (o: FabricObject): string => {
     if (isLabeled(o)) return readLabeled(o).text ?? "";
     if (o.kind === "text") return (o as IText).text;
-    if (o.kind === "marker") return `Observación ${o.num}`;
+    if (o.kind === "marker") return `Observación ${o.num} ${o.detail ?? ""}`;
     if (o.kind === "measure") return o.measureLabel ?? "";
     if (isConnector(o)) return o.caption ?? "";
     return "";
@@ -681,12 +700,49 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     setMenu({ x, y, items });
   };
 
+  /** Descripción o estado de una observación numerada (desde el panel o la lista). */
+  const setMarkerInfo = (id: string, patch: { detail?: string; resolved?: boolean }) => {
+    const c = cRef.current;
+    const m = c?.getObjects().find((o) => o.id === id && o.kind === "marker") as Group | undefined;
+    if (!c || !m) return;
+    if (patch.detail !== undefined) m.set({ detail: patch.detail.trim() || undefined });
+    if (patch.resolved !== undefined) setMarkerResolved(m, patch.resolved);
+    c.requestRenderAll();
+    refreshPanel();
+    commit();
+  };
+
+  const copyObservations = async (items: ObservationItem[]) => {
+    try {
+      await navigator.clipboard.writeText(observationsTable(items));
+      notify(`Lista copiada (${items.length} observaciones): pegala en Excel o en un correo.`);
+    } catch {
+      notify("No se pudo copiar la lista: el navegador no dio permiso para usar el portapapeles.");
+    }
+  };
+
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
     duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates,
+    setMarkerInfo, copyObservations,
   };
   const act = useRef(actions);
   act.current = actions;
+
+  /** Observaciones del tablero, leídas del lienzo mientras la lista está abierta (y otra vez con cada cambio). */
+  const observations = useMemo<ObservationItem[]>(() => {
+    const c = cRef.current;
+    if (!obsOpen || !c) return [];
+    return c.getObjects().filter((o) => o.kind === "marker" && o.id).map((o) => ({
+      id: o.id!,
+      num: o.num ?? 0,
+      detail: o.detail ?? "",
+      resolved: !!o.resolved,
+      color: String((o as Group).getObjects()[0]?.fill ?? INK),
+    }));
+    // rev avisa que el lienzo cambió (el lienzo no es estado de React)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obsOpen, rev]);
 
   /* ---------- Montaje del lienzo ---------- */
 
@@ -1047,6 +1103,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         onToggleSnap={() => act.current.toggleSnap()}
         onTemplates={(x, y) => act.current.openTemplates(x, y)}
         onSearch={() => setSearch((s) => s ?? { query: "", ids: [], index: 0 })}
+        observations={obsOpen}
+        onObservations={() => setObsOpen((o) => !o)}
       />
 
       {banner?.kind === "unavailable" && (
@@ -1110,6 +1168,17 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             onClose={() => setSearch(null)}
           />
         )}
+        {obsOpen && (
+          <ObservationsPanel
+            items={observations}
+            below={!!search}
+            onFocus={(id) => focusObject(id)}
+            onDetail={(id, t) => act.current.setMarkerInfo(id, { detail: t })}
+            onResolved={(id, r) => act.current.setMarkerInfo(id, { resolved: r })}
+            onCopy={() => void act.current.copyObservations(observations)}
+            onClose={() => setObsOpen(false)}
+          />
+        )}
         {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
         {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
         {sel ? (
@@ -1127,6 +1196,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             onExport={() => void act.current.exportSelection()}
             image={sel.image}
             onCalibrate={() => act.current.startCalibration()}
+            marker={sel.marker}
+            onMarker={(id, patch) => act.current.setMarkerInfo(id, patch)}
           />
         ) : lockedFocus ? (
           <aside className="bd-panel" aria-label="Elemento bloqueado">
