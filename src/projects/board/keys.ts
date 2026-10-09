@@ -51,15 +51,39 @@ export function keyToAction(e: KeyLike, phase: "down" | "up", editing: boolean):
   return tool ? { type: "tool", tool } : null;
 }
 
+export interface InterceptContext {
+  /** El foco está en el tablero o en ningún lado (body); no en un botón o enlace del resto de la página */
+  focusInBoard: boolean;
+  hasSelection: boolean;
+  /** Hay texto de la página seleccionado (Ctrl+C tiene que copiarlo, no los objetos del tablero) */
+  textSelected: boolean;
+}
+
+/** ¿El tablero se queda con esta tecla? Si no, el navegador hace lo de siempre (copiar, desplazar, activar un botón). */
+export function shouldIntercept(a: KeyAction, ctx: InterceptContext): boolean {
+  if (!ctx.focusInBoard) return false;
+  if (a.type === "copy") return ctx.hasSelection && !ctx.textSelected;
+  if (a.type === "nudge" || a.type === "delete") return ctx.hasSelection;
+  return true;
+}
+
 const typing = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
 
 /** Escucha el teclado mientras el tablero está montado. Devuelve la función para dejar de escuchar. */
-export function attachKeys(onAction: (a: KeyAction) => void, isEditing: () => boolean): () => void {
+export function attachKeys(
+  onAction: (a: KeyAction) => void,
+  isEditing: () => boolean,
+  board: { root: () => HTMLElement | null; hasSelection: () => boolean },
+): () => void {
   const down = (e: KeyboardEvent) => {
     if (typing(e.target)) return; // campos del panel y el textarea con el que Fabric edita texto
     const a = keyToAction(e, "down", isEditing());
     if (!a) return;
+    const t = e.target;
+    const focusInBoard = t === document.body || t === document.documentElement || (t instanceof Node && !!board.root()?.contains(t));
+    const ctx = { focusInBoard, hasSelection: board.hasSelection(), textSelected: !!window.getSelection()?.toString() };
+    if (!shouldIntercept(a, ctx)) return;
     e.preventDefault();
     onAction(a);
   };

@@ -15,7 +15,7 @@ export interface StyleState {
   strokeWidth: number | null;
   fontSize: number | null;
   opacity: number;
-  strokeLabel: "Borde" | "Línea" | "Color del texto";
+  strokeLabel: "Borde" | "Línea" | "Color del texto" | "Color";
 }
 
 export interface StylePatch {

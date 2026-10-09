@@ -91,3 +91,13 @@ describe("cloudPath", () => {
     expect(cloudPath(5, 5).match(/A /g)).toHaveLength(4);
   });
 });
+
+describe("exportScale con tope de área", () => {
+  it("baja la escala si la imagen pasaría de 16 megapíxeles (límite de Safari)", () => {
+    // 5000×5000 a 2× serían 100 MP: se baja a 0,8 (4000×4000 = 16 MP)
+    expect(exportScale(5000, 5000)).toBeCloseTo(0.8, 5);
+  });
+  it("un tablero normal sigue saliendo a 2×", () => {
+    expect(exportScale(1500, 900)).toBe(2);
+  });
+});

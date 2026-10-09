@@ -87,8 +87,9 @@ export function fitViewport(content: Box, view: { width: number; height: number 
 /** Escala para que una imagen entre en el espacio disponible (nunca agranda). */
 export const fitScale = (w: number, h: number, availW: number, availH: number) => Math.min(1, availW / w, availH / h);
 
-/** Multiplicador de exportación: 2× salvo que el lado mayor pase de `maxSide` píxeles. */
-export const exportScale = (w: number, h: number, maxSide = 8000) => Math.min(2, maxSide / Math.max(w, h, 1));
+/** Multiplicador de exportación: 2× salvo que el lado mayor pase de `maxSide` px o el área de `maxArea` (límite de Safari). */
+export const exportScale = (w: number, h: number, maxSide = 8000, maxArea = 16_000_000) =>
+  Math.min(2, maxSide / Math.max(w, h, 1), Math.sqrt(maxArea / Math.max(w * h, 1)));
 
 /** Cuadrícula de puntos del fondo, sincronizada con la vista. Con poco zoom se oculta (null). */
 export function gridSpec(v: Viewport, base = 24): { size: number; x: number; y: number } | null {

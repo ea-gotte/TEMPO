@@ -20,6 +20,8 @@ declare module "fabric" {
     toId?: string | null;
     /** Bloqueo pedido por el usuario (para marcar encima de un plano sin moverlo) */
     lockedByUser?: boolean;
+    /** Forma con texto: tamaño de letra pedido (el que se ve puede ser menor para que el texto entre) */
+    baseFontSize?: number;
   }
   interface SerializedObjectProps {
     id?: string;
@@ -27,11 +29,13 @@ declare module "fabric" {
     fromId?: string | null;
     toId?: string | null;
     lockedByUser?: boolean;
+    /** Forma con texto: tamaño de letra pedido (el que se ve puede ser menor para que el texto entre) */
+    baseFontSize?: number;
   }
 }
 
 // Propiedades propias que viajan al guardar (spec §4)
-FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser"];
+FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize"];
 
 /** Línea con punta de flecha en el extremo final (x2, y2). */
 export class Arrow extends Line {

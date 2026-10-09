@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActiveSelection, IText, type Canvas, type FabricObject } from "fabric";
 import { Icon } from "../../components/Icon";
-import { useToast } from "../../components/ui";
 import { today, uid } from "../../utils";
 import { boardEpoch, loadBoard, saveBoard, type BoardDoc } from "./boardStore";
 import { applyToolMode, attachPanZoom, createBoardCanvas, exportPng, fitToContent, getViewport, setViewport, viewCenter, zoomAt, zoomStep } from "./canvas";
@@ -16,6 +15,7 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import { insertCopies, restore, snapshot } from "./serialize";
 import { applyLock, createImage, isTransient, prepareObject, replaceObject } from "./shapes";
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
+import { mergeStyles } from "./styleMerge";
 import { Toolbar, type Pen } from "./Toolbar";
 import { INK, NOTE_COLORS, type Tool } from "./tools";
 import "./board.css";
@@ -30,7 +30,7 @@ import "./board.css";
 type Banner = { kind: "unavailable" } | { kind: "quota"; mb: number } | { kind: "corrupt"; raw: unknown };
 
 const slug = (s: string) =>
-  s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "proyecto";
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "proyecto";
 
 function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
@@ -42,7 +42,6 @@ function download(blob: Blob, name: string) {
 }
 
 export default function BoardTab({ projectId, fileLabel }: { projectId: string; fileLabel: string }) {
-  const toast = useToast();
   const rootRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -58,6 +57,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const saveTimer = useRef(0);
   const commitTimer = useRef(0);
   const restoring = useRef(false);
+  const restoreQueue = useRef<Promise<void>>(Promise.resolve());
   /** Operación propia en curso: el evento selection:cleared no debe registrar pasos intermedios. */
   const quiet = useRef(false);
   const clipboard = useRef<Record<string, unknown>[]>([]);
@@ -81,6 +81,15 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const [lockPrompt, setLockPrompt] = useState<FabricObject | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [ready, setReady] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimer = useRef(0);
+
+  /** Aviso dentro del tablero: a diferencia de los toasts de la app, también se ve en pantalla completa. */
+  const notify = useCallback((msg: string) => {
+    setNotice(msg);
+    window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => setNotice(null), 3500);
+  }, []);
 
   /* ---------- Guardado e historial ---------- */
 
@@ -99,8 +108,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     dirty.current = true; // se reintenta con el próximo cambio
     if (res === "quota") setBanner({ kind: "quota", mb: (history.current()?.length ?? 0) / 1e6 });
     else if (res === "unavailable") setBanner({ kind: "unavailable" });
-    else toast("No se pudo guardar el tablero.");
-  }, [projectId, history, toast]);
+    else notify("No se pudo guardar el tablero.");
+  }, [projectId, history, notify]);
 
   const scheduleSave = useCallback(() => {
     dirty.current = true;
@@ -132,7 +141,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const refreshPanel = useCallback(() => {
     const c = cRef.current;
     const objs = c ? c.getActiveObjects().filter((o) => !isTransient(o)) : [];
-    setSel(objs.length ? { count: objs.length, style: readStyle(objs[0]) } : null);
+    // con varios objetos, el panel ofrece lo que tenga cualquiera de ellos (no solo el primero)
+    setSel(objs.length ? { count: objs.length, style: mergeStyles(objs.map(readStyle)) } : null);
   }, []);
 
   /** Tras cambiar la vista: zoom en la barra, cuadrícula del fondo y guardado. */
@@ -195,20 +205,22 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       restoring.current = false;
     }
     setLockedFocus(null);
+    setLockPrompt(null); // los objetos se recrearon: la imagen que se ofrecía bloquear ya no es la del lienzo
     syncHistory();
     refreshPanel();
     scheduleSave();
   };
 
-  // Antes de deshacer/rehacer se registra un cambio que esperaba (commitSoon): si no, se perdería
-  const undo = () => {
+  /**
+   * Deshacer/rehacer en fila: con imágenes, restaurar tarda, y mantener apretado Ctrl+Z
+   * no debe solapar restauraciones. Antes se registra un cambio que esperaba (commitSoon).
+   */
+  const step = (pick: () => string | null) => {
     if (commitTimer.current) commit();
-    void applySnapshot(history.undo());
+    restoreQueue.current = restoreQueue.current.then(() => applySnapshot(pick())).catch(() => {});
   };
-  const redo = () => {
-    if (commitTimer.current) commit();
-    void applySnapshot(history.redo());
-  };
+  const undo = () => step(() => history.undo());
+  const redo = () => step(() => history.redo());
 
   const restyle = (patch: StylePatch) => {
     const c = cRef.current;
@@ -325,7 +337,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     for (const file of files) {
       const err = validateImageFile(file);
       if (err) {
-        toast(err);
+        notify(err);
         continue;
       }
       try {
@@ -341,7 +353,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         commit();
         if (Math.max(img.width, img.height) > 1200) setLockPrompt(obj);
       } catch {
-        toast("No se pudo leer la imagen.");
+        notify("No se pudo leer la imagen.");
       }
     }
   };
@@ -349,12 +361,10 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const exportBoard = async () => {
     const c = cRef.current;
     if (!c) return;
-    const blob = await exportPng(c);
-    if (!blob) {
-      toast("El tablero está vacío: no hay nada para exportar.");
-      return;
-    }
-    download(blob, `tablero-${slug(fileLabel)}-${today()}.png`);
+    const res = await exportPng(c);
+    if (res === "empty") notify("El tablero está vacío: no hay nada para exportar.");
+    else if (res === "failed") notify("No se pudo exportar el tablero: la imagen resultante es demasiado grande para el navegador.");
+    else download(res, `tablero-${slug(fileLabel)}-${today()}.png`);
   };
 
   const startOver = () => {
@@ -427,6 +437,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     loaded.current = false;
     // el textarea oculto con el que Fabric edita texto va dentro del tablero: así se escribe en pantalla completa
     IText.ownDefaults.hiddenTextareaContainer = root;
+    // solo en desarrollo: acceso al lienzo para las pruebas automatizadas en el navegador (no entra al build)
+    if (import.meta.env.DEV) (window as unknown as { __board?: Canvas }).__board = c;
     let disposed = false;
 
     const ro = new ResizeObserver(() => {
@@ -439,7 +451,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       const ids = (t instanceof ActiveSelection ? t.getObjects() : [t]).map((o) => o.id).filter((id): id is string => !!id);
       refreshConnectors(c, new Set(ids));
     };
-    const edit = (g: Parameters<typeof editLabel>[1]) => editLabel(c, g, () => { refreshPanel(); commit(); });
+    // si el texto nuevo agranda la forma, las flechas enganchadas se reacomodan en el mismo paso
+    const edit = (g: Parameters<typeof editLabel>[1]) => editLabel(c, g, () => { refreshConnectors(c); refreshPanel(); commit(); });
 
     const offs: (() => void)[] = [
       attachPanZoom(c, { panMode: () => toolRef.current === "hand" || spaceHeld.current, onChange: onViewport }),
@@ -532,7 +545,10 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         // clic (sin arrastre) sobre algo bloqueado: el panel ofrece desbloquearlo
         if (Math.hypot(e.viewportPoint.x - d.x, e.viewportPoint.y - d.y) < 4) setLockedFocus(e.target?.lockedByUser ? e.target : null);
       }),
-      attachKeys((a) => act.current.onKey(a), () => !!(c.getActiveObject() as IText | undefined)?.isEditing),
+      attachKeys((a) => act.current.onKey(a), () => !!(c.getActiveObject() as IText | undefined)?.isEditing, {
+        root: () => rootRef.current,
+        hasSelection: () => c.getActiveObjects().length > 0,
+      }),
     ];
 
     void (async () => {
@@ -586,8 +602,15 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       commit();
       void flushSave();
     };
+    // si la ventana pierde el foco con Espacio apretado, el keyup nunca llega: se suelta la mano temporal
+    const onBlur = () => {
+      if (!spaceHeld.current) return;
+      spaceHeld.current = false;
+      applyToolMode(c, toolRef.current, penRef.current);
+    };
     document.addEventListener("visibilitychange", onHidden);
     window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("blur", onBlur);
 
     return () => {
       disposed = true;
@@ -598,6 +621,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       offs.forEach((off) => off());
       document.removeEventListener("visibilitychange", onHidden);
       window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("blur", onBlur);
       ro.disconnect();
       IText.ownDefaults.hiddenTextareaContainer = null;
       cRef.current = null;
@@ -647,7 +671,23 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   };
 
   return (
-    <div className="bd-root" ref={rootRef}>
+    <div
+      className="bd-root"
+      ref={rootRef}
+      // se acepta soltar archivos en todo el tablero: si caen en la barra o un aviso, el navegador
+      // abriría el archivo y saldría de la app. Fuera del lienzo, la imagen va al centro de la vista.
+      onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
+      onDrop={(e) => {
+        const files = Array.from(e.dataTransfer.files);
+        const c = cRef.current;
+        if (!files.length || !c || !hostRef.current) return;
+        e.preventDefault();
+        const r = hostRef.current.getBoundingClientRect();
+        const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+        const v = getViewport(c);
+        void act.current.addImages(files, inside ? { x: (e.clientX - r.left - v.x) / v.zoom, y: (e.clientY - r.top - v.y) / v.zoom } : undefined);
+      }}
+    >
       <Toolbar
         tool={tool}
         onTool={setTool}
@@ -699,27 +739,24 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       {lockPrompt && (
         <div className="bd-banner info" role="status">
           <Icon name="lock" size={14} /> La imagen es grande. ¿Bloquearla para marcar encima sin moverla?
-          <button className="btn btn-primary btn-sm" onClick={() => { act.current.setLocked([lockPrompt], true); setLockPrompt(null); }}>Bloquear</button>
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              // la imagen pudo haberse borrado desde que apareció el aviso
+              if (cRef.current?.getObjects().includes(lockPrompt)) act.current.setLocked([lockPrompt], true);
+              setLockPrompt(null);
+            }}
+          >
+            Bloquear
+          </button>
           <button className="btn btn-ghost btn-sm" onClick={() => setLockPrompt(null)}>No</button>
         </div>
       )}
 
       <div className="bd-stage">
-        <div
-          className="bd-canvas"
-          ref={hostRef}
-          onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
-          onDrop={(e) => {
-            const files = Array.from(e.dataTransfer.files);
-            const c = cRef.current;
-            if (!files.length || !c || !hostRef.current) return;
-            e.preventDefault();
-            const r = hostRef.current.getBoundingClientRect();
-            const v = getViewport(c);
-            void act.current.addImages(files, { x: (e.clientX - r.left - v.x) / v.zoom, y: (e.clientY - r.top - v.y) / v.zoom });
-          }}
-        />
+        <div className="bd-canvas" ref={hostRef} />
         {!ready && <div className="bd-loading">Cargando el tablero…</div>}
+        {notice && <div className="bd-notice" role="status">{notice}</div>}
         {sel ? (
           <PropertiesPanel
             count={sel.count}

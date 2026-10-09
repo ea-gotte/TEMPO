@@ -71,3 +71,11 @@
   .bd-root { height: calc(100vh - 200px); }
   .bd-panel { top: auto; bottom: 12px; left: 12px; right: 12px; width: auto; max-height: 45%; }
 }
+
+/* Aviso dentro del tablero (los toasts de la app quedan fuera de la pantalla completa) */
+.bd-notice {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 2; max-width: calc(100% - 32px);
+  padding: 8px 14px; border-radius: var(--r-md); background: var(--text); color: var(--surface);
+  font-size: 12.5px; box-shadow: var(--shadow-md); pointer-events: none;
+}
+.bd-color { width: 26px; height: 22px; padding: 0; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--surface); cursor: pointer; }

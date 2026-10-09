@@ -62,18 +62,19 @@ export function createLabeled(s: LabeledSpec): Group {
   const k = s.kind === "diamond" ? 0.5 : s.kind === "ellipse" ? 0.7 : 1;
   const textW = k < 1 ? w * k : w - PAD * 2;
   const textH = k < 1 ? h * k : h - PAD * 2;
+  const wanted = s.fontSize ?? (note ? 18 : 16);
   const label = new Textbox(s.text ?? "", {
     left: 0,
     top: 0,
     width: Math.max(textW, 16),
-    fontSize: s.fontSize ?? (note ? 18 : 16),
+    fontSize: wanted,
     fontFamily: FONT,
     fill: INK,
     textAlign: "center",
   });
   fitText(label, Math.max(textH, 12));
   const g = new Group([shape, label]);
-  g.set({ left: s.box.left + w / 2, top: s.box.top + h / 2, angle: s.angle ?? 0, opacity: s.opacity ?? 1, id: s.id ?? uid(), kind: s.kind });
+  g.set({ left: s.box.left + w / 2, top: s.box.top + h / 2, angle: s.angle ?? 0, opacity: s.opacity ?? 1, id: s.id ?? uid(), kind: s.kind, baseFontSize: wanted });
   g.setCoords();
   prepareObject(g);
   return g;
@@ -103,7 +104,8 @@ export function readLabeled(g: Group): LabeledSpec {
     fill: String(shape.fill),
     stroke: String(shape.stroke),
     strokeWidth: shape.strokeWidth,
-    fontSize: label.fontSize,
+    // el tamaño pedido, no el achicado: si la forma crece, la letra vuelve a su tamaño
+    fontSize: g.baseFontSize ?? label.fontSize,
     angle: g.angle,
     opacity: g.opacity,
   };

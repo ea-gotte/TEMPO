@@ -5,7 +5,7 @@ import { FILL_COLORS, NOTE_COLORS, PALETTE, STROKE_WIDTHS } from "./tools";
 
 /** Panel derecho (solo con selección). Adaptado de RightSidebar de Figma_Clone (github.com/Lyam0udi/Figma_Clone). */
 
-const FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64];
+const FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64, 72];
 
 export interface PanelProps {
   count: number;
@@ -16,6 +16,12 @@ export interface PanelProps {
   onLock: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+}
+
+/** Selector de color libre (además de la paleta). Con valores mixtos o sin color parte de un gris. */
+function ColorInput({ value, label, onPick }: { value: string; label: string; onPick: (c: string) => void }) {
+  const hex = value.length === 7 && value[0] === "#" ? value : "#9ca3af";
+  return <input type="color" className="bd-color" value={hex} title={label} aria-label={label} onChange={(e) => onPick(e.target.value)} />;
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -36,11 +42,13 @@ export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onL
       {s.fill !== null && (
         <Row label="Relleno">
           {fills.map((c) => <Swatch key={c} color={c} on={s.fill === c} onClick={() => onStyle({ fill: c })} />)}
+          <ColorInput value={s.fill} label="Otro color de relleno" onPick={(c) => onStyle({ fill: c })} />
         </Row>
       )}
       {s.stroke !== null && (
         <Row label={s.strokeLabel}>
           {PALETTE.map((c) => <Swatch key={c} color={c} on={s.stroke === c} onClick={() => onStyle({ stroke: c })} />)}
+          <ColorInput value={s.stroke} label="Otro color" onPick={(c) => onStyle({ stroke: c })} />
         </Row>
       )}
       {s.strokeWidth !== null && (
@@ -57,7 +65,7 @@ export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onL
             value={FONT_SIZES.includes(s.fontSize) ? s.fontSize : ""}
             onChange={(e) => { const v = Number(e.target.value); if (v) onStyle({ fontSize: v }); }}
           >
-            {!FONT_SIZES.includes(s.fontSize) && <option value="">{s.fontSize} px (ajustado)</option>}
+            {!FONT_SIZES.includes(s.fontSize) && <option value="">{s.fontSize ? `${s.fontSize} px` : "Mixto"}</option>}
             {FONT_SIZES.map((f) => <option key={f} value={f}>{f} px</option>)}
           </select>
         </Row>

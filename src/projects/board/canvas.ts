@@ -108,10 +108,13 @@ export function attachPanZoom(c: Canvas, opts: { panMode: () => boolean; onChang
   return () => offs.forEach((off) => off());
 }
 
-/** PNG de todo el contenido, fondo blanco y margen de 24 px. null si el tablero está vacío. */
-export async function exportPng(c: Canvas): Promise<Blob | null> {
+/**
+ * PNG de todo el contenido, fondo blanco y margen de 24 px. "empty" si el tablero está vacío;
+ * "failed" si el navegador no pudo generar la imagen (por ejemplo, demasiado grande).
+ */
+export async function exportPng(c: Canvas): Promise<Blob | "empty" | "failed"> {
   const b = contentBox(c);
-  if (!b) return null;
+  if (!b) return "empty";
   const pad = 24;
   const box = { left: b.left - pad, top: b.top - pad, width: b.width + pad * 2, height: b.height + pad * 2 };
   const vpt = [...c.viewportTransform] as typeof c.viewportTransform;
@@ -120,7 +123,9 @@ export async function exportPng(c: Canvas): Promise<Blob | null> {
   c.setViewportTransform([1, 0, 0, 1, 0, 0]);
   c.backgroundColor = "#ffffff";
   try {
-    return await c.toBlob({ format: "png", multiplier: exportScale(box.width, box.height), ...box });
+    return (await c.toBlob({ format: "png", multiplier: exportScale(box.width, box.height), ...box })) ?? "failed";
+  } catch {
+    return "failed";
   } finally {
     c.backgroundColor = bg;
     c.setViewportTransform(vpt);

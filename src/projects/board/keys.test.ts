@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { keyToAction, type KeyLike } from "./keys";
+import { keyToAction, shouldIntercept, type KeyLike } from "./keys";
 
 const k = (key: string, o: Partial<KeyLike> = {}): KeyLike => ({
   key, code: "", ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...o,
@@ -50,5 +50,27 @@ describe("keyToAction", () => {
   });
   it("con Alt no hace nada", () => {
     expect(down(k("r", { altKey: true }))).toBeNull();
+  });
+});
+
+describe("shouldIntercept", () => {
+  const ctx = { focusInBoard: true, hasSelection: true, textSelected: false };
+  it("con el foco fuera del tablero (un botón o enlace de la página) no intercepta nada", () => {
+    expect(shouldIntercept({ type: "spaceDown" }, { ...ctx, focusInBoard: false })).toBe(false);
+    expect(shouldIntercept({ type: "tool", tool: "rect" }, { ...ctx, focusInBoard: false })).toBe(false);
+  });
+  it("Ctrl+C solo copia del tablero si hay algo seleccionado y no hay texto de la página seleccionado", () => {
+    expect(shouldIntercept({ type: "copy" }, ctx)).toBe(true);
+    expect(shouldIntercept({ type: "copy" }, { ...ctx, hasSelection: false })).toBe(false);
+    expect(shouldIntercept({ type: "copy" }, { ...ctx, textSelected: true })).toBe(false);
+  });
+  it("flechas y Supr solo actúan con una selección (si no, la página se desplaza como siempre)", () => {
+    expect(shouldIntercept({ type: "nudge", dx: 0, dy: 1 }, { ...ctx, hasSelection: false })).toBe(false);
+    expect(shouldIntercept({ type: "delete" }, { ...ctx, hasSelection: false })).toBe(false);
+    expect(shouldIntercept({ type: "nudge", dx: 0, dy: 1 }, ctx)).toBe(true);
+  });
+  it("el resto de los atajos funciona sin selección", () => {
+    expect(shouldIntercept({ type: "undo" }, { ...ctx, hasSelection: false })).toBe(true);
+    expect(shouldIntercept({ type: "tool", tool: "note" }, { ...ctx, hasSelection: false })).toBe(true);
   });
 });

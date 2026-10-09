@@ -1,0 +1,36 @@
+import { describe, expect, it } from "vitest";
+import type { StyleState } from "./style";
+import { MIXED, mergeStyles } from "./styleMerge";
+
+const base: StyleState = { kind: undefined, fill: null, stroke: null, strokeWidth: null, fontSize: null, opacity: 1, strokeLabel: "Borde" };
+const image: StyleState = { ...base, kind: "image" };
+const rect: StyleState = { ...base, kind: "rect", fill: "#ffffff", stroke: "#1f2937", strokeWidth: 2, fontSize: 16 };
+const rect2: StyleState = { ...rect, fill: "#fef08a", fontSize: 24 };
+const arrow: StyleState = { ...base, kind: "arrow", stroke: "#1f2937", strokeWidth: 2, strokeLabel: "Línea" };
+
+describe("mergeStyles", () => {
+  it("un solo objeto queda igual", () => {
+    expect(mergeStyles([rect])).toEqual(rect);
+  });
+  it("muestra una propiedad si la tiene cualquiera de los objetos, aunque el primero sea una imagen", () => {
+    const m = mergeStyles([image, rect]);
+    expect(m.fill).toBe("#ffffff");
+    expect(m.stroke).toBe("#1f2937");
+    expect(m.fontSize).toBe(16);
+  });
+  it("valores distintos quedan como mixtos (ninguna muestra marcada)", () => {
+    const m = mergeStyles([rect, rect2]);
+    expect(m.fill).toBe(MIXED);
+    expect(m.fontSize).toBe(0);
+    expect(m.stroke).toBe("#1f2937");
+  });
+  it("tipos distintos: sin tipo común y una etiqueta genérica para el color de línea", () => {
+    const m = mergeStyles([rect, arrow]);
+    expect(m.kind).toBeUndefined();
+    expect(m.strokeLabel).toBe("Color");
+    expect(m.strokeWidth).toBe(2);
+  });
+  it("lo que ningún objeto tiene sigue oculto", () => {
+    expect(mergeStyles([image, arrow]).fill).toBeNull();
+  });
+});
