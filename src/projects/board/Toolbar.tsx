@@ -38,7 +38,9 @@ export interface ToolbarProps {
   onZoomOut: () => void;
   onZoomReset: () => void;
   onFit: () => void;
-  onExport: () => void;
+  /** Abre el menú de descarga (imagen o archivo del tablero) junto al botón */
+  onExport: (x: number, y: number) => void;
+  onImport: () => void;
   fullscreen: boolean;
   onFullscreen: () => void;
   onClear: () => void;
@@ -113,7 +115,19 @@ export function Toolbar(p: ToolbarProps) {
           <Btn icon="search" label="Buscar en el tablero (Ctrl+F)" onClick={p.onSearch} />
           <Btn icon="clipboard" label="Lista de observaciones" on={p.observations} onClick={p.onObservations} />
           <Btn icon="info" label="Atajos de teclado (?)" onClick={p.onHelp} />
-          <Btn icon="download" label="Exportar PNG" onClick={p.onExport} />
+          <button
+            type="button"
+            className="bd-btn"
+            title="Descargar (imagen o archivo del tablero)"
+            aria-label="Descargar"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              p.onExport(r.left, r.bottom + 4);
+            }}
+          >
+            <Icon name="download" size={17} />
+          </button>
+          <Btn icon="upload" label="Importar un tablero (.json)" onClick={p.onImport} />
           <Btn icon={p.fullscreen ? "minimize" : "maximize"} label={p.fullscreen ? "Salir de pantalla completa" : "Pantalla completa"} onClick={p.onFullscreen} />
           <Btn icon="trash" label="Vaciar el tablero" danger onClick={p.onClear} />
         </div>

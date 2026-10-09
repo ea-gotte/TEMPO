@@ -9,7 +9,7 @@ import { isConnector, lineEnds, refreshConnectors, setLineEnds, shapeBox } from 
 import { parseMeters } from "./measure";
 import { calibrateImage, refreshMeasures } from "./measures";
 import { attachDrawing } from "./draw";
-import { connectorEnds, fitScale, gridSpec, snapDelta, type Box, type Pt } from "./geometry";
+import { connectorEnds, fitScale, fitViewport, gridSpec, snapDelta, unionBoxes, type Box, type Pt } from "./geometry";
 import { TEMPLATES, templateBounds, templateOffset, type Template } from "./templates";
 import { alignDeltas, distributeDeltas, gridDeltas, type AlignMode } from "./align";
 import { createHistory } from "./history";
@@ -25,6 +25,7 @@ import { ShortcutsHelp } from "./ShortcutsHelp";
 import { SearchBar } from "./SearchBar";
 import { findMatches } from "./search";
 import { insertCopies, restore, snapshot } from "./serialize";
+import { decodeBoardFile, encodeBoardFile, itemsBounds } from "./boardFile";
 import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject, setMarkerResolved } from "./shapes";
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
 import { mergeStyles } from "./styleMerge";
@@ -59,6 +60,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const rootRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const importRef = useRef<HTMLInputElement>(null);
   const cRef = useRef<Canvas | null>(null);
   const history = useRef(createHistory()).current;
   const lastData = useRef<BoardDoc["fabric"] | null>(null);
@@ -450,6 +452,58 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     else download(res, `tablero-${slug(fileLabel)}-${today()}.png`);
   };
 
+  /** Archivo del tablero (.json): respaldo, o para pasárselo a alguien que lo importa en su tablero. */
+  const exportFile = () => {
+    const c = cRef.current;
+    if (!c) return;
+    const objects = snapshot(c).data.objects as Record<string, unknown>[];
+    if (!objects.length) return notify("El tablero está vacío: no hay nada para descargar.");
+    const blob = new Blob([encodeBoardFile(fileLabel, objects, new Date().toISOString())], { type: "application/json" });
+    download(blob, `tablero-${slug(fileLabel)}-${today()}.json`);
+  };
+
+  const openExportMenu = (x: number, y: number) =>
+    setMenu({
+      x,
+      y,
+      items: [
+        { label: "Imagen PNG", ico: "image", onClick: () => void exportBoard() },
+        { label: "Archivo del tablero (.json): respaldo o para compartir", ico: "download", onClick: exportFile },
+      ],
+    });
+
+  /** Agrega al tablero el contenido de un archivo de tablero, al lado de lo que ya hay (un paso de deshacer). */
+  const importFile = async (file: File) => {
+    const c = cRef.current;
+    if (!c) return;
+    let text: string;
+    try {
+      text = await file.text();
+    } catch {
+      return notify("No se pudo leer el archivo.");
+    }
+    const parsed = decodeBoardFile(text);
+    if (!parsed) return notify("Ese archivo no es un tablero: elegí un .json descargado desde un tablero (Descargar → Archivo del tablero).");
+    const bounds = itemsBounds(parsed.objects);
+    if (!bounds) return notify("El tablero de ese archivo está vacío.");
+    const occupied = c.getObjects().filter((o) => !isTransient(o)).map(shapeBox);
+    const { dx, dy } = templateOffset(bounds, viewCenter(c), occupied);
+    c.discardActiveObject();
+    let objs: FabricObject[];
+    try {
+      objs = await insertCopies(c, parsed.objects, dx, dy, true);
+    } catch {
+      return notify("El archivo del tablero está dañado: no se pudo agregar.");
+    }
+    refreshConnectors(c);
+    const b = unionBoxes(objs.map(shapeBox));
+    if (b) setViewport(c, fitViewport(b, { width: c.width, height: c.height }));
+    onViewport();
+    select(objs);
+    commit();
+    notify(`Se agregó ${parsed.project ? `el tablero «${parsed.project}»` : "el tablero del archivo"} (${objs.length} elementos).`);
+  };
+
   /** Exporta a PNG solo lo seleccionado (por ejemplo, un plano con sus marcas). */
   const exportSelection = async () => {
     const c = cRef.current;
@@ -729,7 +783,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
-    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates,
+    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openExportMenu, importFile,
     setMarkerInfo, copyObservations,
   };
   const act = useRef(actions);
@@ -1100,7 +1154,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         onZoomOut={withCanvas((c) => zoomStep(c, -1))}
         onZoomReset={withCanvas((c) => zoomAt(c, { x: c.width / 2, y: c.height / 2 }, 1))}
         onFit={withCanvas(fitToContent)}
-        onExport={() => void act.current.exportBoard()}
+        onExport={(x, y) => act.current.openExportMenu(x, y)}
+        onImport={() => importRef.current?.click()}
         fullscreen={fullscreen}
         onFullscreen={() => {
           if (document.fullscreenElement) void document.exitFullscreen();
@@ -1221,6 +1276,17 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         ) : null}
       </div>
 
+      <input
+        ref={importRef}
+        type="file"
+        accept=".json,application/json"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) void act.current.importFile(f);
+        }}
+      />
       <input
         ref={fileRef}
         type="file"

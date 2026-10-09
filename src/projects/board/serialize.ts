@@ -31,7 +31,7 @@ export async function restore(canvas: Canvas, data: string | BoardDoc["fabric"])
  * conserva su enganche solo si la forma enganchada también se copió. Las copias
  * nunca quedan bloqueadas.
  */
-export async function insertCopies(canvas: Canvas, items: Record<string, unknown>[], dx: number, dy = dx): Promise<FabricObject[]> {
+export async function insertCopies(canvas: Canvas, items: Record<string, unknown>[], dx: number, dy = dx, keepLocks = false): Promise<FabricObject[]> {
   const ids = new Map<string, string>();
   for (const it of items) if (typeof it.id === "string") ids.set(it.id, uid());
   const remap = (id: unknown) => (typeof id === "string" ? ids.get(id) ?? null : null);
@@ -40,7 +40,8 @@ export async function insertCopies(canvas: Canvas, items: Record<string, unknown
     id: remap(it.id) ?? uid(),
     fromId: remap(it.fromId),
     toId: remap(it.toId),
-    lockedByUser: false,
+    // pegar o duplicar desbloquea (la copia se mueve); al importar un tablero se respeta lo bloqueado
+    lockedByUser: keepLocks ? !!it.lockedByUser : false,
     left: Number(it.left ?? 0) + dx,
     top: Number(it.top ?? 0) + dy,
   }));
