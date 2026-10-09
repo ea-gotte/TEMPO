@@ -1,6 +1,6 @@
 import { Ellipse, Group, Polygon, Rect, Shadow, Textbox, type Canvas, type FabricObject } from "fabric";
 import { uid } from "../../utils";
-import type { Box } from "./geometry";
+import { heightForText, textArea, type Box } from "./geometry";
 import { markTransient, prepareObject, replaceObject } from "./shapes";
 import { FONT, INK, NOTE_COLORS } from "./tools";
 
@@ -29,11 +29,12 @@ export interface LabeledSpec {
   id?: string;
 }
 
-const PAD = 12;
+/** Letra mínima al achicar para que el texto entre: más chica no se lee. Si aun así no entra, la forma crece. */
+const MIN_FONT = 12;
 
-/** Achica la letra hasta que el texto entre en el alto disponible (mínimo 8 px). */
-function fitText(t: Textbox, maxHeight: number) {
-  while (t.height > maxHeight && t.fontSize > 8) {
+/** Achica la letra hasta que el texto entre en el alto disponible, sin bajar de `min`. */
+function fitText(t: Textbox, maxHeight: number, min: number) {
+  while (t.height > maxHeight && t.fontSize > min) {
     t.set({ fontSize: t.fontSize - 1 });
     t.initDimensions();
   }
@@ -41,8 +42,22 @@ function fitText(t: Textbox, maxHeight: number) {
 
 export function createLabeled(s: LabeledSpec): Group {
   const w = Math.max(s.box.width, 24);
-  const h = Math.max(s.box.height, 24);
+  const boxH = Math.max(s.box.height, 24);
   const note = s.kind === "note";
+  const wanted = s.fontSize ?? (note ? 18 : 16);
+  const area = textArea(s.kind, w, boxH);
+  const label = new Textbox(s.text ?? "", {
+    left: 0,
+    top: 0,
+    width: Math.max(area.width, 16),
+    fontSize: wanted,
+    fontFamily: FONT,
+    fill: INK,
+    textAlign: "center",
+  });
+  fitText(label, Math.max(area.height, 12), Math.min(MIN_FONT, wanted));
+  // si con la letra mínima el texto todavía no entra, la forma crece en alto (el borde de arriba queda fijo)
+  const h = heightForText(s.kind, boxH, label.height);
   const base = {
     left: 0,
     top: 0,
@@ -58,21 +73,6 @@ export function createLabeled(s: LabeledSpec): Group {
         ? new Polygon([{ x: w / 2, y: 0 }, { x: w, y: h / 2 }, { x: w / 2, y: h }, { x: 0, y: h / 2 }], base)
         : new Rect({ ...base, width: w, height: h, rx: note ? 3 : 6, ry: note ? 3 : 6 });
   if (note) shape.set({ shadow: new Shadow({ color: "rgba(0,0,0,0.18)", blur: 10, offsetY: 3 }) });
-  // el rombo y la elipse tienen menos lugar útil cerca de los bordes
-  const k = s.kind === "diamond" ? 0.5 : s.kind === "ellipse" ? 0.7 : 1;
-  const textW = k < 1 ? w * k : w - PAD * 2;
-  const textH = k < 1 ? h * k : h - PAD * 2;
-  const wanted = s.fontSize ?? (note ? 18 : 16);
-  const label = new Textbox(s.text ?? "", {
-    left: 0,
-    top: 0,
-    width: Math.max(textW, 16),
-    fontSize: wanted,
-    fontFamily: FONT,
-    fill: INK,
-    textAlign: "center",
-  });
-  fitText(label, Math.max(textH, 12));
   const g = new Group([shape, label]);
   g.set({ left: s.box.left + w / 2, top: s.box.top + h / 2, angle: s.angle ?? 0, opacity: s.opacity ?? 1, id: s.id ?? uid(), kind: s.kind, baseFontSize: wanted });
   g.setCoords();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   anchorOnBox, boxFromPoints, clampZoom, cloudPath, connectorEnds, exportScale, fitScale, fitViewport, gridSpec,
-  squareFromPoints, unionBoxes,
+  heightForText, squareFromPoints, textArea, unionBoxes,
 } from "./geometry";
 
 // Caja de 100 × 50 con centro en (50, 25)
@@ -99,5 +99,23 @@ describe("exportScale con tope de área", () => {
   });
   it("un tablero normal sigue saliendo a 2×", () => {
     expect(exportScale(1500, 900)).toBe(2);
+  });
+});
+
+describe("formas con texto", () => {
+  it("el área útil del texto depende de la forma", () => {
+    expect(textArea("rect", 200, 100)).toEqual({ width: 176, height: 76 });
+    expect(textArea("note", 200, 200)).toEqual({ width: 176, height: 176 });
+    expect(textArea("ellipse", 200, 100)).toEqual({ width: 140, height: 70 });
+    expect(textArea("diamond", 200, 100)).toEqual({ width: 100, height: 50 });
+  });
+  it("si el texto entra, el alto no cambia", () => {
+    expect(heightForText("rect", 100, 40)).toBe(100);
+  });
+  it("si no entra, la forma crece justo lo necesario", () => {
+    expect(heightForText("rect", 30, 90)).toBe(114); // 90 + 12 × 2
+    expect(heightForText("note", 200, 300)).toBe(324);
+    expect(heightForText("ellipse", 100, 140)).toBe(200); // 140 / 0,7
+    expect(heightForText("diamond", 100, 90)).toBe(180); // 90 / 0,5
   });
 });

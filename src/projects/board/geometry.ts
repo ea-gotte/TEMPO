@@ -119,3 +119,24 @@ export function cloudPath(w: number, h: number): string {
   parts.push("Z");
   return parts.join(" ");
 }
+
+/* ---------- Formas con texto ---------- */
+
+export type LabelShape = "note" | "rect" | "ellipse" | "diamond";
+/** Margen interno del texto en notas y rectángulos */
+export const LABEL_PAD = 12;
+/** Fracción del ancho/alto que el texto puede usar: la elipse y el rombo tienen menos lugar cerca de los bordes */
+const LABEL_RATIO: Record<LabelShape, number> = { note: 1, rect: 1, ellipse: 0.7, diamond: 0.5 };
+
+/** Área donde va el texto dentro de una forma de w × h. */
+export function textArea(kind: LabelShape, w: number, h: number, pad = LABEL_PAD): { width: number; height: number } {
+  const k = LABEL_RATIO[kind];
+  return k < 1 ? { width: w * k, height: h * k } : { width: w - pad * 2, height: h - pad * 2 };
+}
+
+/** Alto que necesita la forma para que entre un texto de ese alto (nunca achica). */
+export function heightForText(kind: LabelShape, h: number, textHeight: number, pad = LABEL_PAD): number {
+  const k = LABEL_RATIO[kind];
+  const needed = k < 1 ? textHeight / k : textHeight + pad * 2;
+  return Math.max(h, Math.ceil(needed));
+}
