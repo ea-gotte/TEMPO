@@ -27,7 +27,7 @@ import { Minimap } from "./Minimap";
 import { findMatches } from "./search";
 import { insertCopies, restore, snapshot } from "./serialize";
 import { decodeBoardFile, encodeBoardFile, itemsBounds } from "./boardFile";
-import { sanitizeBoardItems } from "./sanitize";
+import { MAX_ITEMS, sanitizeReport } from "./sanitize";
 import { relinkAfterAltDrag, type Link } from "./altDrag";
 import { normalizeLink } from "./links";
 import { attachSectionPicking, contentsBySection, createSection, editSectionTitle, isSection, keepSectionsBack, sectionContents, shiftObjects } from "./frames";
@@ -49,6 +49,13 @@ import "./board.css";
  */
 
 const SNAP_KEY = "tempo-tablero-cuadricula";
+/** Aviso de lo que el filtro dejó afuera al importar o pegar (ver sanitize.ts). */
+function omittedNote(invalid: number, overCap: number): string {
+  const bad = invalid === 1 ? " Se omitió 1 elemento que no era válido." : invalid ? ` Se omitieron ${invalid} elementos que no eran válidos.` : "";
+  const cap = overCap ? ` Entran hasta ${MAX_ITEMS} de una vez: quedaron afuera ${overCap}.` : "";
+  return bad + cap;
+}
+
 /** Tope de un archivo de tablero a importar */
 const IMPORT_MAX_BYTES = 50 * 1024 * 1024;
 const MAP_KEY = "tempo-tablero-minimapa";
@@ -569,10 +576,9 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const parsed = decodeBoardFile(text);
     if (!parsed) return notify("Ese archivo no es un tablero: elegí un .json descargado desde un tablero (Más → Descargar el tablero).");
     // lo que viene de afuera se filtra antes de dárselo a Fabric (ver sanitize.ts)
-    const objects = sanitizeBoardItems(parsed.objects);
-    const skipped = parsed.objects.length - objects.length;
+    const { items: objects, invalid, overCap } = sanitizeReport(parsed.objects);
     const bounds = itemsBounds(objects);
-    if (!bounds) return notify(skipped ? "El archivo no tiene elementos que se puedan agregar." : "El tablero de ese archivo está vacío.");
+    if (!bounds) return notify(invalid ? "El archivo no tiene elementos que se puedan agregar." : "El tablero de ese archivo está vacío.");
     const occupied = c.getObjects().filter((o) => !isTransient(o)).map(shapeBox);
     const { dx, dy } = templateOffset(bounds, viewCenter(c), occupied);
     c.discardActiveObject();
@@ -588,7 +594,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     onViewport();
     select(objs);
     commit();
-    const omitted = skipped === 1 ? " Se omitió 1 que no era válido." : skipped ? ` Se omitieron ${skipped} que no eran válidos.` : "";
+    const omitted = omittedNote(invalid, overCap);
     notify(`Se agregó ${parsed.project ? `el tablero «${parsed.project}»` : "el tablero del archivo"} (${objs.length} elementos).${omitted}`);
   };
 
@@ -1576,7 +1582,9 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       if (board) {
         e.preventDefault();
         // lo del portapapeles del sistema puede venir de cualquier página: se filtra (ver sanitize.ts)
-        void act.current.pasteObjects(sanitizeBoardItems(board.objects), board.projectId);
+        const r = sanitizeReport(board.objects);
+        void act.current.pasteObjects(r.items, board.projectId);
+        if (r.invalid || r.overCap) notify(`No se pegó todo.${omittedNote(r.invalid, r.overCap)}`);
       } else if (files.length) {
         e.preventDefault();
         void act.current.addImages(files);

@@ -182,19 +182,38 @@ function clean(raw: unknown, allowed: string[]): Item | null {
   return out;
 }
 
-/** Deja solo lo que el tablero sabe manejar (ver arriba). Mantiene el orden. */
-export function sanitizeBoardItems(items: unknown[]): Item[] {
-  const out: Item[] = [];
-  for (const raw of items) {
-    if (out.length >= MAX_ITEMS) break;
-    const o = clean(raw, Object.keys(BY_TYPE).filter((t) => !CHILD_TYPES.includes(t) || t === "Textbox"));
-    if (!o || typeof o.kind !== "string" || !KIND_TYPES[o.kind]?.includes(o.type as string)) continue;
-    // una forma con texto o una observación son un grupo con la figura y su texto
-    if (o.type === "Group") {
-      const kids = o.objects as Item[];
-      if (kids.length < 2 || !["Textbox", "Text"].includes(kids[1].type as string)) continue;
-    }
-    out.push(o);
+const TOP_TYPES = Object.keys(BY_TYPE).filter((t) => !CHILD_TYPES.includes(t) || t === "Textbox");
+
+/** Un elemento del tablero limpio, o null si no sirve. */
+function validItem(raw: unknown): Item | null {
+  const o = clean(raw, TOP_TYPES);
+  if (!o || typeof o.kind !== "string" || !KIND_TYPES[o.kind]?.includes(o.type as string)) return null;
+  // una forma con texto o una observación son un grupo con la figura y su texto
+  if (o.type === "Group") {
+    const kids = o.objects as Item[];
+    if (kids.length < 2 || !["Textbox", "Text"].includes(kids[1].type as string)) return null;
   }
-  return out;
+  return o;
 }
+
+/**
+ * Deja solo lo que el tablero sabe manejar (ver arriba), en el mismo orden, y cuenta lo que quedó
+ * afuera: los elementos inválidos y los que pasan el máximo (esos no se revisan: se cuentan).
+ */
+export function sanitizeReport(items: unknown[]): { items: Item[]; invalid: number; overCap: number } {
+  const out: Item[] = [];
+  let invalid = 0;
+  let overCap = 0;
+  for (const raw of items) {
+    if (out.length >= MAX_ITEMS) {
+      overCap++;
+      continue;
+    }
+    const o = validItem(raw);
+    if (o) out.push(o);
+    else invalid++;
+  }
+  return { items: out, invalid, overCap };
+}
+
+export const sanitizeBoardItems = (items: unknown[]): Item[] => sanitizeReport(items).items;

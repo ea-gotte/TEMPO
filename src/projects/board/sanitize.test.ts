@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_ITEMS, isSafeColor, sanitizeBoardItems } from "./sanitize";
+import { MAX_ITEMS, isSafeColor, sanitizeBoardItems, sanitizeReport } from "./sanitize";
 
 type Item = Record<string, unknown>;
 
@@ -96,5 +96,18 @@ describe("filtro de lo importado o pegado", () => {
   it("hay un máximo de elementos", () => {
     const many = Array.from({ length: MAX_ITEMS + 5 }, (_, i) => arrow({ id: `a${i}` }));
     expect(sanitizeBoardItems(many)).toHaveLength(MAX_ITEMS);
+  });
+});
+
+describe("informe del filtro", () => {
+  it("separa los inválidos de los que pasan el máximo", () => {
+    const items = [{ type: "Script" }, ...Array.from({ length: MAX_ITEMS + 3 }, (_, i) => arrow({ id: `a${i}` }))];
+    const r = sanitizeReport(items);
+    expect(r.items).toHaveLength(MAX_ITEMS);
+    expect(r.invalid).toBe(1);
+    expect(r.overCap).toBe(3);
+  });
+  it("sin problemas, todo en cero", () => {
+    expect(sanitizeReport([arrow()])).toMatchObject({ invalid: 0, overCap: 0 });
   });
 });
