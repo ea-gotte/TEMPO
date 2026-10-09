@@ -1,6 +1,6 @@
 import type { FabricObject, Group, Textbox } from "fabric";
 import { createLabeled, isLabeled, readLabeled } from "./labels";
-import type { Kind } from "./shapes";
+import { AREA_ALPHA, type Kind } from "./shapes";
 import { HIGHLIGHT_ALPHA, dashArray, dashStyleOf, toHex, withAlpha, type DashStyle, type HeadStyle } from "./strokes";
 
 /**
@@ -33,7 +33,7 @@ export interface StylePatch {
   heads?: HeadStyle;
 }
 
-const LINES: Kind[] = ["line", "arrow", "path", "cloud", "measure"];
+const LINES: Kind[] = ["line", "arrow", "path", "cloud", "measure", "area"];
 
 export function readStyle(o: FabricObject): StyleState {
   const base: StyleState = {
@@ -50,7 +50,7 @@ export function readStyle(o: FabricObject): StyleState {
   if (o.kind === "highlight") return { ...base, stroke: toHex(String(o.stroke)), strokeWidth: o.strokeWidth, strokeLabel: "Resaltador" };
   if (o.kind && LINES.includes(o.kind)) {
     return {
-      ...base, stroke: String(o.stroke), strokeWidth: o.strokeWidth, strokeLabel: "Línea",
+      ...base, stroke: String(o.stroke), strokeWidth: o.strokeWidth, strokeLabel: o.kind === "area" ? "Color" : "Línea",
       dash: dashStyleOf(o.strokeDashArray), heads: o.kind === "arrow" ? o.heads ?? "end" : null,
     };
   }
@@ -76,6 +76,8 @@ export function applyStyle(o: FabricObject, p: StylePatch): FabricObject {
     if (rest.strokeWidth) o.set({ strokeWidth: rest.strokeWidth });
   } else if (o.kind && LINES.includes(o.kind)) {
     if (rest.stroke) o.set({ stroke: rest.stroke });
+    // la superficie medida se rellena con su color, casi transparente
+    if (rest.stroke && o.kind === "area") o.set({ fill: withAlpha(toHex(rest.stroke), AREA_ALPHA) });
     if (rest.strokeWidth) o.set({ strokeWidth: rest.strokeWidth });
     // el patrón es proporcional al grosor: se recalcula también al cambiar el grosor
     if (rest.dash || rest.strokeWidth) {

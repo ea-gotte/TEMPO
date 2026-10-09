@@ -229,7 +229,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     setToolState(t);
     const c = cRef.current;
     if (c && !spaceHeld.current) applyToolMode(c, t, penRef.current);
-  }, []);
+    if (t === "area") notify("Superficie: clic en cada vértice; para cerrar, doble clic, Enter o clic en el primero. Esc cancela.");
+  }, [notify]);
 
   /* ---------- Acciones (solo usan refs y callbacks estables) ---------- */
 
@@ -634,7 +635,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     if (isLabeled(o)) return readLabeled(o).text ?? "";
     if (o.kind === "text") return (o as IText).text;
     if (o.kind === "marker") return `Observación ${o.num} ${o.detail ?? ""}`;
-    if (o.kind === "measure") return o.measureLabel ?? "";
+    if (o.kind === "measure" || o.kind === "area") return o.measureLabel ?? "";
     if (isConnector(o)) return o.caption ?? "";
     return "";
   };

@@ -1,7 +1,8 @@
-import { Circle, FabricImage, FabricObject, FabricText, Group, Line, Path, Textbox, classRegistry, type Canvas } from "fabric";
+import { Circle, FabricImage, FabricObject, FabricText, Group, Line, Path, Polygon, Textbox, classRegistry, type Canvas } from "fabric";
 import { uid } from "../../utils";
 import { cloudPath, type Box, type Pt } from "./geometry";
-import type { HeadStyle } from "./strokes";
+import { polygonCentroid } from "./measure";
+import { withAlpha, type HeadStyle } from "./strokes";
 import { FONT, INK, REVIEW_RED } from "./tools";
 
 /**
@@ -10,7 +11,7 @@ import { FONT, INK, REVIEW_RED } from "./tools";
  * objeto es su CENTRO, así que left/top = centro.
  */
 
-export type Kind = "note" | "rect" | "ellipse" | "diamond" | "line" | "arrow" | "cloud" | "text" | "path" | "highlight" | "marker" | "measure" | "image";
+export type Kind = "note" | "rect" | "ellipse" | "diamond" | "line" | "arrow" | "cloud" | "text" | "path" | "highlight" | "marker" | "measure" | "area" | "image";
 
 declare module "fabric" {
   interface FabricObject {
@@ -62,6 +63,30 @@ FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser",
 export const CAPTION_SIZE = 14;
 
 /**
+ * Escribe un texto en (x, y) del objeto, horizontal y sin deformar aunque el objeto esté girado o
+ * escalado, sobre un fondo blanco y del color del trazo (texto de flechas, superficie medida).
+ */
+function drawUpright(ctx: CanvasRenderingContext2D, o: FabricObject, x: number, y: number, text: string, weight: number) {
+  const lines = text.split("\n");
+  const lh = CAPTION_SIZE * 1.25;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1 / (o.scaleX || 1), 1 / (o.scaleY || 1));
+  ctx.rotate((-o.angle * Math.PI) / 180);
+  ctx.setLineDash([]);
+  ctx.font = `${weight} ${CAPTION_SIZE}px ${FONT}`;
+  const w = Math.max(...lines.map((l) => ctx.measureText(l).width));
+  const h = lh * lines.length;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(-w / 2 - 6, -h / 2 - 3, w + 12, h + 6);
+  ctx.fillStyle = typeof o.stroke === "string" ? o.stroke : INK;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  lines.forEach((l, i) => ctx.fillText(l, 0, -h / 2 + lh * (i + 0.5)));
+  ctx.restore();
+}
+
+/**
  * Línea con punta de flecha: al final (x2, y2) por defecto, al inicio, en ambos extremos o sin punta
  * (así son las líneas nuevas). Puede llevar un texto en el medio.
  */
@@ -80,29 +105,9 @@ export class Arrow extends Line {
     const heads = this.heads ?? "end";
     if (heads === "end" || heads === "both") this.drawHead(ctx, p.x1, p.y1, p.x2, p.y2);
     if (heads === "start" || heads === "both") this.drawHead(ctx, p.x2, p.y2, p.x1, p.y1);
-    if (this.caption) this.drawCaption(ctx, (p.x1 + p.x2) / 2, (p.y1 + p.y2) / 2, this.caption);
+    if (this.caption) drawUpright(ctx, this, (p.x1 + p.x2) / 2, (p.y1 + p.y2) / 2, this.caption, 500);
   }
 
-  /** Texto en el medio, horizontal y sin deformar aunque la línea esté girada o escalada, sobre un fondo blanco. */
-  private drawCaption(ctx: CanvasRenderingContext2D, x: number, y: number, text: string) {
-    const lines = text.split("\n");
-    const lh = CAPTION_SIZE * 1.25;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(1 / (this.scaleX || 1), 1 / (this.scaleY || 1));
-    ctx.rotate((-this.angle * Math.PI) / 180);
-    ctx.setLineDash([]);
-    ctx.font = `500 ${CAPTION_SIZE}px ${FONT}`;
-    const w = Math.max(...lines.map((l) => ctx.measureText(l).width));
-    const h = lh * lines.length;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(-w / 2 - 6, -h / 2 - 3, w + 12, h + 6);
-    ctx.fillStyle = typeof this.stroke === "string" ? this.stroke : INK;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    lines.forEach((l, i) => ctx.fillText(l, 0, -h / 2 + lh * (i + 0.5)));
-    ctx.restore();
-  }
 
   /** Punta en (tx, ty), apuntando en la dirección que viene desde (fx, fy). */
   private drawHead(ctx: CanvasRenderingContext2D, fx: number, fy: number, tx: number, ty: number) {
@@ -169,6 +174,24 @@ export class Measure extends Line {
 }
 classRegistry.setClass(Measure);
 
+/** Superficie medida: polígono semitransparente con su área escrita en el centro (ver measures.ts). */
+export class AreaMeasure extends Polygon {
+  static type = "AreaMeasure";
+
+  constructor(points?: { x: number; y: number }[], options?: ConstructorParameters<typeof Polygon>[1]) {
+    super(points, options);
+    this.objectCaching = false; // la etiqueta puede sobresalir de un polígono angosto
+  }
+
+  _render(ctx: CanvasRenderingContext2D) {
+    super._render(ctx);
+    if (!this.measureLabel) return;
+    const c = polygonCentroid(this.points);
+    drawUpright(ctx, this, c.x - this.pathOffset.x, c.y - this.pathOffset.y, this.measureLabel, 600);
+  }
+}
+classRegistry.setClass(AreaMeasure);
+
 /** Objeto auxiliar (vista previa al dibujar, editor de texto): no se guarda ni entra al historial. */
 export function markTransient<T extends FabricObject>(o: T): T {
   o.excludeFromExport = true;
@@ -216,6 +239,16 @@ function tag<T extends FabricObject>(o: T, kind: Kind): T {
 
 export function createMeasure(a: Pt, b: Pt, stroke = "#2563eb", strokeWidth = 2): Measure {
   return tag(new Measure([a.x, a.y, b.x, b.y], { stroke, strokeWidth }), "measure");
+}
+
+/** Relleno de una superficie medida: su color, casi transparente (se ve el plano debajo). */
+export const AREA_ALPHA = 0.12;
+
+export function createArea(points: Pt[], stroke = "#2563eb", strokeWidth = 2): AreaMeasure {
+  const p = new AreaMeasure(points.map((q) => ({ x: q.x, y: q.y })), {
+    fill: withAlpha(stroke, AREA_ALPHA), stroke, strokeWidth, strokeUniform: true, strokeLineJoin: "round",
+  });
+  return tag(p, "area");
 }
 
 /** Flecha o línea (una flecha sin punta: así las dos pueden llevar texto). */

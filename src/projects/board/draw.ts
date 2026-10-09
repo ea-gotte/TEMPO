@@ -1,8 +1,9 @@
-import { Line, Rect, type Canvas, type FabricObject } from "fabric";
+import { Line, Polyline, Rect, type Canvas, type FabricObject } from "fabric";
 import { shapeAt, shapeBox } from "./connectors";
 import { boxFromPoints, connectorEnds, constrainAngle, nextMarkerNumber, snap, squareFromPoints, type Box, type Pt } from "./geometry";
 import { createLabeled } from "./labels";
-import { createCloud, createConnector, createMarker, createMeasure, createText, markTransient } from "./shapes";
+import { polygonArea } from "./measure";
+import { createArea, createCloud, createConnector, createMarker, createMeasure, createText, markTransient } from "./shapes";
 import type { Tool } from "./tools";
 
 /**
@@ -30,10 +31,61 @@ export function attachDrawing(c: Canvas, opts: DrawOptions): () => void {
   let start: Pt | null = null;
   let preview: FabricObject | null = null;
 
+  // Superficie: los vértices se marcan de a un clic; la vista previa sigue al puntero
+  let poly: Pt[] = [];
+  let polyPreview: Polyline | null = null;
+  const showPoly = (pointer: Pt | null) => {
+    if (polyPreview) c.remove(polyPreview);
+    polyPreview = poly.length ? markTransient(new Polyline(pointer ? [...poly, pointer] : poly, { ...PREVIEW, fill: "rgba(37,99,235,0.08)" })) : null;
+    if (polyPreview) c.add(polyPreview);
+    c.requestRenderAll();
+  };
+  const dropPoly = () => {
+    poly = [];
+    showPoly(null);
+  };
+  const finishPoly = () => {
+    const pts = poly;
+    dropPoly();
+    // menos de 3 vértices, o casi sin superficie en pantalla: no se crea nada
+    if (pts.length < 3 || polygonArea(pts) * c.getZoom() ** 2 < 64) return;
+    const area = createArea(pts);
+    c.add(area);
+    c.setActiveObject(area);
+    opts.onCreated(area, false);
+    c.requestRenderAll();
+  };
+  /** Con Shift, el lado nuevo queda horizontal, vertical o a 45° */
+  const nextVertex = (o: { scenePoint: Pt; e: Event }) => {
+    const p = at(o.scenePoint);
+    const last = poly[poly.length - 1];
+    return last && (o.e as MouseEvent).shiftKey ? constrainAngle(last, p) : p;
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (!poly.length) return;
+    if (e.key === "Enter") finishPoly();
+    else if (e.key === "Escape") dropPoly();
+  };
+  window.addEventListener("keydown", onKey);
+
   const offs = [
+    () => window.removeEventListener("keydown", onKey),
     c.on("mouse:down", (o) => {
       if ((o.e as MouseEvent).button === 1) return; // botón del medio = desplazar
       const tool = opts.tool();
+      if (tool !== "area" && poly.length) dropPoly(); // se cambió de herramienta a mitad de camino
+      if (tool === "area") {
+        const p = nextVertex(o);
+        const z = c.getZoom();
+        // clic sobre el primer vértice: cierra la superficie
+        if (poly.length >= 3 && Math.hypot(p.x - poly[0].x, p.y - poly[0].y) * z < 10) return finishPoly();
+        // el doble clic que la cierra manda antes dos clics en el mismo lugar: no se repite el vértice
+        const last = poly[poly.length - 1];
+        if (last && Math.hypot(p.x - last.x, p.y - last.y) * z < 4) return;
+        poly.push(p);
+        showPoly(p);
+        return;
+      }
       if (tool === "marker") {
         // la herramienta queda activa para numerar varias seguidas (1, 2, 3…)
         const nums = c.getObjects().filter((x) => x.kind === "marker").map((x) => x.num ?? 0);
@@ -59,7 +111,15 @@ export function attachDrawing(c: Canvas, opts: DrawOptions): () => void {
       );
       c.add(preview);
     }),
+    c.on("mouse:dblclick", () => {
+      if (opts.tool() === "area" && poly.length) finishPoly();
+    }),
     c.on("mouse:move", (o) => {
+      if (poly.length) {
+        if (opts.tool() === "area") showPoly(nextVertex(o));
+        else dropPoly();
+        return;
+      }
       if (!start || !preview) return;
       const p = at(o.scenePoint);
       if (preview instanceof Line) {
