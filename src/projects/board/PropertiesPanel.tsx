@@ -23,6 +23,7 @@ export interface PanelProps {
   onDelete: () => void;
   onAlign: (mode: AlignMode) => void;
   onDistribute: (axis: "h" | "v") => void;
+  onExport: () => void;
 }
 
 /** Selector de color libre (además de la paleta). Con valores mixtos o sin color parte de un gris. */
@@ -40,7 +41,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onDelete, onAlign, onDistribute }: PanelProps) {
+export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onDelete, onAlign, onDistribute, onExport }: PanelProps) {
   const fills = s.kind === "note" ? NOTE_COLORS : FILL_COLORS;
   // el resaltador tiene sus propios colores claros y trazos anchos
   const hl = s.strokeLabel === "Resaltador";
@@ -113,6 +114,7 @@ export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onL
         <Btn icon="send-back" label="Enviar al fondo" onClick={onBack} />
         <Btn icon="lock" label="Bloquear (para marcar encima sin moverlo)" onClick={onLock} />
         <Btn icon="copy" label="Duplicar (Ctrl+D)" onClick={onDuplicate} />
+        <Btn icon="download" label="Exportar la selección (PNG)" onClick={onExport} />
         <Btn icon="trash" label="Eliminar (Supr)" danger onClick={onDelete} />
       </div>
     </aside>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   anchorOnBox, boxFromPoints, clampZoom, cloudPath, connectorEnds, exportScale, fitScale, fitViewport, gridSpec,
-  heightForText, sizeForText, snap, snapDelta, squareFromPoints, textArea, unionBoxes,
+  heightForText, nextMarkerNumber, sizeForText, snap, snapDelta, squareFromPoints, textArea, unionBoxes,
 } from "./geometry";
 
 // Caja de 100 × 50 con centro en (50, 25)
@@ -151,5 +151,15 @@ describe("ajustar a la cuadrícula", () => {
   it("lleva la esquina superior izquierda de la caja a la cuadrícula", () => {
     expect(snapDelta({ left: 30, top: 50, width: 100, height: 80 })).toEqual({ dx: -6, dy: -2 });
     expect(snapDelta({ left: 48, top: 72, width: 10, height: 10 })).toEqual({ dx: 0, dy: 0 });
+  });
+});
+
+describe("observaciones numeradas", () => {
+  it("la primera es la 1", () => {
+    expect(nextMarkerNumber([])).toBe(1);
+  });
+  it("sigue al número más alto (aunque se haya borrado alguna del medio)", () => {
+    expect(nextMarkerNumber([1, 2, 5])).toBe(6);
+    expect(nextMarkerNumber([3, 1])).toBe(4);
   });
 });

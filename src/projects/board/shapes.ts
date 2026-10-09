@@ -1,4 +1,4 @@
-import { FabricImage, FabricObject, Line, Path, Textbox, classRegistry, type Canvas } from "fabric";
+import { Circle, FabricImage, FabricObject, FabricText, Group, Line, Path, Textbox, classRegistry, type Canvas } from "fabric";
 import { uid } from "../../utils";
 import { cloudPath, type Box, type Pt } from "./geometry";
 import type { HeadStyle } from "./strokes";
@@ -10,7 +10,7 @@ import { FONT, INK, REVIEW_RED } from "./tools";
  * objeto es su CENTRO, así que left/top = centro.
  */
 
-export type Kind = "note" | "rect" | "ellipse" | "diamond" | "line" | "arrow" | "cloud" | "text" | "path" | "highlight" | "image";
+export type Kind = "note" | "rect" | "ellipse" | "diamond" | "line" | "arrow" | "cloud" | "text" | "path" | "highlight" | "marker" | "image";
 
 declare module "fabric" {
   interface FabricObject {
@@ -25,6 +25,8 @@ declare module "fabric" {
     baseFontSize?: number;
     /** Flecha: en qué extremos lleva punta (por defecto, al final) */
     heads?: HeadStyle;
+    /** Observación numerada: su número */
+    num?: number;
   }
   interface SerializedObjectProps {
     id?: string;
@@ -35,11 +37,12 @@ declare module "fabric" {
     /** Forma con texto: tamaño de letra pedido (el que se ve puede ser menor para que el texto entre) */
     baseFontSize?: number;
     heads?: HeadStyle;
+    num?: number;
   }
 }
 
 // Propiedades propias que viajan al guardar (spec §4)
-FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads"];
+FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads", "num"];
 
 /** Línea con punta de flecha: al final (x2, y2) por defecto, al inicio, en ambos extremos o sin punta. */
 export class Arrow extends Line {
@@ -131,6 +134,15 @@ export function createCloud(box: Box, stroke = REVIEW_RED, strokeWidth = 2): Pat
   const p = new Path(cloudPath(w, h), { fill: "transparent", stroke, strokeWidth, strokeUniform: true, strokeLineJoin: "round" });
   p.set({ left: box.left + w / 2, top: box.top + h / 2 });
   return tag(p, "cloud");
+}
+
+/** Observación numerada (revisión de planos): círculo con el número, de tamaño fijo. */
+export function createMarker(at: Pt, num: number, color = REVIEW_RED): Group {
+  const circle = new Circle({ left: 0, top: 0, radius: 14, fill: color, stroke: "#ffffff", strokeWidth: 2 });
+  const label = new FabricText(String(num), { left: 0, top: 0, fontSize: num > 99 ? 11 : 14, fontWeight: "bold", fontFamily: FONT, fill: "#ffffff" });
+  const g = new Group([circle, label]);
+  g.set({ left: at.x, top: at.y, num });
+  return tag(g, "marker");
 }
 
 export function createText(at: Pt): Textbox {

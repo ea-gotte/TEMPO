@@ -418,6 +418,17 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     else download(res, `tablero-${slug(fileLabel)}-${today()}.png`);
   };
 
+  /** Exporta a PNG solo lo seleccionado (por ejemplo, un plano con sus marcas). */
+  const exportSelection = async () => {
+    const c = cRef.current;
+    const objs = takeSelection();
+    if (!c || !objs.length) return;
+    const res = await exportPng(c, objs);
+    select(objs);
+    if (res === "failed") notify("No se pudo exportar la selección: la imagen resultante es demasiado grande para el navegador.");
+    else if (res !== "empty") download(res, `tablero-${slug(fileLabel)}-seleccion-${today()}.png`);
+  };
+
   const startOver = () => {
     const c = cRef.current;
     if (!c || !confirm("Se reemplaza el tablero guardado de este proyecto por uno vacío. ¿Continuar?")) return;
@@ -525,6 +536,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         { label: "Traer al frente", ico: "bring-front", onClick: () => reorder(true) },
         { label: "Enviar al fondo", ico: "send-back", onClick: () => reorder(false) },
         { label: "Bloquear", ico: "lock", onClick: () => setLocked(takeSelection(), true) },
+        { label: "Exportar selección (PNG)", ico: "download", onClick: () => void exportSelection() },
         { label: "Eliminar", ico: "trash", danger: true, onClick: () => removeSelection() },
       );
     } else {
@@ -541,7 +553,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
-    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, toggleSnap,
+    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, toggleSnap, exportSelection,
   };
   const act = useRef(actions);
   act.current = actions;
@@ -591,7 +603,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         noteColor: () => noteColorRef.current,
         snap: () => snapRef.current,
         onCreated: (obj, editing) => {
-          setTool("select");
+          if (obj.kind !== "marker") setTool("select"); // las observaciones se ponen de a varias
           if (editing) return; // el texto nuevo se registra al salir de la edición
           refreshPanel();
           commit();
@@ -955,6 +967,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             onDelete={() => act.current.removeSelection()}
             onAlign={(m) => act.current.alignSelection(m)}
             onDistribute={(a) => act.current.distributeSelection(a)}
+            onExport={() => void act.current.exportSelection()}
           />
         ) : lockedFocus ? (
           <aside className="bd-panel" aria-label="Elemento bloqueado">

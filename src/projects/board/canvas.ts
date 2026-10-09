@@ -1,4 +1,4 @@
-import { Canvas, PencilBrush, Point } from "fabric";
+import { Canvas, PencilBrush, Point, type FabricObject } from "fabric";
 import { shapeBox } from "./connectors";
 import { clampZoom, exportScale, fitViewport, unionBoxes, type Box, type Pt, type Viewport } from "./geometry";
 import { HIGHLIGHT_ALPHA, withAlpha } from "./strokes";
@@ -113,8 +113,9 @@ export function attachPanZoom(c: Canvas, opts: { panMode: () => boolean; onChang
  * PNG de todo el contenido, fondo blanco y margen de 24 px. "empty" si el tablero está vacío;
  * "failed" si el navegador no pudo generar la imagen (por ejemplo, demasiado grande).
  */
-export async function exportPng(c: Canvas): Promise<Blob | "empty" | "failed"> {
-  const b = contentBox(c);
+export async function exportPng(c: Canvas, only?: FabricObject[]): Promise<Blob | "empty" | "failed"> {
+  // con `only`, se exportan solo esos objetos (la selección), recortado a su caja
+  const b = only ? unionBoxes(only.map(shapeBox)) : contentBox(c);
   if (!b) return "empty";
   const pad = 24;
   const box = { left: b.left - pad, top: b.top - pad, width: b.width + pad * 2, height: b.height + pad * 2 };
@@ -124,7 +125,7 @@ export async function exportPng(c: Canvas): Promise<Blob | "empty" | "failed"> {
   c.setViewportTransform([1, 0, 0, 1, 0, 0]);
   c.backgroundColor = "#ffffff";
   try {
-    return (await c.toBlob({ format: "png", multiplier: exportScale(box.width, box.height), ...box })) ?? "failed";
+    return (await c.toBlob({ format: "png", multiplier: exportScale(box.width, box.height), ...box, filter: only ? (o) => only.includes(o as FabricObject) : undefined })) ?? "failed";
   } catch {
     return "failed";
   } finally {

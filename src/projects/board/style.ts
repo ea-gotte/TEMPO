@@ -1,4 +1,4 @@
-import type { FabricObject, Textbox } from "fabric";
+import type { FabricObject, Group, Textbox } from "fabric";
 import { createLabeled, isLabeled, readLabeled } from "./labels";
 import type { Kind } from "./shapes";
 import { HIGHLIGHT_ALPHA, dashArray, dashStyleOf, toHex, withAlpha, type DashStyle, type HeadStyle } from "./strokes";
@@ -45,6 +45,7 @@ export function readStyle(o: FabricObject): StyleState {
     return { ...base, fill: s.fill ?? null, fontSize: s.fontSize ?? null, stroke: s.stroke ?? null, strokeWidth: s.strokeWidth ?? null, dash: s.dash ?? "solid" };
   }
   if (o.kind === "text") return { ...base, stroke: String(o.fill), fontSize: (o as Textbox).fontSize, strokeLabel: "Color del texto" };
+  if (o.kind === "marker") return { ...base, stroke: String((o as Group).getObjects()[0].fill), strokeLabel: "Color" };
   // el resaltador se guarda con transparencia: el panel muestra su color pleno
   if (o.kind === "highlight") return { ...base, stroke: toHex(String(o.stroke)), strokeWidth: o.strokeWidth, strokeLabel: "Resaltador" };
   if (o.kind && LINES.includes(o.kind)) {
@@ -65,6 +66,11 @@ export function applyStyle(o: FabricObject, p: StylePatch): FabricObject {
   if (o.kind === "text") {
     if (rest.stroke) o.set({ fill: rest.stroke });
     if (rest.fontSize) o.set({ fontSize: rest.fontSize });
+  } else if (o.kind === "marker") {
+    if (rest.stroke) {
+      (o as Group).getObjects()[0].set({ fill: rest.stroke });
+      o.set({ dirty: true });
+    }
   } else if (o.kind === "highlight") {
     if (rest.stroke) o.set({ stroke: withAlpha(toHex(rest.stroke), HIGHLIGHT_ALPHA) });
     if (rest.strokeWidth) o.set({ strokeWidth: rest.strokeWidth });

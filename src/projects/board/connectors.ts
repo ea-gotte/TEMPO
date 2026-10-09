@@ -11,7 +11,7 @@ import type { Kind } from "./shapes";
  */
 
 /** Se puede enganchar a notas, formas, textos y nubes; no a imágenes (un plano) ni a lo bloqueado. */
-const ATTACHABLE: Kind[] = ["note", "rect", "ellipse", "diamond", "text", "cloud"];
+const ATTACHABLE: Kind[] = ["note", "rect", "ellipse", "diamond", "text", "cloud", "marker"];
 
 export const isConnector = (o: FabricObject): o is Line => o.kind === "arrow" || o.kind === "line";
 const isAttachable = (o: FabricObject) => !!o.kind && ATTACHABLE.includes(o.kind) && !o.lockedByUser && o.visible;

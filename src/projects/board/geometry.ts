@@ -182,3 +182,6 @@ export function sizeForText(
   }
   return { w: Math.ceil(w * hi - 1e-6), h: Math.ceil(h * hi - 1e-6) };
 }
+
+/** Número de la próxima observación: sigue al más alto (los números no se reutilizan al borrar). */
+export const nextMarkerNumber = (nums: number[]) => (nums.length ? Math.max(...nums) : 0) + 1;

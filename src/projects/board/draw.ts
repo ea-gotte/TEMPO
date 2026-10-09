@@ -1,8 +1,8 @@
 import { Line, Rect, type Canvas, type FabricObject } from "fabric";
 import { shapeAt, shapeBox } from "./connectors";
-import { boxFromPoints, connectorEnds, snap, squareFromPoints, type Box, type Pt } from "./geometry";
+import { boxFromPoints, connectorEnds, nextMarkerNumber, snap, squareFromPoints, type Box, type Pt } from "./geometry";
 import { createLabeled } from "./labels";
-import { createCloud, createConnector, createText, markTransient } from "./shapes";
+import { createCloud, createConnector, createMarker, createText, markTransient } from "./shapes";
 import type { Tool } from "./tools";
 
 /**
@@ -32,6 +32,14 @@ export function attachDrawing(c: Canvas, opts: DrawOptions): () => void {
     c.on("mouse:down", (o) => {
       if ((o.e as MouseEvent).button === 1) return; // botón del medio = desplazar
       const tool = opts.tool();
+      if (tool === "marker") {
+        // la herramienta queda activa para numerar varias seguidas (1, 2, 3…)
+        const nums = c.getObjects().filter((x) => x.kind === "marker").map((x) => x.num ?? 0);
+        const m = createMarker(at(o.scenePoint), nextMarkerNumber(nums));
+        c.add(m);
+        opts.onCreated(m, false);
+        return;
+      }
       if (tool === "text") {
         const t = createText(at(o.scenePoint));
         c.add(t);
