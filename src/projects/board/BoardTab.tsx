@@ -29,7 +29,8 @@ import { insertCopies, restore, snapshot } from "./serialize";
 import { decodeBoardFile, encodeBoardFile, itemsBounds } from "./boardFile";
 import { relinkAfterAltDrag, type Link } from "./altDrag";
 import { normalizeLink } from "./links";
-import { attachSectionPicking, editSectionTitle, isSection, keepSectionsBack, sectionContents } from "./frames";
+import { attachSectionPicking, createSection, editSectionTitle, isSection, keepSectionsBack, sectionContents } from "./frames";
+import { SECTION_HEADER } from "./sections";
 import { STAMPS, stampText, type Stamp } from "./stamps";
 import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject, setMarkerNumber, setMarkerResolved } from "./shapes";
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
@@ -726,7 +727,10 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const insertTemplate = (t: Template) => {
     const c = cRef.current;
     if (!c) return;
-    const b = templateBounds(t);
+    const inner = templateBounds(t);
+    // la plantilla va dentro de una sección con su nombre: se mueve, se exporta y se encuentra como una unidad
+    const pad = 32;
+    const b = { left: inner.left - pad, top: inner.top - pad - SECTION_HEADER, width: inner.width + pad * 2, height: inner.height + pad * 2 + SECTION_HEADER };
     // al centro de la vista; si ahí ya hay algo, a la derecha de todo (no se encima con lo existente)
     const occupied = c.getObjects().filter((o) => !isTransient(o)).map(shapeBox);
     const { dx, dy } = templateOffset(b, viewCenter(c), occupied);
@@ -738,6 +742,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       title.set({ text: it.text, width: it.w, fontSize: 24, fontWeight: "bold" });
       return title;
     });
+    const section = createSection({ left: b.left + dx, top: b.top + dy, width: b.width, height: b.height }, t.label);
+    c.add(section);
     objs.forEach((o) => c.add(o));
     for (const [from, to, caption] of t.links) {
       const a = objs[from];
@@ -752,7 +758,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const z = c.getZoom();
     setViewport(c, { zoom: z, x: c.width / 2 - (b.left + dx + b.width / 2) * z, y: c.height / 2 - (b.top + dy + b.height / 2) * z });
     onViewport();
-    select(objs);
+    select([section, ...objs]);
     commit();
   };
 
