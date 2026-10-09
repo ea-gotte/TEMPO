@@ -48,6 +48,8 @@ export interface ToolbarProps {
   onHelp: () => void;
   /** Abre el menú de plantillas debajo del botón (coordenadas de la ventana) */
   onTemplates: (x: number, y: number) => void;
+  /** Abre el menú de sellos de revisión junto al botón */
+  onStamps: (x: number, y: number) => void;
   onSearch: () => void;
   observations: boolean;
   onObservations: () => void;
@@ -84,6 +86,20 @@ export function Toolbar(p: ToolbarProps) {
             {TOOLS.filter((t) => t.group === g).map((t) => (
               <Btn key={t.key} icon={t.icon} label={`${t.label} (${t.shortcut})`} on={p.tool === t.key} onClick={() => p.onTool(t.key)} />
             ))}
+            {g === "markup" && (
+              <button
+                type="button"
+                className="bd-btn"
+                title="Sello de revisión"
+                aria-label="Sello de revisión"
+                onClick={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  p.onStamps(r.left, r.bottom + 4);
+                }}
+              >
+                <Icon name="stamp" size={17} />
+              </button>
+            )}
           </div>
         ))}
         <div className="bd-group">

@@ -26,6 +26,7 @@ import { SearchBar } from "./SearchBar";
 import { findMatches } from "./search";
 import { insertCopies, restore, snapshot } from "./serialize";
 import { decodeBoardFile, encodeBoardFile, itemsBounds } from "./boardFile";
+import { STAMPS, stampText, type Stamp } from "./stamps";
 import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject, setMarkerResolved } from "./shapes";
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
 import { mergeStyles } from "./styleMerge";
@@ -681,6 +682,32 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     commit();
   };
 
+  /** Sello de revisión (Aprobado, Rechazado…) con la fecha de hoy, al centro de la vista y seleccionado para ubicarlo. */
+  const insertStamp = (s: Stamp) => {
+    const c = cRef.current;
+    if (!c) return;
+    const p = viewCenter(c);
+    const stamp = createLabeled({
+      kind: "rect",
+      box: { left: p.x - 150, top: p.y - 40, width: 300, height: 80 },
+      text: stampText(s, today()),
+      fill: "rgba(255, 255, 255, 0.85)",
+      stroke: s.color,
+      strokeWidth: 3,
+      color: s.color,
+      bold: true,
+      fontSize: 20,
+    });
+    c.add(stamp);
+    c.setActiveObject(stamp);
+    c.requestRenderAll();
+    refreshPanel();
+    commit();
+  };
+
+  const openStamps = (x: number, y: number) =>
+    setMenu({ x, y, items: STAMPS.map((s) => ({ label: s.label, onClick: () => insertStamp(s) })) });
+
   const openTemplates = (x: number, y: number) =>
     setMenu({ x, y, items: TEMPLATES.map((t) => ({ label: t.label, onClick: () => insertTemplate(t) })) });
 
@@ -798,7 +825,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
-    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openExportMenu, importFile, rotateSelection,
+    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openStamps, openExportMenu, importFile, rotateSelection,
     setMarkerInfo, copyObservations,
   };
   const act = useRef(actions);
@@ -1184,6 +1211,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         snap={snapOn}
         onToggleSnap={() => act.current.toggleSnap()}
         onTemplates={(x, y) => act.current.openTemplates(x, y)}
+        onStamps={(x, y) => act.current.openStamps(x, y)}
         onSearch={() => setSearch((s) => s ?? { query: "", ids: [], index: 0 })}
         observations={obsOpen}
         onObservations={() => setObsOpen((o) => !o)}
