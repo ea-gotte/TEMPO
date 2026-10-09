@@ -63,6 +63,25 @@ export function sectionContents(canvas: Canvas, section: FabricObject): FabricOb
 }
 
 /**
+ * Lo de adentro de cada una de `sections`, sin lo que está en `exclude` (lo que ya se mueve por su
+ * cuenta). Un objeto dentro de dos de ellas (una sección dentro de otra) va con la más chica.
+ */
+export function contentsBySection(canvas: Canvas, sections: FabricObject[], exclude: Set<FabricObject>): Map<FabricObject, FabricObject[]> {
+  const taken = new Set(exclude);
+  const area = (o: FabricObject) => {
+    const b = shapeBox(o);
+    return b.width * b.height;
+  };
+  const out = new Map<FabricObject, FabricObject[]>();
+  for (const s of [...sections].sort((a, b) => area(a) - area(b))) {
+    const mine = sectionContents(canvas, s).filter((o) => !taken.has(o));
+    mine.forEach((o) => taken.add(o));
+    out.set(s, mine);
+  }
+  return out;
+}
+
+/**
  * Desplaza objetos (lo de adentro de una sección que se movió con el teclado o al alinear). Las
  * flechas se mueven por sus extremos: después refreshConnectors reacomoda los enganchados.
  */

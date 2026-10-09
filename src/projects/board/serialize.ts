@@ -28,12 +28,12 @@ export async function restore(canvas: Canvas, data: string | BoardDoc["fabric"])
 
 /**
  * Inserta copias (pegar/duplicar) con ids nuevos, desplazadas (dx, dy). Un conector
- * conserva su enganche solo si la forma enganchada también se copió. Las copias quedan
- * desbloqueadas salvo con `keepLocks`. En `idsOut` deja el id nuevo de cada original (un
- * elemento que no se pudo crear no está entre los devueltos).
+ * conserva su enganche solo si la forma enganchada también se copió. Lo bloqueado sigue
+ * bloqueado (solo llega así lo de adentro de una sección, como el plano de fondo). En `idsOut`
+ * deja el id nuevo de cada original (un elemento que no se pudo crear no está entre los devueltos).
  */
 export async function insertCopies(
-  canvas: Canvas, items: Record<string, unknown>[], dx: number, dy = dx, keepLocks = false, idsOut?: Map<string, string>,
+  canvas: Canvas, items: Record<string, unknown>[], dx: number, dy = dx, idsOut?: Map<string, string>,
 ): Promise<FabricObject[]> {
   const ids = new Map<string, string>();
   for (const it of items) if (typeof it.id === "string") ids.set(it.id, uid());
@@ -44,8 +44,7 @@ export async function insertCopies(
     id: remap(it.id) ?? uid(),
     fromId: remap(it.fromId),
     toId: remap(it.toId),
-    // pegar o duplicar desbloquea (la copia se mueve); al importar un tablero se respeta lo bloqueado
-    lockedByUser: keepLocks ? !!it.lockedByUser : false,
+    lockedByUser: !!it.lockedByUser,
     left: Number(it.left ?? 0) + dx,
     top: Number(it.top ?? 0) + dy,
   }));

@@ -30,7 +30,7 @@ import { decodeBoardFile, encodeBoardFile, itemsBounds } from "./boardFile";
 import { sanitizeBoardItems } from "./sanitize";
 import { relinkAfterAltDrag, type Link } from "./altDrag";
 import { normalizeLink } from "./links";
-import { attachSectionPicking, createSection, editSectionTitle, isSection, keepSectionsBack, sectionContents, shiftObjects } from "./frames";
+import { attachSectionPicking, contentsBySection, createSection, editSectionTitle, isSection, keepSectionsBack, sectionContents, shiftObjects } from "./frames";
 import { SECTION_HEADER } from "./sections";
 import { STAMPS, stampText, type Stamp } from "./stamps";
 import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject, setMarkerNumber, setMarkerResolved } from "./shapes";
@@ -95,6 +95,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const restoreQueue = useRef<Promise<void>>(Promise.resolve());
   /** Alt+arrastrar en curso (copias creándose o registro pendiente); deshacer y rehacer lo esperan */
   const altBusy = useRef<Promise<void>>(Promise.resolve());
+  /** Lo de adentro de las secciones que se están moviendo con el teclado (hasta que se registra el movimiento) */
+  const nudgeInside = useRef<{ key: FabricObject; objs: FabricObject[] } | null>(null);
   /** Operación propia en curso: el evento selection:cleared no debe registrar pasos intermedios. */
   const quiet = useRef(false);
   const clipboard = useRef<Record<string, unknown>[]>([]);
@@ -223,6 +225,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     window.clearTimeout(commitTimer.current);
     commitTimer.current = 0; // 0 = no hay un commitSoon pendiente
     const c = cRef.current;
+    nudgeInside.current = null; // terminó la tanda de teclas (o hubo otro cambio)
     if (!c || !loaded.current || restoring.current) return;
     refreshMeasures(c); // las cotas muestran la longitud según la escala de la imagen que tienen debajo
     keepSectionsBack(c);
@@ -395,7 +398,13 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     clipboard.current = all.map((o) => o.toObject() as Record<string, unknown>);
     clipSource.current = projectId;
     pasteCount.current = 0;
-    select(forCut ? all : objs);
+    if (forCut) {
+      // se saca todo lo copiado, también lo bloqueado de adentro (no se puede seleccionar, pero se cortó)
+      c.remove(...all);
+      refreshConnectors(c);
+      refreshPanel();
+      commit();
+    } else select(objs);
     return clipboard.current;
   };
 
@@ -448,9 +457,13 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const c = cRef.current;
     const a = c?.getActiveObject();
     if (!c || !a) return;
-    // lo de adentro de las secciones seleccionadas se mueve con ellas
+    // lo de adentro de las secciones seleccionadas se mueve con ellas; se toma una vez por tanda de teclas
+    // (como al arrastrar): si se recalculara en cada paso, la sección iría arrastrando lo que pasa por encima
     const selected = c.getActiveObjects();
-    const inside = withContents(c, selected).filter((o) => !selected.includes(o));
+    if (nudgeInside.current?.key !== a) {
+      nudgeInside.current = { key: a, objs: [...contentsBySection(c, selected.filter(isSection), new Set(selected)).values()].flat() };
+    }
+    const inside = nudgeInside.current.objs;
     a.set({ left: a.left + dx, top: a.top + dy });
     a.setCoords();
     shiftObjects(inside, dx, dy);
@@ -563,7 +576,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     c.discardActiveObject();
     let objs: FabricObject[];
     try {
-      objs = await insertCopies(c, objects, dx, dy, true);
+      objs = await insertCopies(c, objects, dx, dy);
     } catch {
       return notify("El archivo del tablero está dañado: no se pudo agregar.");
     }
@@ -710,18 +723,13 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const objs = takeSelection();
     const movable = objs.filter((o) => !isConnector(o));
     // lo de adentro de cada sección (que no se esté acomodando también) va con ella; se busca antes de mover
-    const taken = new Set<FabricObject>(objs);
-    const inside = movable.map((o) => {
-      if (!isSection(o)) return [];
-      const mine = sectionContents(c, o).filter((x) => !taken.has(x));
-      mine.forEach((x) => taken.add(x)); // dentro de dos secciones acomodadas, se mueve una sola vez
-      return mine;
-    });
+    // (con secciones una dentro de otra, cada objeto va con la más chica que lo contiene)
+    const inside = contentsBySection(c, movable.filter(isSection), new Set(objs));
     deltasFor(movable.map(shapeBox), movable).forEach((d, i) => {
       const o = movable[i];
       o.set({ left: o.left + d.dx, top: o.top + d.dy });
       o.setCoords();
-      shiftObjects(inside[i], d.dx, d.dy);
+      shiftObjects(inside.get(o) ?? [], d.dx, d.dy);
     });
     refreshConnectors(c);
     select(objs);
@@ -1127,7 +1135,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       refreshConnectors(c, new Set(s.items.map((it) => it.o.id).filter((id): id is string => !!id)));
     };
     const startAltDrag = (target: FabricObject) => {
-      const objs = (target instanceof ActiveSelection ? target.getObjects() : isSection(target) ? [target, ...sectionContents(c, target)] : [target]).filter((o) => o.id);
+      const base = target instanceof ActiveSelection ? target.getObjects() : [target];
+      const objs = [...new Set(base.flatMap((o) => (isSection(o) ? [o, ...sectionContents(c, o)] : [o])))].filter((o) => o.id);
       if (!objs.length) return;
       const ids = new Set(objs.map((o) => o.id!));
       // toObject del lienzo da coordenadas reales aunque estén dentro de una selección múltiple
@@ -1135,7 +1144,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       const links: Link[] = c.getObjects().filter(isConnector).map((l) => ({ id: l.id!, fromId: l.fromId ?? null, toId: l.toId ?? null }));
       // lo que queda en el origen conserva su bloqueo (por ejemplo, el plano bloqueado de una sección)
       const newIds = new Map<string, string>();
-      const ready = insertCopies(c, data, 0, 0, true, newIds)
+      const ready = insertCopies(c, data, 0, 0, newIds)
         .then((copies) => {
           // copia ↔ original por id: si una no se pudo crear, las demás no se corren de lugar
           const byNew = new Map(copies.map((o) => [o.id, o]));
@@ -1328,9 +1337,14 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       c.on("mouse:down", (e) => {
         const tr = e.transform;
         section = null;
-        if (toolRef.current !== "select" || tr?.action !== "drag" || !isSection(tr.target)) return;
+        if (toolRef.current !== "select" || tr?.action !== "drag" || !tr.target) return;
+        // una sección, o una selección con secciones: lo de adentro que no está seleccionado va con ellas
+        const moving = tr.target instanceof ActiveSelection ? tr.target.getObjects() : [tr.target];
+        const sections = moving.filter(isSection);
+        if (!sections.length) return;
+        const inside = [...contentsBySection(c, sections, new Set(moving)).values()].flat();
         // las flechas se mueven por sus extremos: el suelto se desplaza y el enganchado lo recalcula refreshConnectors
-        const items = sectionContents(c, tr.target).map((o) => ({ o, left: o.left, top: o.top, ends: isConnector(o) ? lineEnds(o) : undefined }));
+        const items = inside.map((o) => ({ o, left: o.left, top: o.top, ends: isConnector(o) ? lineEnds(o) : undefined }));
         section = { frame: tr.target, left: tr.target.left, top: tr.target.top, items };
       }),
       c.on("mouse:up", () => { section = null; }),
@@ -1539,7 +1553,6 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       e.preventDefault();
       e.clipboardData.setData(BOARD_MIME, encodeClip(projectId, items));
       e.clipboardData.setData("text/plain", textOf(items) || "Elementos del tablero de TEMPO");
-      if (cut) act.current.removeSelection();
     };
     const copy = (e: ClipboardEvent) => onCopy(e, false);
     const cutEv = (e: ClipboardEvent) => onCopy(e, true);
