@@ -20,7 +20,7 @@ import { bakeScaledLabels, createLabeled, editLabel, isLabeled, readLabeled } fr
 import { editCaption } from "./captions";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { ObservationsPanel, type ObservationItem } from "./ObservationsPanel";
-import { observationsTable } from "./observations";
+import { observationsTable, renumberObservations } from "./observations";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { SearchBar } from "./SearchBar";
 import { findMatches } from "./search";
@@ -28,7 +28,7 @@ import { insertCopies, restore, snapshot } from "./serialize";
 import { decodeBoardFile, encodeBoardFile, itemsBounds } from "./boardFile";
 import { relinkAfterAltDrag, type Link } from "./altDrag";
 import { STAMPS, stampText, type Stamp } from "./stamps";
-import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject, setMarkerResolved } from "./shapes";
+import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject, setMarkerNumber, setMarkerResolved } from "./shapes";
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
 import { mergeStyles } from "./styleMerge";
 import { Toolbar, type Pen, type SaveState } from "./Toolbar";
@@ -569,6 +569,14 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         fitToContent(c);
         onViewport();
         break;
+      case "zoom":
+        zoomStep(c, a.dir);
+        onViewport();
+        break;
+      case "zoomReset":
+        zoomAt(c, { x: c.width / 2, y: c.height / 2 }, 1);
+        onViewport();
+        break;
       case "fitSelection":
         fitToObjects(c, c.getActiveObjects());
         onViewport();
@@ -815,6 +823,20 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     commit();
   };
 
+  /** Numera las observaciones 1, 2, 3… en el orden que tienen (después de borrar o duplicar alguna). */
+  const renumberMarkers = () => {
+    const c = cRef.current;
+    if (!c) return;
+    const markers = c.getObjects().filter((o) => o.kind === "marker" && o.id) as Group[];
+    const next = renumberObservations(markers.map((m) => ({ id: m.id!, num: m.num ?? 0, detail: "", resolved: false })));
+    if (!next.size) return;
+    for (const m of markers) setMarkerNumber(m, next.get(m.id!) ?? m.num ?? 0);
+    c.requestRenderAll();
+    refreshPanel();
+    commit();
+    notify(`Observaciones renumeradas del 1 al ${markers.length}.`);
+  };
+
   const copyObservations = async (items: ObservationItem[]) => {
     try {
       await navigator.clipboard.writeText(observationsTable(items));
@@ -827,7 +849,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
     duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openStamps, openExportMenu, importFile, rotateSelection,
-    setMarkerInfo, copyObservations,
+    setMarkerInfo, copyObservations, renumberMarkers,
   };
   const act = useRef(actions);
   act.current = actions;
@@ -1345,6 +1367,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             onDetail={(id, t) => act.current.setMarkerInfo(id, { detail: t })}
             onResolved={(id, r) => act.current.setMarkerInfo(id, { resolved: r })}
             onCopy={() => void act.current.copyObservations(observations)}
+            onRenumber={() => act.current.renumberMarkers()}
             onClose={() => setObsOpen(false)}
           />
         )}

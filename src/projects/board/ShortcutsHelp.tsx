@@ -22,7 +22,8 @@ const EDIT: [string, string][] = [
 ];
 
 const VIEW: [string, string][] = [
-  ["Rueda del mouse", "Acercar o alejar"],
+  ["Rueda del mouse  ·  +  ·  −", "Acercar o alejar"],
+  ["Shift + 0", "Zoom al 100 %"],
   ["Espacio + arrastrar", "Desplazar la vista"],
   ["Shift + 1", "Ajustar al contenido"],
   ["Shift + 2", "Encuadrar la selección"],

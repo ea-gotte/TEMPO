@@ -228,6 +228,8 @@ export function prepareObject(o: FabricObject) {
   // una recta horizontal o vertical tiene una caja de 1 px de alto o de ancho: con margen (en px de pantalla)
   // se la puede tocar, y también tocando su texto
   if (o.kind && STRAIGHT.includes(o.kind)) o.padding = 8;
+  // una imagen (un plano) se agranda o achica solo desde las esquinas: estirarla la deformaría y arruinaría su escala
+  if (o.kind === "image") o.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
   applyLock(o, !!o.lockedByUser);
 }
 
@@ -275,6 +277,13 @@ export function createMarker(at: Pt, num: number, color = REVIEW_RED): Group {
   const g = new Group([circle, label]);
   g.set({ left: at.x, top: at.y, num });
   return tag(g, "marker");
+}
+
+/** Cambia el número de una observación (renumerar). */
+export function setMarkerNumber(g: Group, num: number) {
+  const label = g.getObjects()[1] as FabricText;
+  label.set({ text: String(num), fontSize: num > 99 ? 11 : 14 });
+  g.set({ num, dirty: true });
 }
 
 /** Una observación resuelta se ve apagada y con el borde verde (sigue mostrando su número). */

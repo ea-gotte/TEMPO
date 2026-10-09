@@ -19,6 +19,8 @@ export type KeyAction =
   | { type: "escape" }
   | { type: "fit" }
   | { type: "fitSelection" }
+  | { type: "zoom"; dir: 1 | -1 }
+  | { type: "zoomReset" }
   | { type: "spaceDown" }
   | { type: "spaceUp" }
   | { type: "help" }
@@ -50,6 +52,10 @@ export function keyToAction(e: KeyLike, phase: "down" | "up", editing: boolean):
   if (e.key === "Delete" || e.key === "Backspace") return { type: "delete" };
   if (e.key === "Escape") return { type: "escape" };
   if (e.key === "?") return { type: "help" };
+  // zoom como en Figma: + y - (con o sin Shift según el teclado), Shift+0 = 100 %
+  if (e.shiftKey && e.code === "Digit0") return { type: "zoomReset" };
+  if (e.key === "+" || e.key === "=") return { type: "zoom", dir: 1 };
+  if (e.key === "-") return { type: "zoom", dir: -1 };
   if (!e.shiftKey && e.key.toLowerCase() === "g") return { type: "toggleSnap" };
   const arrow = ARROWS[e.key];
   if (arrow) {

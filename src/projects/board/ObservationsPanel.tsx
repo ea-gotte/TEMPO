@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { filterObservations, observationCounts, type Observation, type ObservationFilter } from "./observations";
+import { filterObservations, observationCounts, renumberObservations, type Observation, type ObservationFilter } from "./observations";
 
 export type ObservationItem = Observation & { color: string };
 
@@ -46,7 +46,7 @@ export function DetailField({ value, onSave, autoFocus }: { value: string; onSav
 }
 
 /** Lista de las observaciones numeradas del tablero: descripción, estado, ir a cada una y copiar la lista. */
-export function ObservationsPanel({ items, below, onFocus, onDetail, onResolved, onCopy, onClose }: {
+export function ObservationsPanel({ items, below, onFocus, onDetail, onResolved, onCopy, onRenumber, onClose }: {
   items: ObservationItem[];
   /** La barra de búsqueda está abierta arriba: el panel baja */
   below: boolean;
@@ -54,6 +54,8 @@ export function ObservationsPanel({ items, below, onFocus, onDetail, onResolved,
   onDetail: (id: string, text: string) => void;
   onResolved: (id: string, resolved: boolean) => void;
   onCopy: () => void;
+  /** Renumerar 1, 2, 3… (se ofrece solo si hay huecos o números repetidos) */
+  onRenumber: () => void;
   onClose: () => void;
 }) {
   const [filter, setFilter] = useState<ObservationFilter>("all");
@@ -77,6 +79,11 @@ export function ObservationsPanel({ items, below, onFocus, onDetail, onResolved,
             {FILTERS.map(([f, label]) => (
               <button key={f} type="button" className={`bd-chip${filter === f ? " on" : ""}`} onClick={() => setFilter(f)}>{label}</button>
             ))}
+            {renumberObservations(items).size > 0 && (
+              <button type="button" className="bd-chip" title="Hay números salteados o repetidos: numerarlas 1, 2, 3… en el orden que tienen" onClick={onRenumber}>
+                Renumerar
+              </button>
+            )}
           </div>
           <ol className="bd-obs-list">
             {shown.map((o) => (

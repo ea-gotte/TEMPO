@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterObservations, observationCounts, observationsTable, type Observation } from "./observations";
+import { filterObservations, observationCounts, observationsTable, renumberObservations, type Observation } from "./observations";
 
 const list: Observation[] = [
   { id: "c", num: 3, detail: "Falta la cota del vano", resolved: false },
@@ -25,5 +25,15 @@ describe("observaciones numeradas", () => {
       "2\tAbierta\t",
       "3\tAbierta\tFalta la cota del vano",
     ]);
+  });
+});
+
+describe("renumerar observaciones", () => {
+  it("después de borrar alguna: 1, 2, 3… en el orden que tenían", () => {
+    const holes = [{ ...list[0], num: 7 }, { ...list[1], num: 1 }, { ...list[2], num: 4 }];
+    expect(renumberObservations(holes)).toEqual(new Map([["a", 1], ["b", 2], ["c", 3]]));
+  });
+  it("si ya están 1, 2, 3 no cambia nada", () => {
+    expect(renumberObservations(list).size).toBe(0);
   });
 });

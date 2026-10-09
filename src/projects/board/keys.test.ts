@@ -43,6 +43,14 @@ describe("keyToAction", () => {
     expect(down(k("@", { code: "Digit2", shiftKey: true }))).toEqual({ type: "fitSelection" });
     expect(down(k('"', { code: "Digit2", shiftKey: true }))).toEqual({ type: "fitSelection" });
   });
+  it("+ y - acercan y alejan (con o sin Shift, según el teclado); Shift+0 vuelve a 100 %", () => {
+    expect(down(k("+"))).toEqual({ type: "zoom", dir: 1 });
+    expect(down(k("+", { code: "Equal", shiftKey: true }))).toEqual({ type: "zoom", dir: 1 });
+    expect(down(k("="))).toEqual({ type: "zoom", dir: 1 });
+    expect(down(k("-"))).toEqual({ type: "zoom", dir: -1 });
+    expect(down(k("=", { code: "Digit0", shiftKey: true }))).toEqual({ type: "zoomReset" });
+    expect(down(k(")", { code: "Digit0", shiftKey: true }))).toEqual({ type: "zoomReset" });
+  });
   it("Espacio: mano temporal mientras se mantiene", () => {
     expect(down(k(" ", { code: "Space" }))).toEqual({ type: "spaceDown" });
     expect(keyToAction(k(" ", { code: "Space" }), "up", false)).toEqual({ type: "spaceUp" });

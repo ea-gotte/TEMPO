@@ -28,3 +28,13 @@ export function observationsTable(list: Observation[]): string {
   );
   return ["N.º\tEstado\tObservación", ...rows].join("\n");
 }
+
+/**
+ * Renumerar 1, 2, 3… en el orden que tienen (después de borrar o duplicar alguna). Devuelve el
+ * número nuevo de cada una, o nada si ya están en orden y sin huecos.
+ */
+export function renumberObservations(list: Observation[]): Map<string, number> {
+  const sorted = [...list].sort((a, b) => a.num - b.num);
+  if (sorted.every((o, i) => o.num === i + 1)) return new Map();
+  return new Map(sorted.map((o, i) => [o.id, i + 1]));
+}
