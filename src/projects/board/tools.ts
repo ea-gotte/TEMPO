@@ -43,4 +43,7 @@ export const PALETTE = [INK, REVIEW_RED, "#f59e0b", "#16a34a", "#2563eb", "#7c3a
 /** Rellenos de formas ("transparent" = sin relleno) */
 export const FILL_COLORS = ["#ffffff", "#e2e8f0", ...NOTE_COLORS, "transparent"];
 export const PEN_WIDTHS = [2, 4, 8];
+/** Resaltador: colores claros y trazos anchos (se dibujan semitransparentes) */
+export const HIGHLIGHT_COLORS = ["#fde047", "#86efac", "#f9a8d4", "#93c5fd"];
+export const HIGHLIGHT_WIDTHS = [12, 20, 32];
 export const STROKE_WIDTHS = [1, 2, 4, 8];

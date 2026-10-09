@@ -1,6 +1,7 @@
 import type { FabricObject, Textbox } from "fabric";
 import { createLabeled, isLabeled, readLabeled } from "./labels";
 import type { Kind } from "./shapes";
+import { HIGHLIGHT_ALPHA, dashArray, dashStyleOf, toHex, withAlpha, type DashStyle, type HeadStyle } from "./strokes";
 
 /**
  * Estilo que muestra y cambia el panel de propiedades (spec §5.4).
@@ -15,7 +16,11 @@ export interface StyleState {
   strokeWidth: number | null;
   fontSize: number | null;
   opacity: number;
-  strokeLabel: "Borde" | "Línea" | "Color del texto" | "Color";
+  strokeLabel: "Borde" | "Línea" | "Color del texto" | "Resaltador" | "Color";
+  /** Patrón de línea (DashStyle), o "mixed" en una selección con varios */
+  dash: string | null;
+  /** Puntas de la flecha (HeadStyle), o "mixed" */
+  heads: string | null;
 }
 
 export interface StylePatch {
@@ -24,26 +29,31 @@ export interface StylePatch {
   strokeWidth?: number;
   fontSize?: number;
   opacity?: number;
+  dash?: DashStyle;
+  heads?: HeadStyle;
 }
 
+const LINES: Kind[] = ["line", "arrow", "path", "cloud"];
+
 export function readStyle(o: FabricObject): StyleState {
-  const base: StyleState = { kind: o.kind, fill: null, stroke: null, strokeWidth: null, fontSize: null, opacity: o.opacity, strokeLabel: "Borde" };
+  const base: StyleState = {
+    kind: o.kind, fill: null, stroke: null, strokeWidth: null, fontSize: null, opacity: o.opacity, strokeLabel: "Borde", dash: null, heads: null,
+  };
   if (isLabeled(o)) {
     const s = readLabeled(o);
-    const note = o.kind === "note";
-    return { ...base, fill: s.fill ?? null, fontSize: s.fontSize ?? null, stroke: note ? null : s.stroke ?? null, strokeWidth: note ? null : s.strokeWidth ?? null };
+    if (o.kind === "note") return { ...base, fill: s.fill ?? null, fontSize: s.fontSize ?? null };
+    return { ...base, fill: s.fill ?? null, fontSize: s.fontSize ?? null, stroke: s.stroke ?? null, strokeWidth: s.strokeWidth ?? null, dash: s.dash ?? "solid" };
   }
-  switch (o.kind) {
-    case "text":
-      return { ...base, stroke: String(o.fill), fontSize: (o as Textbox).fontSize, strokeLabel: "Color del texto" };
-    case "line":
-    case "arrow":
-    case "path":
-    case "cloud":
-      return { ...base, stroke: String(o.stroke), strokeWidth: o.strokeWidth, strokeLabel: "Línea" };
-    default:
-      return base; // imagen: solo opacidad
+  if (o.kind === "text") return { ...base, stroke: String(o.fill), fontSize: (o as Textbox).fontSize, strokeLabel: "Color del texto" };
+  // el resaltador se guarda con transparencia: el panel muestra su color pleno
+  if (o.kind === "highlight") return { ...base, stroke: toHex(String(o.stroke)), strokeWidth: o.strokeWidth, strokeLabel: "Resaltador" };
+  if (o.kind && LINES.includes(o.kind)) {
+    return {
+      ...base, stroke: String(o.stroke), strokeWidth: o.strokeWidth, strokeLabel: "Línea",
+      dash: dashStyleOf(o.strokeDashArray), heads: o.kind === "arrow" ? o.heads ?? "end" : null,
+    };
   }
+  return base; // imagen: solo opacidad
 }
 
 /** Aplica el cambio. Una forma con texto se reconstruye: devuelve el objeto nuevo (mismo id). */
@@ -55,9 +65,19 @@ export function applyStyle(o: FabricObject, p: StylePatch): FabricObject {
   if (o.kind === "text") {
     if (rest.stroke) o.set({ fill: rest.stroke });
     if (rest.fontSize) o.set({ fontSize: rest.fontSize });
-  } else {
+  } else if (o.kind === "highlight") {
+    if (rest.stroke) o.set({ stroke: withAlpha(toHex(rest.stroke), HIGHLIGHT_ALPHA) });
+    if (rest.strokeWidth) o.set({ strokeWidth: rest.strokeWidth });
+  } else if (o.kind && LINES.includes(o.kind)) {
     if (rest.stroke) o.set({ stroke: rest.stroke });
     if (rest.strokeWidth) o.set({ strokeWidth: rest.strokeWidth });
+    // el patrón es proporcional al grosor: se recalcula también al cambiar el grosor
+    if (rest.dash || rest.strokeWidth) {
+      const dash = rest.dash ?? dashStyleOf(o.strokeDashArray);
+      o.set({ strokeDashArray: dashArray(dash, o.strokeWidth) });
+      if (dash === "dotted") o.set({ strokeLineCap: "round" });
+    }
+    if (rest.heads && o.kind === "arrow") o.set({ heads: rest.heads });
   }
   o.setCoords();
   return o;

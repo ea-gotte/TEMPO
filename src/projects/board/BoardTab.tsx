@@ -77,7 +77,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const [noteColor, setNoteColor] = useState(NOTE_COLORS[0]);
   const noteColorRef = useRef(noteColor);
   noteColorRef.current = noteColor;
-  const [pen, setPen] = useState<Pen>({ color: INK, width: 4 });
+  const [pen, setPen] = useState<Pen>({ color: INK, width: 4, highlighter: false });
   const penRef = useRef(pen);
   penRef.current = pen;
   const [hist, setHist] = useState({ undo: false, redo: false });
@@ -597,7 +597,9 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         commit();
       }),
       c.on("path:created", (e) => {
-        e.path.set({ id: uid(), kind: "path" });
+        // el resaltador se multiplica con lo de abajo: marca el plano sin taparlo
+        const hl = penRef.current.highlighter;
+        e.path.set({ id: uid(), kind: hl ? "highlight" : "path", ...(hl ? { globalCompositeOperation: "multiply" } : {}) });
         prepareObject(e.path);
         commit();
       }),

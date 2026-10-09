@@ -1,6 +1,7 @@
 import { Ellipse, Group, Polygon, Rect, Shadow, Textbox, type Canvas, type FabricObject } from "fabric";
 import { uid } from "../../utils";
 import { sizeForText, textArea, type Box } from "./geometry";
+import { dashArray, dashStyleOf, type DashStyle } from "./strokes";
 import { markTransient, prepareObject, replaceObject } from "./shapes";
 import { FONT, INK, NOTE_COLORS } from "./tools";
 
@@ -24,6 +25,7 @@ export interface LabeledSpec {
   stroke?: string;
   strokeWidth?: number;
   fontSize?: number;
+  dash?: DashStyle;
   angle?: number;
   opacity?: number;
   id?: string;
@@ -72,6 +74,8 @@ export function createLabeled(s: LabeledSpec): Group {
     fill: s.fill ?? (note ? NOTE_COLORS[0] : "#ffffff"),
     stroke: note ? "transparent" : s.stroke ?? INK,
     strokeWidth: note ? 0 : s.strokeWidth ?? 2,
+    strokeDashArray: note ? null : dashArray(s.dash ?? "solid", s.strokeWidth ?? 2),
+    strokeLineCap: (s.dash === "dotted" ? "round" : "butt") as CanvasLineCap,
   };
   const shape =
     s.kind === "ellipse"
@@ -111,6 +115,7 @@ export function readLabeled(g: Group): LabeledSpec {
     fill: String(shape.fill),
     stroke: String(shape.stroke),
     strokeWidth: shape.strokeWidth,
+    dash: dashStyleOf(shape.strokeDashArray),
     // el tamaño pedido, no el achicado: si la forma crece, la letra vuelve a su tamaño
     fontSize: g.baseFontSize ?? label.fontSize,
     angle: g.angle,

@@ -1,6 +1,6 @@
 import React from "react";
 import { Icon, type IconName } from "../../components/Icon";
-import { NOTE_COLORS, PALETTE, PEN_WIDTHS, TOOLS, type Tool, type ToolGroup } from "./tools";
+import { HIGHLIGHT_COLORS, HIGHLIGHT_WIDTHS, INK, NOTE_COLORS, PALETTE, PEN_WIDTHS, TOOLS, type Tool, type ToolGroup } from "./tools";
 
 /** Barra superior del tablero. Adaptado de Navbar/ShapesMenu de Figma_Clone (github.com/Lyam0udi/Figma_Clone). */
 
@@ -18,6 +18,8 @@ const SAVE_LABEL: Record<SaveState, string> = {
 export interface Pen {
   color: string;
   width: number;
+  /** Resaltador: trazo ancho y semitransparente que no tapa el plano */
+  highlighter: boolean;
 }
 
 export interface ToolbarProps {
@@ -102,10 +104,12 @@ export function Toolbar(p: ToolbarProps) {
       )}
       {p.tool === "pencil" && (
         <div className="bd-subbar">
-          <span>Color</span>
-          {PALETTE.filter((c) => c !== "#ffffff").map((c) => <Swatch key={c} color={c} on={p.pen.color === c} onClick={() => p.onPen({ ...p.pen, color: c })} />)}
+          <button type="button" className={`bd-chip${!p.pen.highlighter ? " on" : ""}`} onClick={() => p.onPen({ color: INK, width: 4, highlighter: false })}>Lápiz</button>
+          <button type="button" className={`bd-chip${p.pen.highlighter ? " on" : ""}`} onClick={() => p.onPen({ color: HIGHLIGHT_COLORS[0], width: 20, highlighter: true })}>Resaltador</button>
+          <span style={{ marginLeft: 8 }}>Color</span>
+          {(p.pen.highlighter ? HIGHLIGHT_COLORS : PALETTE.filter((c) => c !== "#ffffff")).map((c) => <Swatch key={c} color={c} on={p.pen.color === c} onClick={() => p.onPen({ ...p.pen, color: c })} />)}
           <span style={{ marginLeft: 8 }}>Grosor</span>
-          {PEN_WIDTHS.map((w) => (
+          {(p.pen.highlighter ? HIGHLIGHT_WIDTHS : PEN_WIDTHS).map((w) => (
             <button key={w} type="button" className={`bd-chip${p.pen.width === w ? " on" : ""}`} onClick={() => p.onPen({ ...p.pen, width: w })}>{w} px</button>
           ))}
         </div>

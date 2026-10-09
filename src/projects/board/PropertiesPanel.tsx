@@ -1,9 +1,13 @@
 import React from "react";
 import type { StylePatch, StyleState } from "./style";
+import type { DashStyle, HeadStyle } from "./strokes";
 import { Btn, Swatch } from "./Toolbar";
-import { FILL_COLORS, NOTE_COLORS, PALETTE, STROKE_WIDTHS } from "./tools";
+import { FILL_COLORS, HIGHLIGHT_COLORS, HIGHLIGHT_WIDTHS, NOTE_COLORS, PALETTE, STROKE_WIDTHS } from "./tools";
 
 /** Panel derecho (solo con selección). Adaptado de RightSidebar de Figma_Clone (github.com/Lyam0udi/Figma_Clone). */
+
+const DASHES: [DashStyle, string][] = [["solid", "Continuo"], ["dashed", "Discontinuo"], ["dotted", "Punteado"]];
+const HEADS: [HeadStyle, string, string][] = [["end", "→", "Al final"], ["start", "←", "Al inicio"], ["both", "↔", "En ambos extremos"], ["none", "—", "Sin punta"]];
 
 const FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64, 72];
 
@@ -35,6 +39,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onDelete }: PanelProps) {
   const fills = s.kind === "note" ? NOTE_COLORS : FILL_COLORS;
+  // el resaltador tiene sus propios colores claros y trazos anchos
+  const hl = s.strokeLabel === "Resaltador";
   const opacity = Math.round(s.opacity * 100);
   return (
     <aside className="bd-panel" aria-label="Propiedades de la selección">
@@ -47,14 +53,28 @@ export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onL
       )}
       {s.stroke !== null && (
         <Row label={s.strokeLabel}>
-          {PALETTE.map((c) => <Swatch key={c} color={c} on={s.stroke === c} onClick={() => onStyle({ stroke: c })} />)}
+          {(hl ? HIGHLIGHT_COLORS : PALETTE).map((c) => <Swatch key={c} color={c} on={s.stroke === c} onClick={() => onStyle({ stroke: c })} />)}
           <ColorInput value={s.stroke} label="Otro color" onPick={(c) => onStyle({ stroke: c })} />
         </Row>
       )}
       {s.strokeWidth !== null && (
         <Row label="Grosor">
-          {STROKE_WIDTHS.map((w) => (
+          {(hl ? HIGHLIGHT_WIDTHS : STROKE_WIDTHS).map((w) => (
             <button key={w} type="button" className={`bd-chip${s.strokeWidth === w ? " on" : ""}`} onClick={() => onStyle({ strokeWidth: w })}>{w} px</button>
+          ))}
+        </Row>
+      )}
+      {s.dash !== null && (
+        <Row label="Trazo">
+          {DASHES.map(([v, label]) => (
+            <button key={v} type="button" className={`bd-chip${s.dash === v ? " on" : ""}`} onClick={() => onStyle({ dash: v })}>{label}</button>
+          ))}
+        </Row>
+      )}
+      {s.heads !== null && (
+        <Row label="Puntas">
+          {HEADS.map(([v, label, title]) => (
+            <button key={v} type="button" className={`bd-chip${s.heads === v ? " on" : ""}`} title={title} aria-label={title} onClick={() => onStyle({ heads: v })}>{label}</button>
           ))}
         </Row>
       )}

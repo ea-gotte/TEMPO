@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { StyleState } from "./style";
 import { MIXED, mergeStyles } from "./styleMerge";
 
-const base: StyleState = { kind: undefined, fill: null, stroke: null, strokeWidth: null, fontSize: null, opacity: 1, strokeLabel: "Borde" };
+const base: StyleState = { kind: undefined, fill: null, stroke: null, strokeWidth: null, fontSize: null, opacity: 1, strokeLabel: "Borde", dash: null, heads: null };
 const image: StyleState = { ...base, kind: "image" };
-const rect: StyleState = { ...base, kind: "rect", fill: "#ffffff", stroke: "#1f2937", strokeWidth: 2, fontSize: 16 };
+const rect: StyleState = { ...base, kind: "rect", fill: "#ffffff", stroke: "#1f2937", strokeWidth: 2, fontSize: 16, dash: "solid" };
 const rect2: StyleState = { ...rect, fill: "#fef08a", fontSize: 24 };
-const arrow: StyleState = { ...base, kind: "arrow", stroke: "#1f2937", strokeWidth: 2, strokeLabel: "Línea" };
+const arrow: StyleState = { ...base, kind: "arrow", stroke: "#1f2937", strokeWidth: 2, strokeLabel: "Línea", dash: "dashed", heads: "end" };
 
 describe("mergeStyles", () => {
   it("un solo objeto queda igual", () => {
@@ -32,5 +32,16 @@ describe("mergeStyles", () => {
   });
   it("lo que ningún objeto tiene sigue oculto", () => {
     expect(mergeStyles([image, arrow]).fill).toBeNull();
+  });
+});
+
+describe("mergeStyles: trazo y puntas", () => {
+  it("trazos distintos quedan mixtos; las puntas aparecen si alguna flecha las tiene", () => {
+    const m = mergeStyles([rect, arrow]);
+    expect(m.dash).toBe(MIXED);
+    expect(m.heads).toBe("end");
+  });
+  it("una imagen sola no ofrece trazo ni puntas", () => {
+    expect(mergeStyles([image, { ...image }]).dash).toBeNull();
   });
 });

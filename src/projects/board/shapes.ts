@@ -1,6 +1,7 @@
 import { FabricImage, FabricObject, Line, Path, Textbox, classRegistry, type Canvas } from "fabric";
 import { uid } from "../../utils";
 import { cloudPath, type Box, type Pt } from "./geometry";
+import type { HeadStyle } from "./strokes";
 import { FONT, INK, REVIEW_RED } from "./tools";
 
 /**
@@ -9,7 +10,7 @@ import { FONT, INK, REVIEW_RED } from "./tools";
  * objeto es su CENTRO, así que left/top = centro.
  */
 
-export type Kind = "note" | "rect" | "ellipse" | "diamond" | "line" | "arrow" | "cloud" | "text" | "path" | "image";
+export type Kind = "note" | "rect" | "ellipse" | "diamond" | "line" | "arrow" | "cloud" | "text" | "path" | "highlight" | "image";
 
 declare module "fabric" {
   interface FabricObject {
@@ -22,6 +23,8 @@ declare module "fabric" {
     lockedByUser?: boolean;
     /** Forma con texto: tamaño de letra pedido (el que se ve puede ser menor para que el texto entre) */
     baseFontSize?: number;
+    /** Flecha: en qué extremos lleva punta (por defecto, al final) */
+    heads?: HeadStyle;
   }
   interface SerializedObjectProps {
     id?: string;
@@ -31,13 +34,14 @@ declare module "fabric" {
     lockedByUser?: boolean;
     /** Forma con texto: tamaño de letra pedido (el que se ve puede ser menor para que el texto entre) */
     baseFontSize?: number;
+    heads?: HeadStyle;
   }
 }
 
 // Propiedades propias que viajan al guardar (spec §4)
-FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize"];
+FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads"];
 
-/** Línea con punta de flecha en el extremo final (x2, y2). */
+/** Línea con punta de flecha: al final (x2, y2) por defecto, al inicio, en ambos extremos o sin punta. */
 export class Arrow extends Line {
   static type = "Arrow";
 
@@ -50,10 +54,17 @@ export class Arrow extends Line {
   _render(ctx: CanvasRenderingContext2D) {
     super._render(ctx);
     const p = this.calcLinePoints();
+    const heads = this.heads ?? "end";
+    if (heads === "end" || heads === "both") this.drawHead(ctx, p.x1, p.y1, p.x2, p.y2);
+    if (heads === "start" || heads === "both") this.drawHead(ctx, p.x2, p.y2, p.x1, p.y1);
+  }
+
+  /** Punta en (tx, ty), apuntando en la dirección que viene desde (fx, fy). */
+  private drawHead(ctx: CanvasRenderingContext2D, fx: number, fy: number, tx: number, ty: number) {
     const len = Math.max(10, this.strokeWidth * 4);
     ctx.save();
-    ctx.translate(p.x2, p.y2);
-    ctx.rotate(Math.atan2(p.y2 - p.y1, p.x2 - p.x1));
+    ctx.translate(tx, ty);
+    ctx.rotate(Math.atan2(ty - fy, tx - fx));
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.lineTo(-len, len / 2);
@@ -92,7 +103,7 @@ export function applyLock(o: FabricObject, locked: boolean) {
   });
 }
 
-const THIN: Kind[] = ["line", "arrow", "path", "cloud"];
+const THIN: Kind[] = ["line", "arrow", "path", "highlight", "cloud"];
 
 /** Ajustes que no se serializan: se aplican al crear y al cargar. */
 export function prepareObject(o: FabricObject) {

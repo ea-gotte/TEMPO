@@ -1,6 +1,7 @@
 import { Canvas, PencilBrush, Point } from "fabric";
 import { shapeBox } from "./connectors";
 import { clampZoom, exportScale, fitViewport, unionBoxes, type Box, type Pt, type Viewport } from "./geometry";
+import { HIGHLIGHT_ALPHA, withAlpha } from "./strokes";
 import type { Tool } from "./tools";
 
 /**
@@ -58,11 +59,11 @@ export function viewCenter(c: Canvas): Pt {
 }
 
 /** Prepara el lienzo para la herramienta: selección, dibujo a mano, cursor. */
-export function applyToolMode(c: Canvas, tool: Tool, pen: { color: string; width: number }) {
+export function applyToolMode(c: Canvas, tool: Tool, pen: { color: string; width: number; highlighter?: boolean }) {
   c.isDrawingMode = tool === "pencil";
   if (tool === "pencil") {
     const brush = new PencilBrush(c);
-    brush.color = pen.color;
+    brush.color = pen.highlighter ? withAlpha(pen.color, HIGHLIGHT_ALPHA) : pen.color;
     brush.width = pen.width;
     c.freeDrawingBrush = brush;
   }
