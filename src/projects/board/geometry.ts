@@ -185,3 +185,18 @@ export function sizeForText(
 
 /** Número de la próxima observación: sigue al más alto (los números no se reutilizan al borrar). */
 export const nextMarkerNumber = (nums: number[]) => (nums.length ? Math.max(...nums) : 0) + 1;
+
+/**
+ * Shift al trazar una línea, flecha o cota: la dirección se fija al múltiplo de `step` grados más
+ * cercano y el extremo es la proyección del puntero sobre esa dirección (en horizontal, el extremo
+ * queda a la misma x que el puntero).
+ */
+export function constrainAngle(a: Pt, b: Pt, step = 45): Pt {
+  const k = (step * Math.PI) / 180;
+  const angle = Math.round(Math.atan2(b.y - a.y, b.x - a.x) / k) * k;
+  // redondeado: cos(90°) no da 0 exacto en coma flotante (y +0 evita un -0)
+  const ux = Math.round(Math.cos(angle) * 1e9) / 1e9 + 0;
+  const uy = Math.round(Math.sin(angle) * 1e9) / 1e9 + 0;
+  const len = (b.x - a.x) * ux + (b.y - a.y) * uy;
+  return { x: a.x + ux * len + 0, y: a.y + uy * len + 0 };
+}

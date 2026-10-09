@@ -816,7 +816,11 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         live(e.target);
       }),
       c.on("object:scaling", (e) => live(e.target)),
-      c.on("object:rotating", (e) => live(e.target)),
+      c.on("object:rotating", (e) => {
+        // con Shift se gira de a 15°
+        if ((e.e as MouseEvent).shiftKey) e.target.set({ angle: Math.round(e.target.angle / 15) * 15 });
+        live(e.target);
+      }),
       c.on("object:modified", (e) => {
         const t = e.target;
         if (!t || isTransient(t)) return;

@@ -1,6 +1,6 @@
 import { Line, Rect, type Canvas, type FabricObject } from "fabric";
 import { shapeAt, shapeBox } from "./connectors";
-import { boxFromPoints, connectorEnds, nextMarkerNumber, snap, squareFromPoints, type Box, type Pt } from "./geometry";
+import { boxFromPoints, connectorEnds, constrainAngle, nextMarkerNumber, snap, squareFromPoints, type Box, type Pt } from "./geometry";
 import { createLabeled } from "./labels";
 import { createCloud, createConnector, createMarker, createMeasure, createText, markTransient } from "./shapes";
 import type { Tool } from "./tools";
@@ -62,7 +62,11 @@ export function attachDrawing(c: Canvas, opts: DrawOptions): () => void {
     c.on("mouse:move", (o) => {
       if (!start || !preview) return;
       const p = at(o.scenePoint);
-      if (preview instanceof Line) preview.set({ x2: p.x, y2: p.y });
+      if (preview instanceof Line) {
+        // con Shift, la recta queda horizontal, vertical o a 45°
+        const q = (o.e as MouseEvent).shiftKey ? constrainAngle(start, p) : p;
+        preview.set({ x2: q.x, y2: q.y });
+      }
       else {
         const b = (o.e as MouseEvent).shiftKey ? squareFromPoints(start, p) : boxFromPoints(start, p);
         preview.set({ left: b.left + b.width / 2, top: b.top + b.height / 2, width: b.width, height: b.height });
@@ -72,7 +76,8 @@ export function attachDrawing(c: Canvas, opts: DrawOptions): () => void {
     c.on("mouse:up", (o) => {
       if (!start || !preview) return;
       const a = start;
-      const b = at(o.scenePoint);
+      const straight = preview instanceof Line && (o.e as MouseEvent).shiftKey;
+      const b = straight ? constrainAngle(a, at(o.scenePoint)) : at(o.scenePoint);
       c.remove(preview);
       start = null;
       preview = null;

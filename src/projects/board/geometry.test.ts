@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   anchorOnBox, boxFromPoints, clampZoom, cloudPath, connectorEnds, exportScale, fitScale, fitViewport, gridSpec,
-  heightForText, nextMarkerNumber, sizeForText, snap, snapDelta, squareFromPoints, textArea, unionBoxes,
+  constrainAngle, heightForText, nextMarkerNumber, sizeForText, snap, snapDelta, squareFromPoints, textArea, unionBoxes,
 } from "./geometry";
 
 // Caja de 100 × 50 con centro en (50, 25)
@@ -165,5 +165,18 @@ describe("observaciones numeradas", () => {
   it("sigue al número más alto (aunque se haya borrado alguna del medio)", () => {
     expect(nextMarkerNumber([1, 2, 5])).toBe(6);
     expect(nextMarkerNumber([3, 1])).toBe(4);
+  });
+});
+
+describe("constrainAngle (Shift al trazar líneas)", () => {
+  it("horizontal y vertical: el extremo queda a la altura o en la vertical del inicio", () => {
+    expect(constrainAngle({ x: 10, y: 10 }, { x: 110, y: 18 })).toEqual({ x: 110, y: 10 });
+    expect(constrainAngle({ x: 0, y: 0 }, { x: 3, y: -90 })).toEqual({ x: 0, y: -90 });
+    expect(constrainAngle({ x: 0, y: 0 }, { x: -60, y: 5 })).toEqual({ x: -60, y: 0 });
+  });
+  it("diagonal a 45°", () => {
+    const p = constrainAngle({ x: 0, y: 0 }, { x: 100, y: 90 });
+    expect(p.x).toBeCloseTo(95, 6);
+    expect(p.y).toBeCloseTo(95, 6);
   });
 });

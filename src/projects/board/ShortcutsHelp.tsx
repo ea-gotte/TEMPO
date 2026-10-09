@@ -15,6 +15,8 @@ const EDIT: [string, string][] = [
   ["Supr  ·  Retroceso", "Eliminar"],
   ["Flechas  ·  Shift + flechas", "Mover 1 px  ·  10 px"],
   ["Doble clic", "Escribir en una nota, forma, flecha o línea"],
+  ["Shift al dibujar", "Formas proporcionadas · rectas horizontales, verticales o a 45°"],
+  ["Shift al girar", "De a 15°"],
   ["Clic derecho", "Más acciones"],
   ["Esc", "Soltar la selección y volver a Seleccionar"],
 ];
