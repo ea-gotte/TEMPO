@@ -7,9 +7,9 @@
 .bd-root:fullscreen { height: 100vh; min-height: 0; border: none; border-radius: 0; }
 
 .bd-toolbar-wrap { border-bottom: 1px solid var(--border); background: var(--surface); }
-.bd-toolbar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; flex-wrap: wrap; }
-.bd-group { display: flex; align-items: center; gap: 2px; padding-right: 6px; margin-right: 2px; border-right: 1px solid var(--border); }
-.bd-group:last-child { border-right: none; padding-right: 0; margin-right: 0; }
+.bd-toolbar { display: flex; align-items: center; gap: 4px; padding: 6px 8px; flex-wrap: wrap; }
+.bd-group { display: flex; align-items: center; gap: 2px; padding-right: 4px; margin-right: 0; border-right: 1px solid var(--border); }
+.bd-group:last-child { border-right: none; padding-right: 0; margin-right: 0; margin-left: auto; } /* si la barra se parte, queda a la derecha */
 .bd-spacer { flex: 1; }
 
 .bd-btn {
@@ -81,7 +81,10 @@
 .bd-color { width: 26px; height: 22px; padding: 0; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--surface); cursor: pointer; }
 
 /* Indicador de guardado */
-.bd-save { font-size: 12px; color: var(--text-3); white-space: nowrap; padding: 0 6px; }
+.bd-save {
+  position: absolute; left: 12px; bottom: 12px; font-size: 11.5px; color: var(--text-3); white-space: nowrap; pointer-events: none;
+  padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.85); border: 1px solid var(--border);
+}
 .bd-save.error, .bd-save.off { color: var(--warning); font-weight: 600; }
 
 /* Ayuda de atajos (tecla ?) */

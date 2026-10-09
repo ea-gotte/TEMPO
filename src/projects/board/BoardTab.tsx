@@ -33,7 +33,7 @@ import { STAMPS, stampText, type Stamp } from "./stamps";
 import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject, setMarkerNumber, setMarkerResolved } from "./shapes";
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
 import { mergeStyles } from "./styleMerge";
-import { Toolbar, type Pen, type SaveState } from "./Toolbar";
+import { SAVE_LABEL, Toolbar, type Pen, type SaveState } from "./Toolbar";
 import { INK, NOTE_COLORS, type Tool } from "./tools";
 import "./board.css";
 
@@ -477,13 +477,16 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     download(blob, `tablero-${slug(fileLabel)}-${today()}.json`);
   };
 
-  const openExportMenu = (x: number, y: number) =>
+  /** Menú Más de la barra: exportar, descargar o importar el tablero, vaciarlo. */
+  const openMoreMenu = (x: number, y: number) =>
     setMenu({
       x,
       y,
       items: [
-        { label: "Imagen PNG", ico: "image", onClick: () => void exportBoard() },
-        { label: "Archivo del tablero (.json): respaldo o para compartir", ico: "download", onClick: exportFile },
+        { label: "Exportar imagen PNG", ico: "image", onClick: () => void exportBoard() },
+        { label: "Descargar el tablero (.json)", ico: "download", onClick: exportFile },
+        { label: "Importar un tablero (.json)…", ico: "upload", onClick: () => importRef.current?.click() },
+        { label: "Vaciar el tablero", ico: "trash", danger: true, onClick: clearBoard },
       ],
     });
 
@@ -498,7 +501,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       return notify("No se pudo leer el archivo.");
     }
     const parsed = decodeBoardFile(text);
-    if (!parsed) return notify("Ese archivo no es un tablero: elegí un .json descargado desde un tablero (Descargar → Archivo del tablero).");
+    if (!parsed) return notify("Ese archivo no es un tablero: elegí un .json descargado desde un tablero (Más → Descargar el tablero).");
     const bounds = itemsBounds(parsed.objects);
     if (!bounds) return notify("El tablero de ese archivo está vacío.");
     const occupied = c.getObjects().filter((o) => !isTransient(o)).map(shapeBox);
@@ -900,7 +903,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
-    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openStamps, openSections, openExportMenu, importFile, rotateSelection,
+    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openStamps, openSections, openMoreMenu, importFile, rotateSelection,
     setMarkerInfo, copyObservations, renumberMarkers, setLink, openLink,
   };
   const act = useRef(actions);
@@ -1395,15 +1398,12 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         onZoomOut={withCanvas((c) => zoomStep(c, -1))}
         onZoomReset={withCanvas((c) => zoomAt(c, { x: c.width / 2, y: c.height / 2 }, 1))}
         onFit={withCanvas(fitToContent)}
-        onExport={(x, y) => act.current.openExportMenu(x, y)}
-        onImport={() => importRef.current?.click()}
+        onMore={(x, y) => act.current.openMoreMenu(x, y)}
         fullscreen={fullscreen}
         onFullscreen={() => {
           if (document.fullscreenElement) void document.exitFullscreen();
           else void rootRef.current?.requestFullscreen();
         }}
-        onClear={() => act.current.clearBoard()}
-        saveState={saveState}
         onHelp={() => setHelp((h) => !h)}
         snap={snapOn}
         onToggleSnap={() => act.current.toggleSnap()}
@@ -1463,6 +1463,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
       <div className="bd-stage">
         <div className="bd-canvas" ref={hostRef} />
+        {/* el estado del guardado va sobre el lienzo: en la barra, al cambiar de largo, la hacía saltar de renglón */}
+        <span className={`bd-save ${saveState}`} role="status" aria-live="polite">{SAVE_LABEL[saveState]}</span>
         {!ready && <div className="bd-loading">Cargando el tablero…</div>}
         {notice && <div className="bd-notice" role="status">{notice}</div>}
         {search && (

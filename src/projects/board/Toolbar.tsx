@@ -7,7 +7,7 @@ import { HIGHLIGHT_COLORS, HIGHLIGHT_WIDTHS, INK, NOTE_COLORS, PALETTE, PEN_WIDT
 /** Estado del guardado en este navegador, para el indicador de la barra */
 export type SaveState = "saved" | "pending" | "saving" | "error" | "off";
 
-const SAVE_LABEL: Record<SaveState, string> = {
+export const SAVE_LABEL: Record<SaveState, string> = {
   saved: "Guardado",
   pending: "Guardando…",
   saving: "Guardando…",
@@ -38,13 +38,10 @@ export interface ToolbarProps {
   onZoomOut: () => void;
   onZoomReset: () => void;
   onFit: () => void;
-  /** Abre el menú de descarga (imagen o archivo del tablero) junto al botón */
-  onExport: (x: number, y: number) => void;
-  onImport: () => void;
+  /** Abre el menú Más (exportar, descargar, importar, vaciar) junto al botón */
+  onMore: (x: number, y: number) => void;
   fullscreen: boolean;
   onFullscreen: () => void;
-  onClear: () => void;
-  saveState: SaveState;
   onHelp: () => void;
   /** Abre el menú de plantillas debajo del botón (coordenadas de la ventana) */
   onTemplates: (x: number, y: number) => void;
@@ -116,7 +113,6 @@ export function Toolbar(p: ToolbarProps) {
           <Btn icon="grid" label="Ajustar a la cuadrícula (G)" on={p.snap} onClick={p.onToggleSnap} />
         </div>
         <span className="bd-spacer" />
-        <span className={`bd-save ${p.saveState}`} role="status" aria-live="polite">{SAVE_LABEL[p.saveState]}</span>
         <div className="bd-group">
           <button
             type="button"
@@ -145,21 +141,19 @@ export function Toolbar(p: ToolbarProps) {
           <Btn icon="search" label="Buscar en el tablero (Ctrl+F)" onClick={p.onSearch} />
           <Btn icon="clipboard" label="Lista de observaciones" on={p.observations} onClick={p.onObservations} />
           <Btn icon="info" label="Atajos de teclado (?)" onClick={p.onHelp} />
+          <Btn icon={p.fullscreen ? "minimize" : "maximize"} label={p.fullscreen ? "Salir de pantalla completa" : "Pantalla completa"} onClick={p.onFullscreen} />
           <button
             type="button"
             className="bd-btn"
-            title="Descargar (imagen o archivo del tablero)"
-            aria-label="Descargar"
+            title="Más: exportar, descargar o importar el tablero, vaciarlo"
+            aria-label="Más opciones"
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
-              p.onExport(r.left, r.bottom + 4);
+              p.onMore(Math.max(8, r.right - 240), r.bottom + 4); // a la derecha de la barra: el menú se abre hacia la izquierda
             }}
           >
-            <Icon name="download" size={17} />
+            <Icon name="menu" size={17} />
           </button>
-          <Btn icon="upload" label="Importar un tablero (.json)" onClick={p.onImport} />
-          <Btn icon={p.fullscreen ? "minimize" : "maximize"} label={p.fullscreen ? "Salir de pantalla completa" : "Pantalla completa"} onClick={p.onFullscreen} />
-          <Btn icon="trash" label="Vaciar el tablero" danger onClick={p.onClear} />
         </div>
       </div>
       {p.tool === "note" && (
