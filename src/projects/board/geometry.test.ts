@@ -67,6 +67,10 @@ describe("vista", () => {
   it("fitViewport no agranda contenido chico más allá de 100 %", () => {
     expect(fitViewport({ left: 0, top: 0, width: 100, height: 100 }, { width: 800, height: 600 })).toEqual({ zoom: 1, x: 350, y: 250 });
   });
+  it("fitViewport con un máximo mayor acerca lo chico (encuadrar la selección)", () => {
+    expect(fitViewport({ left: 0, top: 0, width: 100, height: 100 }, { width: 800, height: 600 }, 48, 2)).toEqual({ zoom: 2, x: 300, y: 200 });
+    expect(fitViewport({ left: 0, top: 0, width: 10, height: 10 }, { width: 800, height: 600 }, 48, 8).zoom).toBe(4); // nunca más que el zoom máximo
+  });
   it("fitScale y exportScale", () => {
     expect(fitScale(2000, 1000, 800, 800)).toBe(0.4);
     expect(fitScale(100, 100, 800, 800)).toBe(1);

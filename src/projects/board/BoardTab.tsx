@@ -4,7 +4,7 @@ import { Icon } from "../../components/Icon";
 import { ContextMenu, type CtxItem } from "../../components/ui";
 import { today, uid } from "../../utils";
 import { boardEpoch, loadBoard, saveBoard, type BoardDoc } from "./boardStore";
-import { applyToolMode, attachPanZoom, createBoardCanvas, exportPng, fitToContent, getViewport, setViewport, viewCenter, zoomAt, zoomStep } from "./canvas";
+import { applyToolMode, attachPanZoom, createBoardCanvas, exportPng, fitToContent, fitToObjects, getViewport, setViewport, viewCenter, zoomAt, zoomStep } from "./canvas";
 import { isConnector, lineEnds, refreshConnectors, setLineEnds, shapeBox } from "./connectors";
 import { parseMeters } from "./measure";
 import { calibrateImage, refreshMeasures } from "./measures";
@@ -510,6 +510,10 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         break;
       case "fit":
         fitToContent(c);
+        onViewport();
+        break;
+      case "fitSelection":
+        fitToObjects(c, c.getActiveObjects());
         onViewport();
         break;
       case "spaceDown":

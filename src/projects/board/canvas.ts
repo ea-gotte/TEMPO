@@ -52,6 +52,12 @@ export function fitToContent(c: Canvas) {
   setViewport(c, b ? fitViewport(b, { width: c.width, height: c.height }) : { x: 0, y: 0, zoom: 1 });
 }
 
+/** Encuadra estos objetos (Shift+2); a diferencia de ajustar al contenido, acerca lo chico hasta 200 %. */
+export function fitToObjects(c: Canvas, objs: FabricObject[]) {
+  const b = unionBoxes(objs.map(shapeBox));
+  if (b) setViewport(c, fitViewport(b, { width: c.width, height: c.height }, 48, 2));
+}
+
 /** Centro de la vista en coordenadas de escena (donde se insertan las imágenes). */
 export function viewCenter(c: Canvas): Pt {
   const v = getViewport(c);

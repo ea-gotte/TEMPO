@@ -23,6 +23,7 @@ const VIEW: [string, string][] = [
   ["Rueda del mouse", "Acercar o alejar"],
   ["Espacio + arrastrar", "Desplazar la vista"],
   ["Shift + 1", "Ajustar al contenido"],
+  ["Shift + 2", "Encuadrar la selección"],
   ["G", "Ajustar a la cuadrícula (activar o desactivar)"],
   ["?", "Esta ayuda"],
 ];

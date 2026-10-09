@@ -75,11 +75,11 @@ export function unionBoxes(boxes: Box[]): Box | null {
   return { left, top, width: right - left, height: bottom - top };
 }
 
-/** Vista que encuadra el contenido con un margen, sin agrandar más allá de 100 %. */
-export function fitViewport(content: Box, view: { width: number; height: number }, padding = 48): Viewport {
+/** Vista que encuadra el contenido con un margen, sin agrandar más allá de `maxZoom` (100 % salvo que se pida otro). */
+export function fitViewport(content: Box, view: { width: number; height: number }, padding = 48, maxZoom = 1): Viewport {
   const availW = Math.max(view.width - padding * 2, 1);
   const availH = Math.max(view.height - padding * 2, 1);
-  const zoom = clampZoom(Math.min(1, availW / Math.max(content.width, 1), availH / Math.max(content.height, 1)));
+  const zoom = clampZoom(Math.min(maxZoom, availW / Math.max(content.width, 1), availH / Math.max(content.height, 1)));
   const c = center(content);
   return { zoom, x: view.width / 2 - c.x * zoom, y: view.height / 2 - c.y * zoom };
 }

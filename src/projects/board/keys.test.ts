@@ -39,6 +39,10 @@ describe("keyToAction", () => {
   it("Shift+1 ajusta al contenido", () => {
     expect(down(k("!", { code: "Digit1", shiftKey: true }))).toEqual({ type: "fit" });
   });
+  it("Shift+2 encuadra la selección, con cualquier distribución de teclado", () => {
+    expect(down(k("@", { code: "Digit2", shiftKey: true }))).toEqual({ type: "fitSelection" });
+    expect(down(k('"', { code: "Digit2", shiftKey: true }))).toEqual({ type: "fitSelection" });
+  });
   it("Espacio: mano temporal mientras se mantiene", () => {
     expect(down(k(" ", { code: "Space" }))).toEqual({ type: "spaceDown" });
     expect(keyToAction(k(" ", { code: "Space" }), "up", false)).toEqual({ type: "spaceUp" });
@@ -64,6 +68,10 @@ describe("shouldIntercept", () => {
     expect(shouldIntercept({ type: "copy" }, ctx)).toBe(true);
     expect(shouldIntercept({ type: "copy" }, { ...ctx, hasSelection: false })).toBe(false);
     expect(shouldIntercept({ type: "copy" }, { ...ctx, textSelected: true })).toBe(false);
+  });
+  it("Shift+2 sin selección no hace nada", () => {
+    expect(shouldIntercept({ type: "fitSelection" }, { ...ctx, hasSelection: false })).toBe(false);
+    expect(shouldIntercept({ type: "fitSelection" }, ctx)).toBe(true);
   });
   it("flechas y Supr solo actúan con una selección (si no, la página se desplaza como siempre)", () => {
     expect(shouldIntercept({ type: "nudge", dx: 0, dy: 1 }, { ...ctx, hasSelection: false })).toBe(false);

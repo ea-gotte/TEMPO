@@ -18,6 +18,7 @@ export type KeyAction =
   | { type: "nudge"; dx: number; dy: number }
   | { type: "escape" }
   | { type: "fit" }
+  | { type: "fitSelection" }
   | { type: "spaceDown" }
   | { type: "spaceUp" }
   | { type: "help" }
@@ -55,7 +56,8 @@ export function keyToAction(e: KeyLike, phase: "down" | "up", editing: boolean):
     const step = e.shiftKey ? 10 : 1;
     return { type: "nudge", dx: arrow[0] * step, dy: arrow[1] * step };
   }
-  if (e.shiftKey) return e.code === "Digit1" ? { type: "fit" } : null;
+  // por código de tecla: con teclado español, Shift+2 escribe " y no @
+  if (e.shiftKey) return e.code === "Digit1" ? { type: "fit" } : e.code === "Digit2" ? { type: "fitSelection" } : null;
   const tool = SHORTCUT_TO_TOOL[key];
   return tool ? { type: "tool", tool } : null;
 }
@@ -72,7 +74,7 @@ export interface InterceptContext {
 export function shouldIntercept(a: KeyAction, ctx: InterceptContext): boolean {
   if (!ctx.focusInBoard) return false;
   if (a.type === "copy") return ctx.hasSelection && !ctx.textSelected;
-  if (a.type === "nudge" || a.type === "delete" || a.type === "front" || a.type === "back") return ctx.hasSelection;
+  if (a.type === "nudge" || a.type === "delete" || a.type === "front" || a.type === "back" || a.type === "fitSelection") return ctx.hasSelection;
   return true;
 }
 
