@@ -92,6 +92,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const commitTimer = useRef(0);
   const restoring = useRef(false);
   const restoreQueue = useRef<Promise<void>>(Promise.resolve());
+  /** Alt+arrastrar en curso (copias creándose o registro pendiente); deshacer y rehacer lo esperan */
+  const altBusy = useRef<Promise<void>>(Promise.resolve());
   /** Operación propia en curso: el evento selection:cleared no debe registrar pasos intermedios. */
   const quiet = useRef(false);
   const clipboard = useRef<Record<string, unknown>[]>([]);
@@ -325,7 +327,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
    */
   const step = (pick: () => string | null) => {
     if (commitTimer.current) commit();
-    restoreQueue.current = restoreQueue.current.then(() => applySnapshot(pick())).catch(() => {});
+    // un Alt+arrastrar recién soltado se registra cuando sus copias están listas: deshacer espera a que termine
+    restoreQueue.current = restoreQueue.current.then(() => altBusy.current).then(() => applySnapshot(pick())).catch(() => {});
   };
   const undo = () => step(() => history.undo());
   const redo = () => step(() => history.redo());
@@ -1106,7 +1109,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
      * de origen y las flechas de afuera pasan a ellas; lo que se arrastra es el duplicado. Si no hubo
      * arrastre, se deshace todo; si lo hubo, queda en un solo paso de deshacer (ver altDrag.ts).
      */
-    let alt: { links: Link[]; ready: Promise<FabricObject[]> } | null = null;
+    let alt: { links: Link[]; ready: Promise<FabricObject[]>; done: () => void } | null = null;
     /** Sección que se está arrastrando: lo de adentro, con su posición al empezar */
     let section: SectionDrag | null = null;
     /** Lleva lo de adentro de la sección a donde está ahora la sección */
@@ -1127,21 +1130,31 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       // toObject del lienzo da coordenadas reales aunque estén dentro de una selección múltiple
       const data = (c.toObject().objects as Record<string, unknown>[]).filter((d) => ids.has(d.id as string));
       const links: Link[] = c.getObjects().filter(isConnector).map((l) => ({ id: l.id!, fromId: l.fromId ?? null, toId: l.toId ?? null }));
-      const ready = insertCopies(c, data, 0, 0).then((copies) => {
-        const copyOf = new Map<string, string>();
-        copies.forEach((copy, i) => {
-          const orig = c.getObjects().find((o) => o.id === data[i].id);
-          copyOf.set(data[i].id as string, copy.id!);
-          // la copia queda en el lugar del original en el apilado (justo debajo de él)
-          if (orig) c.moveObjectTo(copy, c.getObjects().indexOf(orig));
-        });
-        const byId = new Map(c.getObjects().map((o) => [o.id, o]));
-        for (const [id, ends] of relinkAfterAltDrag(links, ids, copyOf)) byId.get(id)?.set(ends);
-        refreshConnectors(c);
-        c.requestRenderAll();
-        return copies;
-      });
-      alt = { links, ready };
+      // lo que queda en el origen conserva su bloqueo (por ejemplo, el plano bloqueado de una sección)
+      const newIds = new Map<string, string>();
+      const ready = insertCopies(c, data, 0, 0, true, newIds)
+        .then((copies) => {
+          // copia ↔ original por id: si una no se pudo crear, las demás no se corren de lugar
+          const byNew = new Map(copies.map((o) => [o.id, o]));
+          const copyOf = new Map<string, string>();
+          newIds.forEach((newId, oldId) => {
+            const copy = byNew.get(newId);
+            if (!copy) return;
+            copyOf.set(oldId, newId);
+            // la copia queda en el lugar del original en el apilado (justo debajo de él)
+            const orig = c.getObjects().find((o) => o.id === oldId);
+            if (orig) c.moveObjectTo(copy, c.getObjects().indexOf(orig));
+          });
+          const byId = new Map(c.getObjects().map((o) => [o.id, o]));
+          for (const [id, ends] of relinkAfterAltDrag(links, ids, copyOf)) byId.get(id)?.set(ends);
+          refreshConnectors(c);
+          c.requestRenderAll();
+          return copies;
+        })
+        .catch(() => [] as FabricObject[]); // si las copias fallan, el arrastre igual se registra
+      let done = () => {};
+      altBusy.current = new Promise<void>((resolve) => { done = resolve; });
+      alt = { links, ready, done };
     };
     const cancelAltDrag = () => {
       const pending = alt;
@@ -1153,6 +1166,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         for (const l of pending.links) byId.get(l.id)?.set({ fromId: l.fromId, toId: l.toId });
         refreshConnectors(c);
         c.requestRenderAll();
+        pending.done();
       });
     };
 
@@ -1261,9 +1275,10 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         // Alt+arrastrar: se registra cuando las copias del origen están listas (suele ser enseguida); si se
         // soltó antes, las flechas recién quedaron sueltas: lo de adentro de la sección se vuelve a ubicar
         if (pending) void pending.ready.then(() => {
-          if (cRef.current !== c) return;
+          if (cRef.current !== c) return pending.done();
           if (s && s.frame === t) moveSection(s);
           afterModified(t);
+          window.setTimeout(pending.done, 0); // después de lo que afterModified registra en diferido
         });
         else afterModified(t);
       }),
