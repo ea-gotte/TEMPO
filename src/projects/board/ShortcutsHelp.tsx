@@ -19,7 +19,7 @@ const EDIT: [string, string][] = [
   ["Shift al girar", "De a 15°"],
   ["Clic derecho", "Más acciones"],
   ["Doble clic en el título", "Renombrar una sección"],
-  ["Ctrl + clic", "Abrir el enlace de un objeto (se agrega en el panel)"],
+  ["Ctrl + clic  ·  clic en ↗", "Abrir el enlace de un objeto (se agrega en el panel)"],
   ["Esc", "Soltar la selección y volver a Seleccionar"],
 ];
 

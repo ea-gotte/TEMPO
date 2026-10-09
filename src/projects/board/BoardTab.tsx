@@ -1173,6 +1173,24 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       });
     };
 
+    /** Dónde va el distintivo de enlace de un objeto, en px de la pantalla: su esquina de arriba a la derecha. */
+    const badgeAt = (o: FabricObject) => {
+      const v = c.viewportTransform;
+      const r = o.getBoundingRect();
+      return { x: (r.left + r.width) * v[0] + v[4], y: r.top * v[3] + v[5] };
+    };
+    /** El objeto cuyo distintivo de enlace está bajo el puntero (el de más arriba), si hay */
+    const badgeHit = (p: Pt) => {
+      const objs = c.getObjects();
+      for (let i = objs.length - 1; i >= 0; i--) {
+        const o = objs[i];
+        if (!o.link || !o.visible || isTransient(o)) continue;
+        const b = badgeAt(o);
+        if (Math.hypot(p.x - b.x, p.y - b.y) <= 11) return o;
+      }
+      return null;
+    };
+
     /** Una selección múltiple con alguna sección no se gira ni se espeja (como la sección sola). */
     const guardSections = () => {
       const a = c.getActiveObject();
@@ -1343,9 +1361,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         }
         for (const o of c.getObjects()) {
           if (!o.link || !o.visible || isTransient(o)) continue;
-          const r = o.getBoundingRect();
-          const x = (r.left + r.width) * v[0] + v[4];
-          const y = r.top * v[3] + v[5];
+          const { x, y } = badgeAt(o);
           ctx.save();
           ctx.beginPath();
           ctx.arc(x, y, 9, 0, Math.PI * 2);
@@ -1393,7 +1409,10 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         if (refreshConnectors(c) || baked.length) commit();
       }),
       c.on("mouse:down", (e) => { downAt.current = { x: e.viewportPoint.x, y: e.viewportPoint.y }; }),
-      c.on("mouse:move", (e) => { pointer.current = { x: e.scenePoint.x, y: e.scenePoint.y }; }),
+      c.on("mouse:move", (e) => {
+        pointer.current = { x: e.scenePoint.x, y: e.scenePoint.y };
+        if (toolRef.current === "select" && badgeHit(e.viewportPoint)) c.setCursor("pointer");
+      }),
       c.on("mouse:out", () => { pointer.current = null; }),
       c.on("mouse:up", (e) => {
         const d = downAt.current;
@@ -1401,8 +1420,16 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         if (toolRef.current !== "select" || spaceHeld.current || !d) return;
         if (Math.hypot(e.viewportPoint.x - d.x, e.viewportPoint.y - d.y) >= 4) return;
         const me = e.e as MouseEvent;
-        // Ctrl+clic (o Cmd+clic) sobre algo con enlace lo abre, aunque esté bloqueado
-        if ((me.ctrlKey || me.metaKey) && e.target?.link) return act.current.openLink(e.target);
+        // un clic en el distintivo ↗ abre el enlace
+        const badge = badgeHit(e.viewportPoint);
+        if (badge) return act.current.openLink(badge);
+        // Ctrl+clic (o Cmd+clic) sobre algo con enlace lo abre, aunque esté bloqueado o dentro de una selección
+        if (me.ctrlKey || me.metaKey) {
+          const t = e.target instanceof ActiveSelection
+            ? [...e.target.getObjects()].reverse().find((o) => o.link && o.containsPoint(e.scenePoint))
+            : e.target;
+          if (t?.link) return act.current.openLink(t);
+        }
         // clic (sin arrastre) sobre algo bloqueado: el panel ofrece desbloquearlo
         setLockedFocus(e.target?.lockedByUser ? e.target : null);
       }),
