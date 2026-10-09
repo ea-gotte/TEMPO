@@ -1,4 +1,5 @@
-import type { FabricObject, Group, Textbox } from "fabric";
+import type { FabricObject, Group, Line, Textbox } from "fabric";
+import { toArrow } from "./captions";
 import { createLabeled, isLabeled, readLabeled } from "./labels";
 import { AREA_ALPHA, type Kind } from "./shapes";
 import { INK } from "./tools";
@@ -26,6 +27,8 @@ export interface StyleState {
   textColor: string | null;
   /** "bold" o "normal" (o "mixed"): formas con texto y textos */
   weight: string | null;
+  /** Flechas y líneas: "straight" o "elbow" (o "mixed") */
+  route: string | null;
 }
 
 export interface StylePatch {
@@ -38,13 +41,14 @@ export interface StylePatch {
   heads?: HeadStyle;
   textColor?: string;
   weight?: "bold" | "normal";
+  route?: "straight" | "elbow";
 }
 
 const LINES: Kind[] = ["line", "arrow", "path", "cloud", "measure", "area"];
 
 export function readStyle(o: FabricObject): StyleState {
   const base: StyleState = {
-    kind: o.kind, fill: null, stroke: null, strokeWidth: null, fontSize: null, opacity: o.opacity, strokeLabel: "Borde", dash: null, heads: null, textColor: null, weight: null,
+    kind: o.kind, fill: null, stroke: null, strokeWidth: null, fontSize: null, opacity: o.opacity, strokeLabel: "Borde", dash: null, heads: null, textColor: null, weight: null, route: null,
   };
   if (isLabeled(o)) {
     const s = readLabeled(o);
@@ -64,6 +68,7 @@ export function readStyle(o: FabricObject): StyleState {
     return {
       ...base, stroke: String(o.stroke), strokeWidth: o.strokeWidth, strokeLabel: o.kind === "area" ? "Color" : "Línea",
       dash: dashStyleOf(o.strokeDashArray), heads: o.kind === "arrow" ? o.heads ?? "end" : null,
+      route: o.kind === "arrow" || o.kind === "line" ? o.route ?? "straight" : null,
     };
   }
   return base; // imagen: solo opacidad
@@ -106,6 +111,12 @@ export function applyStyle(o: FabricObject, p: StylePatch): FabricObject {
       if (dash === "dotted") o.set({ strokeLineCap: "round" });
     }
     if (rest.heads && o.kind === "arrow") o.set({ heads: rest.heads });
+    if (rest.route && (o.kind === "arrow" || o.kind === "line")) {
+      // una línea guardada antes del recorrido en ángulo se pasa a flecha sin punta (se ve igual)
+      const a = toArrow(o as Line);
+      a.set({ route: rest.route === "elbow" ? "elbow" : undefined, elbowAxes: undefined });
+      if (a !== o) return a;
+    }
   }
   o.setCoords();
   return o;

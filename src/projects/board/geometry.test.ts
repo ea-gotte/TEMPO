@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   anchorOnBox, boxFromPoints, clampZoom, cloudPath, connectorEnds, exportScale, fitScale, fitViewport, gridSpec,
-  constrainAngle, heightForText, nextMarkerNumber, sizeForText, snap, snapDelta, squareFromPoints, textArea, unionBoxes,
+  constrainAngle, elbowPoints, elbowRoute, heightForText, sideAnchor, nextMarkerNumber, sizeForText, snap, snapDelta, squareFromPoints, textArea, unionBoxes,
 } from "./geometry";
 
 // Caja de 100 × 50 con centro en (50, 25)
@@ -178,5 +178,38 @@ describe("constrainAngle (Shift al trazar líneas)", () => {
     const p = constrainAngle({ x: 0, y: 0 }, { x: 100, y: 90 });
     expect(p.x).toBeCloseTo(95, 6);
     expect(p.y).toBeCloseTo(95, 6);
+  });
+});
+
+describe("flechas en ángulo", () => {
+  const A = { left: 0, top: 0, width: 100, height: 50 };
+  const B = { left: 300, top: 100, width: 100, height: 50 };
+  it("salen del centro del lado que mira hacia el otro extremo", () => {
+    expect(sideAnchor(A, { x: 300, y: 30 })).toEqual({ x: 100, y: 25 });
+    expect(sideAnchor(A, { x: 50, y: 400 })).toEqual({ x: 50, y: 50 });
+    expect(sideAnchor(A, { x: -200, y: 20 })).toEqual({ x: 0, y: 25 });
+  });
+  it("los extremos enganchados usan esos anclajes", () => {
+    expect(elbowRoute(A, B, { x: 0, y: 0 }, { x: 0, y: 0 })).toEqual({ start: { x: 100, y: 25 }, end: { x: 300, y: 125 }, axes: "hh" });
+  });
+  it("sin lados conocidos, el recorrido va por la mitad y empieza en el sentido más largo", () => {
+    expect(elbowPoints({ x: 100, y: 25 }, { x: 300, y: 125 })).toEqual([{ x: 100, y: 25 }, { x: 200, y: 25 }, { x: 200, y: 125 }, { x: 300, y: 125 }]);
+    expect(elbowPoints({ x: 50, y: 50 }, { x: 150, y: 450 })).toEqual([{ x: 50, y: 50 }, { x: 50, y: 250 }, { x: 150, y: 250 }, { x: 150, y: 450 }]);
+  });
+  it("respeta por dónde sale y por dónde entra: lados de distinta orientación hacen una L", () => {
+    expect(elbowPoints({ x: 50, y: 50 }, { x: 300, y: 300 }, "vh")).toEqual([{ x: 50, y: 50 }, { x: 50, y: 300 }, { x: 300, y: 300 }]);
+    expect(elbowPoints({ x: 100, y: 25 }, { x: 300, y: 300 }, "hv")).toEqual([{ x: 100, y: 25 }, { x: 300, y: 25 }, { x: 300, y: 300 }]);
+    expect(elbowPoints({ x: 50, y: 50 }, { x: 130, y: 300 }, "vv")).toEqual([{ x: 50, y: 50 }, { x: 50, y: 175 }, { x: 130, y: 175 }, { x: 130, y: 300 }]);
+  });
+  it("una forma debajo de otra: sale por abajo y entra por arriba", () => {
+    const C = { left: 80, top: 300, width: 100, height: 50 };
+    expect(elbowRoute(A, C, { x: 0, y: 0 }, { x: 0, y: 0 })).toEqual({ start: { x: 50, y: 50 }, end: { x: 130, y: 300 }, axes: "vv" });
+  });
+  it("una forma alta abajo a la derecha: sale por abajo y entra por el costado (en L)", () => {
+    const D = { left: 300, top: 200, width: 40, height: 200 };
+    expect(elbowRoute(A, D, { x: 0, y: 0 }, { x: 0, y: 0 })).toEqual({ start: { x: 50, y: 50 }, end: { x: 300, y: 300 }, axes: "vh" });
+  });
+  it("con un extremo suelto, ese extremo sigue la orientación del otro", () => {
+    expect(elbowRoute(A, null, { x: 0, y: 0 }, { x: 400, y: 30 })).toEqual({ start: { x: 100, y: 25 }, end: { x: 400, y: 30 }, axes: "hh" });
   });
 });

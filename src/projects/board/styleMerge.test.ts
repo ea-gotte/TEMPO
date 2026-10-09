@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { StyleState } from "./style";
 import { MIXED, mergeStyles } from "./styleMerge";
 
-const base: StyleState = { kind: undefined, fill: null, stroke: null, strokeWidth: null, fontSize: null, opacity: 1, strokeLabel: "Borde", dash: null, heads: null, textColor: null, weight: null };
+const base: StyleState = { kind: undefined, fill: null, stroke: null, strokeWidth: null, fontSize: null, opacity: 1, strokeLabel: "Borde", dash: null, heads: null, textColor: null, weight: null, route: null };
 const image: StyleState = { ...base, kind: "image" };
 const rect: StyleState = { ...base, kind: "rect", fill: "#ffffff", stroke: "#1f2937", strokeWidth: 2, fontSize: 16, dash: "solid" };
 const rect2: StyleState = { ...rect, fill: "#fef08a", fontSize: 24 };
@@ -55,5 +55,13 @@ describe("mergeStyles: texto", () => {
     expect(m.weight).toBe("bold");
     expect(mergeStyles([a, { ...b, weight: "normal" }]).weight).toBe(MIXED);
     expect(mergeStyles([image, arrow]).textColor).toBeNull();
+  });
+});
+
+describe("mergeStyles: recorrido", () => {
+  it("recto y en ángulo mezclados quedan mixtos", () => {
+    const a: StyleState = { ...arrow, route: "straight" };
+    expect(mergeStyles([a, { ...a, route: "elbow" }]).route).toBe(MIXED);
+    expect(mergeStyles([a, rect]).route).toBe("straight");
   });
 });

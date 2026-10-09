@@ -12,6 +12,8 @@ import { FILL_COLORS, HIGHLIGHT_COLORS, HIGHLIGHT_WIDTHS, NOTE_COLORS, PALETTE, 
 const DASHES: [DashStyle, string][] = [["solid", "Continuo"], ["dashed", "Discontinuo"], ["dotted", "Punteado"]];
 const HEADS: [HeadStyle, string, string][] = [["end", "→", "Al final"], ["start", "←", "Al inicio"], ["both", "↔", "En ambos extremos"], ["none", "—", "Sin punta"]];
 
+const ROUTES: ["straight" | "elbow", string][] = [["straight", "Recto"], ["elbow", "En ángulo"]];
+
 const FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64, 72];
 
 export interface PanelProps {
@@ -124,6 +126,13 @@ export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onL
         <Row label="Trazo">
           {DASHES.map(([v, label]) => (
             <button key={v} type="button" className={`bd-chip${s.dash === v ? " on" : ""}`} onClick={() => onStyle({ dash: v })}>{label}</button>
+          ))}
+        </Row>
+      )}
+      {s.route !== null && (
+        <Row label="Recorrido">
+          {ROUTES.map(([v, label]) => (
+            <button key={v} type="button" className={`bd-chip${s.route === v ? " on" : ""}`} onClick={() => onStyle({ route: v })}>{label}</button>
           ))}
         </Row>
       )}

@@ -1,6 +1,6 @@
 import { Circle, FabricImage, FabricObject, FabricText, Group, Line, Path, Polygon, Textbox, classRegistry, type Canvas } from "fabric";
 import { uid } from "../../utils";
-import { cloudPath, type Box, type Pt } from "./geometry";
+import { cloudPath, elbowPoints, type Box, type Pt } from "./geometry";
 import { polygonCentroid } from "./measure";
 import { withAlpha, type HeadStyle } from "./strokes";
 import { FONT, INK, REVIEW_RED } from "./tools";
@@ -41,6 +41,10 @@ declare module "fabric" {
     link?: string;
     /** Votos de una nota o forma (lluvia de ideas) */
     votes?: number;
+    /** Flecha o línea: recta (por defecto) o en ángulo */
+    route?: "elbow";
+    /** Flecha en ángulo enganchada: por dónde sale y entra ("hv"…; ver elbowRoute) */
+    elbowAxes?: string;
   }
   interface SerializedObjectProps {
     id?: string;
@@ -59,11 +63,13 @@ declare module "fabric" {
     resolved?: boolean;
     link?: string;
     votes?: number;
+    route?: "elbow";
+    elbowAxes?: string;
   }
 }
 
 // Propiedades propias que viajan al guardar (spec §4)
-FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads", "num", "mPerPx", "measureLabel", "caption", "detail", "resolved", "link", "votes"];
+FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads", "num", "mPerPx", "measureLabel", "caption", "detail", "resolved", "link", "votes", "route", "elbowAxes"];
 
 /** Tamaño de letra del texto de flechas y líneas. */
 export const CAPTION_SIZE = 14;
@@ -106,12 +112,31 @@ export class Arrow extends Line {
   }
 
   _render(ctx: CanvasRenderingContext2D) {
-    super._render(ctx);
     const p = this.calcLinePoints();
+    const a = { x: p.x1, y: p.y1 };
+    const b = { x: p.x2, y: p.y2 };
+    const pts = this.route === "elbow" ? elbowPoints(a, b, this.elbowAxes) : [a, b];
+    if (pts.length === 2) super._render(ctx);
+    else {
+      // en ángulo: el mismo trazo de la línea, por sus tramos
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (const q of pts.slice(1)) ctx.lineTo(q.x, q.y);
+      ctx.lineWidth = this.strokeWidth;
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = typeof this.stroke === "string" ? this.stroke : INK;
+      this._renderStroke(ctx);
+    }
+    const n = pts.length;
     const heads = this.heads ?? "end";
-    if (heads === "end" || heads === "both") this.drawHead(ctx, p.x1, p.y1, p.x2, p.y2);
-    if (heads === "start" || heads === "both") this.drawHead(ctx, p.x2, p.y2, p.x1, p.y1);
-    if (this.caption) drawUpright(ctx, this, (p.x1 + p.x2) / 2, (p.y1 + p.y2) / 2, this.caption, 500);
+    // cada punta sigue la dirección de su tramo
+    if (heads === "end" || heads === "both") this.drawHead(ctx, pts[n - 2].x, pts[n - 2].y, pts[n - 1].x, pts[n - 1].y);
+    if (heads === "start" || heads === "both") this.drawHead(ctx, pts[1].x, pts[1].y, pts[0].x, pts[0].y);
+    // el texto va en el medio del tramo central (en una L, del tramo más largo)
+    const segs = pts.slice(1).map((q, i) => [pts[i], q] as const);
+    const len = ([p, q]: readonly [Pt, Pt]) => Math.abs(q.x - p.x) + Math.abs(q.y - p.y);
+    const [m1, m2] = n === 4 ? segs[1] : segs.reduce((best, s) => (len(s) > len(best) ? s : best));
+    if (this.caption) drawUpright(ctx, this, (m1.x + m2.x) / 2, (m1.y + m2.y) / 2, this.caption, 500);
   }
 
 

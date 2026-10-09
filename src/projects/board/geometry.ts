@@ -66,6 +66,58 @@ export function connectorEnds(from: Box | null, to: Box | null, start: Pt, end: 
   };
 }
 
+/** Por dónde sale una flecha en ángulo: "h" por un costado (sale en horizontal), "v" por arriba o abajo. */
+export type Axis = "h" | "v";
+
+/** El lado de la caja que cruza la recta hacia `toward` (como en anchorOnBox): su punto medio y su eje. */
+function side(box: Box, toward: Pt): { at: Pt; axis: Axis } {
+  const c = center(box);
+  const dx = toward.x - c.x;
+  const dy = toward.y - c.y;
+  const tx = dx !== 0 ? box.width / 2 / Math.abs(dx) : Infinity;
+  const ty = dy !== 0 ? box.height / 2 / Math.abs(dy) : Infinity;
+  if (tx === Infinity && ty === Infinity) return { at: c, axis: "h" };
+  return tx <= ty
+    ? { at: { x: c.x + Math.sign(dx) * (box.width / 2), y: c.y }, axis: "h" }
+    : { at: { x: c.x, y: c.y + Math.sign(dy) * (box.height / 2) }, axis: "v" };
+}
+
+/** Flecha en ángulo: sale del centro del lado de la caja que mira hacia `toward`. */
+export const sideAnchor = (box: Box, toward: Pt): Pt => side(box, toward).at;
+
+/**
+ * Extremos de una flecha en ángulo y por dónde sale y entra ("vh" = sale por abajo o arriba y
+ * entra por un costado). Un extremo suelto sigue la orientación del otro.
+ */
+export function elbowRoute(from: Box | null, to: Box | null, start: Pt, end: Pt): { start: Pt; end: Pt; axes: `${Axis}${Axis}` } {
+  const s = from ? side(from, to ? center(to) : end) : null;
+  const e = to ? side(to, from ? center(from) : start) : null;
+  const a = s?.at ?? start;
+  const b = e?.at ?? end;
+  const auto: Axis = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y) ? "h" : "v";
+  const first = s?.axis ?? e?.axis ?? auto;
+  const last = e?.axis ?? s?.axis ?? auto;
+  return { start: a, end: b, axes: `${first}${last}` };
+}
+
+/**
+ * Recorrido de una flecha en ángulo. Mismo eje al salir y al entrar: tres tramos por la mitad del
+ * camino; ejes distintos: una L. Sin ejes, empieza en el sentido más largo.
+ */
+export function elbowPoints(a: Pt, b: Pt, axes?: string): Pt[] {
+  const auto: Axis = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y) ? "h" : "v";
+  const first = axes?.[0] ?? auto;
+  const last = axes?.[1] ?? auto;
+  if (first === "h" && last === "v") return [a, { x: b.x, y: a.y }, b];
+  if (first === "v" && last === "h") return [a, { x: a.x, y: b.y }, b];
+  if (first === "h") {
+    const mx = (a.x + b.x) / 2;
+    return [a, { x: mx, y: a.y }, { x: mx, y: b.y }, b];
+  }
+  const my = (a.y + b.y) / 2;
+  return [a, { x: a.x, y: my }, { x: b.x, y: my }, b];
+}
+
 export function unionBoxes(boxes: Box[]): Box | null {
   if (!boxes.length) return null;
   const left = Math.min(...boxes.map((b) => b.left));

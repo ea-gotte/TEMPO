@@ -1,5 +1,5 @@
 import { Point, type Canvas, type FabricObject, type Line } from "fabric";
-import { connectorEnds, type Box, type Pt } from "./geometry";
+import { connectorEnds, elbowRoute, type Box, type Pt } from "./geometry";
 import type { Kind } from "./shapes";
 
 /**
@@ -65,7 +65,18 @@ export function refreshConnectors(canvas: Canvas, only?: Set<string>): boolean {
     if (o.fromId && !from) { o.fromId = null; changed = true; }
     if (o.toId && !to) { o.toId = null; changed = true; }
     const cur = lineEnds(o);
-    const next = connectorEnds(from ? shapeBox(from) : null, to ? shapeBox(to) : null, cur.start, cur.end);
+    const fromBox = from ? shapeBox(from) : null;
+    const toBox = to ? shapeBox(to) : null;
+    let next = connectorEnds(fromBox, toBox, cur.start, cur.end);
+    if (o.route === "elbow") {
+      // en ángulo: sale y entra por el centro de los lados, y recuerda por cuáles (para dibujar el recorrido)
+      const r = elbowRoute(fromBox, toBox, cur.start, cur.end);
+      next = r;
+      if (o.elbowAxes !== r.axes) {
+        o.set({ elbowAxes: r.axes, dirty: true });
+        changed = true;
+      }
+    }
     if (dist(cur.start, next.start) + dist(cur.end, next.end) > 0.5) {
       setLineEnds(o, next.start, next.end);
       changed = true;

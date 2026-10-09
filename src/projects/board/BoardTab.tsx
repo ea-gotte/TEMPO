@@ -1084,7 +1084,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         }, 0);
         return;
       }
-      if (isConnector(t)) t.set({ fromId: null, toId: null }); // mover una flecha a mano la desengancha
+      if (isConnector(t)) t.set({ fromId: null, toId: null, elbowAxes: undefined }); // mover una flecha a mano la desengancha
       if (isSection(t) && (t.scaleX !== 1 || t.scaleY !== 1)) {
         t.set({ width: t.width * t.scaleX, height: t.height * t.scaleY, scaleX: 1, scaleY: 1 });
         t.setCoords();

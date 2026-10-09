@@ -8,8 +8,11 @@ import { FONT, INK } from "./tools";
  * punto medio (ver Arrow en shapes.ts).
  */
 
-/** Las líneas guardadas antes de que existiera el texto son Line: se pasan a flecha sin punta, que se ve igual. */
-function asArrow(canvas: Canvas, l: Line): Arrow {
+/**
+ * Las líneas guardadas antes de que existiera el texto (y el recorrido en ángulo) son Line: se pasan a
+ * flecha sin punta, que se ve igual. Devuelve la flecha nueva sin ponerla en el lienzo.
+ */
+export function toArrow(l: Line): Arrow {
   if (l instanceof Arrow) return l;
   const { start, end } = lineEnds(l);
   const next = new Arrow([start.x, start.y, end.x, end.y], {
@@ -21,7 +24,12 @@ function asArrow(canvas: Canvas, l: Line): Arrow {
   });
   next.set({ id: l.id, kind: l.kind, fromId: l.fromId ?? null, toId: l.toId ?? null, lockedByUser: l.lockedByUser, heads: "none" });
   prepareObject(next);
-  replaceObject(canvas, l, next);
+  return next;
+}
+
+function asArrow(canvas: Canvas, l: Line): Arrow {
+  const next = toArrow(l);
+  if (next !== l) replaceObject(canvas, l, next);
   return next;
 }
 
