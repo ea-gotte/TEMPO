@@ -47,3 +47,32 @@ export function distributeDeltas(boxes: Box[], axis: "h" | "v"): Delta[] {
   }
   return out;
 }
+
+/**
+ * Ordenar en cuadrícula (p. ej. notas sueltas de una lluvia de ideas): en orden de lectura
+ * (por filas, de izquierda a derecha), con tantas columnas como la raíz de la cantidad y celdas
+ * del tamaño del elemento más grande, desde la esquina superior izquierda de la selección.
+ */
+export function gridDeltas(boxes: Box[], gap = 24): Delta[] {
+  // filas: un elemento sigue en la fila si empieza antes de la mitad del primero de ella
+  const rows: number[][] = [];
+  let limit = -Infinity;
+  for (const i of boxes.map((_, i) => i).sort((a, b) => boxes[a].top - boxes[b].top)) {
+    if (rows.length && boxes[i].top < limit) rows[rows.length - 1].push(i);
+    else {
+      rows.push([i]);
+      limit = boxes[i].top + boxes[i].height / 2;
+    }
+  }
+  const order = rows.flatMap((r) => r.sort((a, b) => boxes[a].left - boxes[b].left));
+  const cols = Math.ceil(Math.sqrt(boxes.length));
+  const cellW = Math.max(...boxes.map((b) => b.width)) + gap;
+  const cellH = Math.max(...boxes.map((b) => b.height)) + gap;
+  const left = Math.min(...boxes.map((b) => b.left));
+  const top = Math.min(...boxes.map((b) => b.top));
+  const out: Delta[] = boxes.map(() => ({ dx: 0, dy: 0 }));
+  order.forEach((i, k) => {
+    out[i] = { dx: left + (k % cols) * cellW - boxes[i].left, dy: top + Math.floor(k / cols) * cellH - boxes[i].top };
+  });
+  return out;
+}

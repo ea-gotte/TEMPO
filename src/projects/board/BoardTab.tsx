@@ -11,7 +11,7 @@ import { calibrateImage, refreshMeasures } from "./measures";
 import { attachDrawing } from "./draw";
 import { connectorEnds, fitScale, gridSpec, snapDelta, type Box, type Pt } from "./geometry";
 import { TEMPLATES, templateBounds, templateOffset, type Template } from "./templates";
-import { alignDeltas, distributeDeltas, type AlignMode } from "./align";
+import { alignDeltas, distributeDeltas, gridDeltas, type AlignMode } from "./align";
 import { createHistory } from "./history";
 import { readImage, validateImageFile } from "./image";
 import { attachKeys, shouldIntercept, type KeyAction } from "./keys";
@@ -559,6 +559,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   };
   const alignSelection = (mode: AlignMode) => arrange((boxes) => alignDeltas(boxes, mode));
   const distributeSelection = (axis: "h" | "v") => arrange((boxes) => distributeDeltas(boxes, axis));
+  const tidySelection = () => arrange((boxes) => gridDeltas(boxes));
 
   /** Calibrar la escala de la imagen seleccionada: se traza una línea sobre una distancia conocida. */
   const startCalibration = () => {
@@ -727,7 +728,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
-    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates,
+    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates,
     setMarkerInfo, copyObservations,
   };
   const act = useRef(actions);
@@ -1197,6 +1198,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             onDelete={() => act.current.removeSelection()}
             onAlign={(m) => act.current.alignSelection(m)}
             onDistribute={(a) => act.current.distributeSelection(a)}
+            onTidy={() => act.current.tidySelection()}
             onExport={() => void act.current.exportSelection()}
             image={sel.image}
             onCalibrate={() => act.current.startCalibration()}

@@ -24,6 +24,7 @@ export interface PanelProps {
   onDelete: () => void;
   onAlign: (mode: AlignMode) => void;
   onDistribute: (axis: "h" | "v") => void;
+  onTidy: () => void;
   onExport: () => void;
   /** Una imagen sola seleccionada: estado de su escala (para medir sobre el plano) */
   image: { calibrated: boolean } | null;
@@ -48,7 +49,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onDelete, onAlign, onDistribute, onExport, image, onCalibrate, marker, onMarker }: PanelProps) {
+export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onDelete, onAlign, onDistribute, onTidy, onExport, image, onCalibrate, marker, onMarker }: PanelProps) {
   const fills = s.kind === "note" ? NOTE_COLORS : FILL_COLORS;
   // el resaltador tiene sus propios colores claros y trazos anchos
   const hl = s.strokeLabel === "Resaltador";
@@ -129,6 +130,7 @@ export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onL
           <Btn icon="align-bottom" label="Alinear abajo" onClick={() => onAlign("bottom")} />
           {count > 2 && <Btn icon="distribute-h" label="Distribuir horizontalmente" onClick={() => onDistribute("h")} />}
           {count > 2 && <Btn icon="distribute-v" label="Distribuir verticalmente" onClick={() => onDistribute("v")} />}
+          <Btn icon="grid" label="Ordenar en cuadrícula" onClick={onTidy} />
         </Row>
       )}
       <div className="bd-actions">

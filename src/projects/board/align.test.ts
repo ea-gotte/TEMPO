@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignDeltas, distributeDeltas } from "./align";
+import { alignDeltas, distributeDeltas, gridDeltas } from "./align";
 
 // tres cajas de distinto tamaño
 const a = { left: 0, top: 0, width: 100, height: 50 };
@@ -39,5 +39,29 @@ describe("distributeDeltas", () => {
   });
   it("con menos de tres no hace nada", () => {
     expect(distributeDeltas([a, b], "h")).toEqual([{ dx: 0, dy: 0 }, { dx: 0, dy: 0 }]);
+  });
+});
+
+describe("gridDeltas", () => {
+  it("ordena en cuadrícula: en orden de lectura, celdas del tamaño del mayor, desde la esquina de la selección", () => {
+    const boxes = [
+      { left: 300, top: 10, width: 100, height: 100 }, // 1.ª fila, 2.º
+      { left: 0, top: 0, width: 100, height: 100 }, // 1.ª fila, 1.º (la esquina)
+      { left: 50, top: 400, width: 120, height: 80 }, // 2.ª fila
+      { left: 500, top: 5, width: 100, height: 100 }, // 1.ª fila, 3.º
+    ];
+    // 4 elementos → 2 columnas; celda de 120 × 100 más 24 de separación
+    expect(gridDeltas(boxes)).toEqual([
+      { dx: 144 - 300, dy: 0 - 10 },
+      { dx: 0, dy: 0 },
+      { dx: 144 - 50, dy: 124 - 400 },
+      { dx: 0 - 500, dy: 124 - 5 },
+    ]);
+  });
+  it("con 5 elementos usa 3 columnas", () => {
+    const boxes = [0, 1, 2, 3, 4].map((i) => ({ left: i * 200, top: 0, width: 50, height: 50 }));
+    expect(gridDeltas(boxes, 10).map((d, i) => ({ x: boxes[i].left + d.dx, y: d.dy }))).toEqual([
+      { x: 0, y: 0 }, { x: 60, y: 0 }, { x: 120, y: 0 }, { x: 0, y: 60 }, { x: 60, y: 60 },
+    ]);
   });
 });
