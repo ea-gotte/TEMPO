@@ -23,6 +23,7 @@ import { ObservationsPanel, type ObservationItem } from "./ObservationsPanel";
 import { observationsTable, renumberObservations } from "./observations";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { SearchBar } from "./SearchBar";
+import { Minimap } from "./Minimap";
 import { findMatches } from "./search";
 import { insertCopies, restore, snapshot } from "./serialize";
 import { decodeBoardFile, encodeBoardFile, itemsBounds } from "./boardFile";
@@ -45,6 +46,7 @@ import "./board.css";
  */
 
 const SNAP_KEY = "tempo-tablero-cuadricula";
+const MAP_KEY = "tempo-tablero-minimapa";
 
 type Banner = { kind: "unavailable" } | { kind: "quota"; mb: number } | { kind: "corrupt"; raw: unknown };
 
@@ -137,6 +139,23 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       return false;
     }
   });
+  // minimapa abierto o no: también preferencia de quien mira
+  const [mapOpen, setMapOpen] = useState(() => {
+    try {
+      return localStorage.getItem(MAP_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleMap = () =>
+    setMapOpen((open) => {
+      try {
+        localStorage.setItem(MAP_KEY, open ? "0" : "1");
+      } catch {
+        /* sin almacenamiento: vale para esta sesión */
+      }
+      return !open;
+    });
   const snapRef = useRef(snapOn);
   snapRef.current = snapOn;
   const [menu, setMenu] = useState<{ x: number; y: number; items: CtxItem[] } | null>(null);
@@ -1465,6 +1484,10 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         <div className="bd-canvas" ref={hostRef} />
         {/* el estado del guardado va sobre el lienzo: en la barra, al cambiar de largo, la hacía saltar de renglón */}
         <span className={`bd-save ${saveState}`} role="status" aria-live="polite">{SAVE_LABEL[saveState]}</span>
+        {ready && cRef.current && mapOpen && <Minimap canvas={cRef.current} onViewport={onViewport} />}
+        <button type="button" className={`bd-map-toggle${mapOpen ? " on" : ""}`} aria-pressed={mapOpen} title="Mostrar u ocultar el minimapa" onClick={toggleMap}>
+          <Icon name="scan" size={13} /> Mapa
+        </button>
         {!ready && <div className="bd-loading">Cargando el tablero…</div>}
         {notice && <div className="bd-notice" role="status">{notice}</div>}
         {search && (
