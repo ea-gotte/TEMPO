@@ -52,3 +52,11 @@ describe("templateOffset", () => {
     expect(templateOffset(bounds, { x: 500, y: 300 }, [{ left: 2000, top: 2000, width: 50, height: 50 }])).toEqual({ dx: 400, dy: 250 });
   });
 });
+
+describe("flechas con texto en las plantillas", () => {
+  it("las salidas de la decisión dicen Sí y No", () => {
+    const flow = TEMPLATES.find((t) => t.key === "approval")!;
+    const decision = flow.items.findIndex((i) => i.kind === "diamond");
+    expect(flow.links.filter(([from]) => from === decision).map((l) => l[2]).sort()).toEqual(["No", "Sí"]);
+  });
+});

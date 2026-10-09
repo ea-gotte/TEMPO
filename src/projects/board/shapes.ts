@@ -31,6 +31,8 @@ declare module "fabric" {
     mPerPx?: number;
     /** Cota: el texto que muestra (longitud) */
     measureLabel?: string;
+    /** Flecha o línea: texto escrito en su punto medio ("Sí", "No"…) */
+    caption?: string;
   }
   interface SerializedObjectProps {
     id?: string;
@@ -44,13 +46,20 @@ declare module "fabric" {
     num?: number;
     mPerPx?: number;
     measureLabel?: string;
+    caption?: string;
   }
 }
 
 // Propiedades propias que viajan al guardar (spec §4)
-FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads", "num", "mPerPx", "measureLabel"];
+FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads", "num", "mPerPx", "measureLabel", "caption"];
 
-/** Línea con punta de flecha: al final (x2, y2) por defecto, al inicio, en ambos extremos o sin punta. */
+/** Tamaño de letra del texto de flechas y líneas. */
+export const CAPTION_SIZE = 14;
+
+/**
+ * Línea con punta de flecha: al final (x2, y2) por defecto, al inicio, en ambos extremos o sin punta
+ * (así son las líneas nuevas). Puede llevar un texto en el medio.
+ */
 export class Arrow extends Line {
   static type = "Arrow";
 
@@ -66,6 +75,28 @@ export class Arrow extends Line {
     const heads = this.heads ?? "end";
     if (heads === "end" || heads === "both") this.drawHead(ctx, p.x1, p.y1, p.x2, p.y2);
     if (heads === "start" || heads === "both") this.drawHead(ctx, p.x2, p.y2, p.x1, p.y1);
+    if (this.caption) this.drawCaption(ctx, (p.x1 + p.x2) / 2, (p.y1 + p.y2) / 2, this.caption);
+  }
+
+  /** Texto en el medio, horizontal y sin deformar aunque la línea esté girada o escalada, sobre un fondo blanco. */
+  private drawCaption(ctx: CanvasRenderingContext2D, x: number, y: number, text: string) {
+    const lines = text.split("\n");
+    const lh = CAPTION_SIZE * 1.25;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1 / (this.scaleX || 1), 1 / (this.scaleY || 1));
+    ctx.rotate((-this.angle * Math.PI) / 180);
+    ctx.setLineDash([]);
+    ctx.font = `500 ${CAPTION_SIZE}px ${FONT}`;
+    const w = Math.max(...lines.map((l) => ctx.measureText(l).width));
+    const h = lh * lines.length;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(-w / 2 - 6, -h / 2 - 3, w + 12, h + 6);
+    ctx.fillStyle = typeof this.stroke === "string" ? this.stroke : INK;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    lines.forEach((l, i) => ctx.fillText(l, 0, -h / 2 + lh * (i + 0.5)));
+    ctx.restore();
   }
 
   /** Punta en (tx, ty), apuntando en la dirección que viene desde (fx, fy). */
@@ -160,11 +191,15 @@ export function applyLock(o: FabricObject, locked: boolean) {
 }
 
 const THIN: Kind[] = ["line", "arrow", "path", "highlight", "cloud", "measure"];
+const STRAIGHT: Kind[] = ["line", "arrow", "measure"];
 
 /** Ajustes que no se serializan: se aplican al crear y al cargar. */
 export function prepareObject(o: FabricObject) {
   // lo fino se selecciona tocando el trazo, no el rectángulo que lo contiene
   if (o.kind && THIN.includes(o.kind)) o.perPixelTargetFind = true;
+  // una recta horizontal o vertical tiene una caja de 1 px de alto o de ancho: con margen (en px de pantalla)
+  // se la puede tocar, y también tocando su texto
+  if (o.kind && STRAIGHT.includes(o.kind)) o.padding = 8;
   applyLock(o, !!o.lockedByUser);
 }
 
@@ -178,10 +213,10 @@ export function createMeasure(a: Pt, b: Pt, stroke = "#2563eb", strokeWidth = 2)
   return tag(new Measure([a.x, a.y, b.x, b.y], { stroke, strokeWidth }), "measure");
 }
 
-export function createConnector(kind: "arrow" | "line", a: Pt, b: Pt, stroke = INK, strokeWidth = 2): Line {
-  const C = kind === "arrow" ? Arrow : Line;
-  const l = new C([a.x, a.y, b.x, b.y], { stroke, strokeWidth, strokeLineCap: "round" });
-  l.set({ fromId: null, toId: null });
+/** Flecha o línea (una flecha sin punta: así las dos pueden llevar texto). */
+export function createConnector(kind: "arrow" | "line", a: Pt, b: Pt, stroke = INK, strokeWidth = 2): Arrow {
+  const l = new Arrow([a.x, a.y, b.x, b.y], { stroke, strokeWidth, strokeLineCap: "round" });
+  l.set({ fromId: null, toId: null, ...(kind === "line" ? { heads: "none" as const } : {}) });
   return tag(l, kind);
 }
 

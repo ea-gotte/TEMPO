@@ -20,8 +20,8 @@ export interface Template {
   key: string;
   label: string;
   items: TemplateItem[];
-  /** Flechas [desde, hasta] por índice de `items` */
-  links: [number, number][];
+  /** Flechas [desde, hasta, texto opcional] por índice de `items` */
+  links: [number, number, string?][];
 }
 
 const [YELLOW, PINK, GREEN, BLUE] = NOTE_COLORS;
@@ -57,7 +57,7 @@ export const TEMPLATES: Template[] = [
       { kind: "rect", x: 660, y: 35, w: 140, h: 80, text: "Emitir" },
       { kind: "rect", x: 410, y: 200, w: 190, h: 80, text: "Corregir observaciones" },
     ],
-    links: [[0, 1], [1, 2], [2, 3], [2, 4], [4, 1]],
+    links: [[0, 1], [1, 2], [2, 3, "Sí"], [2, 4, "No"], [4, 1]],
   },
   {
     key: "plan-review",

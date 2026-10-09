@@ -17,6 +17,7 @@ import { readImage, validateImageFile } from "./image";
 import { attachKeys, shouldIntercept, type KeyAction } from "./keys";
 import { BOARD_MIME, decodeClip, encodeClip, pasteOffset, textOf } from "./clipboard";
 import { bakeScaledLabels, createLabeled, editLabel, isLabeled, readLabeled } from "./labels";
+import { editCaption } from "./captions";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { SearchBar } from "./SearchBar";
@@ -584,12 +585,12 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       return title;
     });
     objs.forEach((o) => c.add(o));
-    for (const [from, to] of t.links) {
+    for (const [from, to, caption] of t.links) {
       const a = objs[from];
       const z = objs[to];
       const ends = connectorEnds(shapeBox(a), shapeBox(z), { x: 0, y: 0 }, { x: 0, y: 0 });
       const arrow = createConnector("arrow", ends.start, ends.end);
-      arrow.set({ fromId: a.id, toId: z.id });
+      arrow.set({ fromId: a.id, toId: z.id, caption });
       c.add(arrow);
       objs.push(arrow);
     }
@@ -604,12 +605,13 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const openTemplates = (x: number, y: number) =>
     setMenu({ x, y, items: TEMPLATES.map((t) => ({ label: t.label, onClick: () => insertTemplate(t) })) });
 
-  /** Texto de un objeto, para buscar: notas, formas, textos, observaciones y cotas. */
+  /** Texto de un objeto, para buscar: notas, formas, textos, flechas, observaciones y cotas. */
   const objectText = (o: FabricObject): string => {
     if (isLabeled(o)) return readLabeled(o).text ?? "";
     if (o.kind === "text") return (o as IText).text;
     if (o.kind === "marker") return `Observación ${o.num}`;
     if (o.kind === "measure") return o.measureLabel ?? "";
+    if (isConnector(o)) return o.caption ?? "";
     return "";
   };
 
@@ -816,7 +818,9 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       }),
       c.on("mouse:dblclick", (e) => {
         const t = e.target;
-        if (toolRef.current === "select" && isLabeled(t) && !t.lockedByUser) edit(t);
+        if (toolRef.current !== "select" || !t || t.lockedByUser) return;
+        if (isLabeled(t)) edit(t);
+        else if (isConnector(t)) editCaption(c, t, () => { refreshPanel(); commit(); });
       }),
       c.on("selection:created", () => { setLockedFocus(null); refreshPanel(); }),
       c.on("selection:updated", () => { setLockedFocus(null); refreshPanel(); }),

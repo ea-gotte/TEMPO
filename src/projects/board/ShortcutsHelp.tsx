@@ -14,7 +14,7 @@ const EDIT: [string, string][] = [
   ["Ctrl + ]  ·  Ctrl + [", "Traer al frente  ·  Enviar al fondo"],
   ["Supr  ·  Retroceso", "Eliminar"],
   ["Flechas  ·  Shift + flechas", "Mover 1 px  ·  10 px"],
-  ["Doble clic", "Escribir en una nota o forma"],
+  ["Doble clic", "Escribir en una nota, forma, flecha o línea"],
   ["Clic derecho", "Más acciones"],
   ["Esc", "Soltar la selección y volver a Seleccionar"],
 ];
