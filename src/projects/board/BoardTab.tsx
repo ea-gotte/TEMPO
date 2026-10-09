@@ -113,6 +113,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   /** Registra el estado actual como un paso de deshacer y programa el guardado. */
   const commit = useCallback(() => {
     window.clearTimeout(commitTimer.current);
+    commitTimer.current = 0; // 0 = no hay un commitSoon pendiente
     const c = cRef.current;
     if (!c || !loaded.current || restoring.current) return;
     const snap = snapshot(c);
@@ -197,6 +198,16 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     syncHistory();
     refreshPanel();
     scheduleSave();
+  };
+
+  // Antes de deshacer/rehacer se registra un cambio que esperaba (commitSoon): si no, se perdería
+  const undo = () => {
+    if (commitTimer.current) commit();
+    void applySnapshot(history.undo());
+  };
+  const redo = () => {
+    if (commitTimer.current) commit();
+    void applySnapshot(history.redo());
   };
 
   const restyle = (patch: StylePatch) => {
@@ -365,8 +376,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     if (!c) return;
     switch (a.type) {
       case "tool": setTool(a.tool); break;
-      case "undo": void applySnapshot(history.undo()); break;
-      case "redo": void applySnapshot(history.redo()); break;
+      case "undo": undo(); break;
+      case "redo": redo(); break;
       case "copy": copySelection(); break;
       case "duplicate": void duplicate(); break;
       case "selectAll": selectAll(); break;
@@ -397,7 +408,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   };
 
   const actions = {
-    applySnapshot, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteClipboard, duplicate,
+    undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteClipboard, duplicate,
     clearBoard, addImages, exportBoard, startOver, onKey, hasClipboard: () => clipboard.current.length > 0,
   };
   const act = useRef(actions);
@@ -433,7 +444,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const offs: (() => void)[] = [
       attachPanZoom(c, { panMode: () => toolRef.current === "hand" || spaceHeld.current, onChange: onViewport }),
       attachDrawing(c, {
-        tool: () => toolRef.current,
+        // con Espacio apretado se desplaza la vista: no se dibuja aunque haya una herramienta de dibujo elegida
+        tool: () => (spaceHeld.current ? "hand" : toolRef.current),
         noteColor: () => noteColorRef.current,
         onCreated: (obj, editing) => {
           setTool("select");
@@ -449,6 +461,23 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       c.on("object:modified", (e) => {
         const t = e.target;
         if (!t || isTransient(t)) return;
+        if (t instanceof ActiveSelection) {
+          // Una selección por área también atrapa flechas que tocan una sola de sus formas y se mueven con ella.
+          // Al soltar se desarma la selección (fuera del evento, por lo mismo que abajo), se rehacen las formas
+          // escaladas, se reacomodan las flechas y recién ahí se registra UN paso de deshacer.
+          const objs = t.getObjects();
+          window.setTimeout(() => {
+            if (cRef.current !== c) return;
+            quiet.current = true;
+            c.discardActiveObject();
+            quiet.current = false;
+            const baked = new Map(bakeScaledLabels(c, objs).map((g) => [g.id, g]));
+            refreshConnectors(c);
+            act.current.select(objs.map((o) => (o.id && baked.get(o.id)) || o));
+            commit();
+          }, 0);
+          return;
+        }
         if (isConnector(t)) t.set({ fromId: null, toId: null }); // mover una flecha a mano la desengancha
         if (isLabeled(t) && (t.scaleX !== 1 || t.scaleY !== 1)) {
           // Fabric dispara object:modified ANTES de cerrar la transformación: si acá se saca la forma
@@ -509,7 +538,11 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     void (async () => {
       const res = await loadBoard(projectId);
       if (disposed) return;
-      if (res.status === "unavailable") setBanner({ kind: "unavailable" });
+      if (res.status === "unavailable") {
+        // no se pudo leer lo guardado: si IndexedDB volviera después, guardar pisaría ese tablero con este
+        blockSave.current = true;
+        setBanner({ kind: "unavailable" });
+      }
       if (res.status === "corrupt") {
         blockSave.current = true;
         setBanner({ kind: "corrupt", raw: res.raw });
@@ -538,12 +571,18 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       setReady(true);
     })();
 
+    /** Un texto en edición todavía no está en la forma (el editor es auxiliar): se cierra antes de guardar. */
+    const finishEditing = () => {
+      const a = c.getActiveObject();
+      if (a instanceof IText && a.isEditing) a.exitEditing();
+    };
     const onHidden = () => {
       if (document.visibilityState !== "hidden") return;
       commit();
       void flushSave();
     };
     const onPageHide = () => {
+      finishEditing();
       commit();
       void flushSave();
     };
@@ -552,6 +591,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
     return () => {
       disposed = true;
+      finishEditing(); // el texto que se estaba escribiendo no se pierde al cambiar de pestaña
       commit(); // un cambio pendiente de commitSoon no se pierde
       void flushSave(); // lee el estado de forma síncrona, antes de desarmar el lienzo
       loaded.current = false;
@@ -617,8 +657,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         onPen={setPen}
         canUndo={hist.undo}
         canRedo={hist.redo}
-        onUndo={() => void act.current.applySnapshot(history.undo())}
-        onRedo={() => void act.current.applySnapshot(history.redo())}
+        onUndo={() => act.current.undo()}
+        onRedo={() => act.current.redo()}
         zoom={zoom}
         onZoomIn={withCanvas((c) => zoomStep(c, 1))}
         onZoomOut={withCanvas((c) => zoomStep(c, -1))}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitWithin, hasAlpha, validateImageFile } from "./image";
+import { fitWithin, hasAlpha, needsReencode, validateImageFile } from "./image";
 
 describe("validateImageFile", () => {
   it("acepta PNG, JPG, WebP y GIF", () => {
@@ -34,5 +34,17 @@ describe("hasAlpha", () => {
   });
   it("una imagen opaca no tiene", () => {
     expect(hasAlpha(new Uint8ClampedArray([1, 2, 3, 255, 4, 5, 6, 255]))).toBe(false);
+  });
+});
+
+describe("needsReencode", () => {
+  it("recodifica si hubo que reducirla", () => {
+    expect(needsReencode(500_000, true)).toBe(true);
+  });
+  it("recodifica una imagen pesada aunque no pase de 4096 px (cada instantánea del historial la copia)", () => {
+    expect(needsReencode(4 * 1024 * 1024 + 1, false)).toBe(true);
+  });
+  it("deja intacta una imagen chica que no se redujo", () => {
+    expect(needsReencode(4 * 1024 * 1024, false)).toBe(false);
   });
 });

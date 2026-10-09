@@ -16,6 +16,7 @@ import { MeetingsTab } from "./MeetingsTab";
 import type { Task, WorkEnv } from "./types";
 import { useWork, workActions } from "./workStore";
 import { clearAllBoards } from "./board/boardStore";
+import { BoardBoundary } from "./board/BoardBoundary";
 import "./projects.css";
 
 // El tablero carga Fabric.js: se descarga recién al abrir la pestaña
@@ -132,9 +133,11 @@ function Workspace({ projectId, onBack, onEditProject }: { projectId: string; on
       {current === "cambios" && <ChangesTab projectId={projectId} perms={perms} />}
       {current === "riesgos" && <RisksTab projectId={projectId} perms={perms} />}
       {current === "tablero" && (
-        <Suspense fallback={<div className="card card-pad">Cargando el tablero…</div>}>
-          <BoardTab key={projectId} projectId={projectId} fileLabel={meta?.code || project.name} />
-        </Suspense>
+        <BoardBoundary key={projectId}>
+          <Suspense fallback={<div className="card card-pad">Cargando el tablero…</div>}>
+            <BoardTab projectId={projectId} fileLabel={meta?.code || project.name} />
+          </Suspense>
+        </BoardBoundary>
       )}
     </>
   );
