@@ -18,6 +18,7 @@ const EDIT: [string, string][] = [
   ["Shift al dibujar", "Formas proporcionadas · rectas horizontales, verticales o a 45°"],
   ["Shift al girar", "De a 15°"],
   ["Clic derecho", "Más acciones"],
+  ["Ctrl + clic", "Abrir el enlace de un objeto (se agrega en el panel)"],
   ["Esc", "Soltar la selección y volver a Seleccionar"],
 ];
 

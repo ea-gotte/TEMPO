@@ -27,6 +27,7 @@ import { findMatches } from "./search";
 import { insertCopies, restore, snapshot } from "./serialize";
 import { decodeBoardFile, encodeBoardFile, itemsBounds } from "./boardFile";
 import { relinkAfterAltDrag, type Link } from "./altDrag";
+import { normalizeLink } from "./links";
 import { STAMPS, stampText, type Stamp } from "./stamps";
 import { applyLock, createConnector, createImage, createText, isTransient, prepareObject, replaceObject, setMarkerNumber, setMarkerResolved } from "./shapes";
 import { applyStyle, readStyle, type StylePatch, type StyleState } from "./style";
@@ -102,6 +103,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     style: StyleState;
     image: { calibrated: boolean } | null;
     marker: { id: string; num: number; detail: string; resolved: boolean } | null;
+    link: { id: string; url: string } | null;
   } | null>(null);
   const [obsOpen, setObsOpen] = useState(false);
   /** Sube con cada cambio registrado (y al deshacer): la lista de observaciones se vuelve a leer del lienzo */
@@ -205,6 +207,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       style: mergeStyles(objs.map(readStyle)),
       image: img ? { calibrated: !!img.mPerPx } : null,
       marker: mk ? { id: mk.id!, num: mk.num ?? 0, detail: mk.detail ?? "", resolved: !!mk.resolved } : null,
+      link: objs.length === 1 && objs[0].id ? { id: objs[0].id, url: objs[0].link ?? "" } : null,
     } : null);
   }, []);
 
@@ -823,6 +826,29 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     commit();
   };
 
+  /** Enlace de un objeto (desde el panel). Solo direcciones web o de correo; vacío lo quita. */
+  const setLink = (id: string, text: string): boolean => {
+    const c = cRef.current;
+    const o = c?.getObjects().find((x) => x.id === id);
+    if (!c || !o) return true;
+    const url = normalizeLink(text);
+    if (url === null) {
+      notify("Ese enlace no es válido: pegá una dirección web (https://…) o de correo (mailto:…).");
+      return false;
+    }
+    o.set({ link: url || undefined });
+    c.requestRenderAll();
+    refreshPanel();
+    commit();
+    return true;
+  };
+
+  /** Abre el enlace del objeto en otra pestaña (se vuelve a validar: pudo venir en un tablero importado). */
+  const openLink = (o: FabricObject | null | undefined) => {
+    const url = o?.link ? normalizeLink(o.link) : null;
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   /** Numera las observaciones 1, 2, 3… en el orden que tienen (después de borrar o duplicar alguna). */
   const renumberMarkers = () => {
     const c = cRef.current;
@@ -849,7 +875,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
     duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openStamps, openExportMenu, importFile, rotateSelection,
-    setMarkerInfo, copyObservations, renumberMarkers,
+    setMarkerInfo, copyObservations, renumberMarkers, setLink, openLink,
   };
   const act = useRef(actions);
   act.current = actions;
@@ -1047,6 +1073,31 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       }),
       // presionar con Alt sin arrastrar no duplica nada
       c.on("mouse:up", cancelAltDrag),
+      // distintivo de los objetos con enlace (en pantalla, no al exportar)
+      c.on("after:render", ({ ctx }) => {
+        if (ctx !== c.getContext()) return;
+        const v = c.viewportTransform;
+        for (const o of c.getObjects()) {
+          if (!o.link || !o.visible || isTransient(o)) continue;
+          const r = o.getBoundingRect();
+          const x = (r.left + r.width) * v[0] + v[4];
+          const y = r.top * v[3] + v[5];
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(x, y, 9, 0, Math.PI * 2);
+          ctx.fillStyle = "#5b6cff";
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = "#ffffff";
+          ctx.stroke();
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 11px system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("↗", x, y + 0.5);
+          ctx.restore();
+        }
+      }),
       c.on("path:created", (e) => {
         // el resaltador se multiplica con lo de abajo: marca el plano sin taparlo
         const hl = penRef.current.highlighter;
@@ -1083,8 +1134,12 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         const d = downAt.current;
         downAt.current = null;
         if (toolRef.current !== "select" || spaceHeld.current || !d) return;
+        if (Math.hypot(e.viewportPoint.x - d.x, e.viewportPoint.y - d.y) >= 4) return;
+        const me = e.e as MouseEvent;
+        // Ctrl+clic (o Cmd+clic) sobre algo con enlace lo abre, aunque esté bloqueado
+        if ((me.ctrlKey || me.metaKey) && e.target?.link) return act.current.openLink(e.target);
         // clic (sin arrastre) sobre algo bloqueado: el panel ofrece desbloquearlo
-        if (Math.hypot(e.viewportPoint.x - d.x, e.viewportPoint.y - d.y) < 4) setLockedFocus(e.target?.lockedByUser ? e.target : null);
+        setLockedFocus(e.target?.lockedByUser ? e.target : null);
       }),
       attachKeys((a) => act.current.onKey(a), () => !!(c.getActiveObject() as IText | undefined)?.isEditing, {
         root: () => rootRef.current,
@@ -1392,6 +1447,9 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             onCalibrate={() => act.current.startCalibration()}
             marker={sel.marker}
             onMarker={(id, patch) => act.current.setMarkerInfo(id, patch)}
+            link={sel.link}
+            onLink={(id, t) => act.current.setLink(id, t)}
+            onOpenLink={() => act.current.openLink(cRef.current?.getActiveObject())}
           />
         ) : lockedFocus ? (
           <aside className="bd-panel" aria-label="Elemento bloqueado">

@@ -1,31 +1,15 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { Icon } from "../../components/Icon";
+import { useDraft } from "./useDraft";
 import { filterObservations, observationCounts, renumberObservations, type Observation, type ObservationFilter } from "./observations";
 
 export type ObservationItem = Observation & { color: string };
 
 const FILTERS: [ObservationFilter, string][] = [["all", "Todas"], ["open", "Abiertas"], ["resolved", "Resueltas"]];
 
-/**
- * Descripción de una observación: se escribe libre y se registra al salir del campo (un solo paso de
- * deshacer). También al desaparecer el campo: un clic en el lienzo cambia la selección y cierra el
- * panel antes de que el navegador avise que el campo perdió el foco.
- */
+/** Descripción de una observación: se registra al salir del campo, en un solo paso de deshacer (ver useDraft). */
 export function DetailField({ value, onSave, autoFocus }: { value: string; onSave: (text: string) => void; autoFocus?: boolean }) {
-  const [draft, setDraft] = useState(value);
-  const latest = useRef({ draft: value, saved: value, onSave });
-  latest.current.onSave = onSave;
-  const flush = () => {
-    const l = latest.current;
-    if (l.draft === l.saved) return;
-    l.saved = l.draft;
-    l.onSave(l.draft);
-  };
-  useEffect(() => flush, []);
-  const change = (text: string) => {
-    latest.current.draft = text;
-    setDraft(text);
-  };
+  const { draft, change, flush, reset } = useDraft(value, onSave);
   return (
     <textarea
       className="bd-obs-detail"
@@ -38,7 +22,7 @@ export function DetailField({ value, onSave, autoFocus }: { value: string; onSav
       onBlur={flush}
       onKeyDown={(e) => {
         // Esc descarta lo escrito; Ctrl+Enter lo registra
-        if (e.key === "Escape") { change(value); e.currentTarget.blur(); }
+        if (e.key === "Escape") { reset(); e.currentTarget.blur(); }
         if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) e.currentTarget.blur();
       }}
     />

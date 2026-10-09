@@ -4,6 +4,7 @@ import type { StylePatch, StyleState } from "./style";
 import type { DashStyle, HeadStyle } from "./strokes";
 import { Btn, Swatch } from "./Toolbar";
 import { DetailField } from "./ObservationsPanel";
+import { useDraft } from "./useDraft";
 import { FILL_COLORS, HIGHLIGHT_COLORS, HIGHLIGHT_WIDTHS, NOTE_COLORS, PALETTE, STROKE_WIDTHS } from "./tools";
 
 /** Panel derecho (solo con selección). Adaptado de RightSidebar de Figma_Clone (github.com/Lyam0udi/Figma_Clone). */
@@ -33,12 +34,40 @@ export interface PanelProps {
   /** Una observación numerada sola seleccionada: su descripción y estado */
   marker: { id: string; num: number; detail: string; resolved: boolean } | null;
   onMarker: (id: string, patch: { detail?: string; resolved?: boolean }) => void;
+  /** Enlace del objeto (un solo objeto seleccionado; "" = sin enlace) */
+  link: { id: string; url: string } | null;
+  /** false si el enlace no es válido (el campo vuelve al anterior) */
+  onLink: (id: string, text: string) => boolean;
+  onOpenLink: () => void;
 }
 
 /** Selector de color libre (además de la paleta). Con valores mixtos o sin color parte de un gris. */
 function ColorInput({ value, label, onPick }: { value: string; label: string; onPick: (c: string) => void }) {
   const hex = value.length === 7 && value[0] === "#" ? value : "#9ca3af";
   return <input type="color" className="bd-color" value={hex} title={label} aria-label={label} onChange={(e) => onPick(e.target.value)} />;
+}
+
+/** Enlace del objeto: se escribe o pega y se registra al salir del campo o con Enter. */
+function LinkField({ value, onSave, onOpen }: { value: string; onSave: (text: string) => boolean; onOpen: () => void }) {
+  const { draft, change, flush, reset } = useDraft(value, onSave);
+  return (
+    <>
+      <input
+        className="input bd-link"
+        type="url"
+        placeholder="https://… (documento, carpeta, plano)"
+        aria-label="Enlace"
+        value={draft}
+        onChange={(e) => change(e.target.value)}
+        onBlur={flush}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") { reset(); e.currentTarget.blur(); }
+        }}
+      />
+      {value && <Btn icon="external-link" label="Abrir el enlace (también Ctrl+clic en el objeto)" onClick={onOpen} />}
+    </>
+  );
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -50,7 +79,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onRotate, onDelete, onAlign, onDistribute, onTidy, onExport, image, onCalibrate, marker, onMarker }: PanelProps) {
+export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onRotate, onDelete, onAlign, onDistribute, onTidy, onExport, image, onCalibrate, marker, onMarker, link, onLink, onOpenLink }: PanelProps) {
   const fills = s.kind === "note" ? NOTE_COLORS : FILL_COLORS;
   // el resaltador tiene sus propios colores claros y trazos anchos
   const hl = s.strokeLabel === "Resaltador";
@@ -127,6 +156,11 @@ export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onL
             {!FONT_SIZES.includes(s.fontSize) && <option value="">{s.fontSize ? `${s.fontSize} px` : "Mixto"}</option>}
             {FONT_SIZES.map((f) => <option key={f} value={f}>{f} px</option>)}
           </select>
+        </Row>
+      )}
+      {link && (
+        <Row label="Enlace">
+          <LinkField key={link.id + link.url} value={link.url} onSave={(t) => onLink(link.id, t)} onOpen={onOpenLink} />
         </Row>
       )}
       <Row label={`Opacidad · ${opacity} %`}>

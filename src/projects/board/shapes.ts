@@ -37,6 +37,8 @@ declare module "fabric" {
     /** Observación numerada: qué se observa, y si ya se resolvió */
     detail?: string;
     resolved?: boolean;
+    /** Enlace a un documento, carpeta o plano (Ctrl+clic lo abre) */
+    link?: string;
   }
   interface SerializedObjectProps {
     id?: string;
@@ -53,11 +55,12 @@ declare module "fabric" {
     caption?: string;
     detail?: string;
     resolved?: boolean;
+    link?: string;
   }
 }
 
 // Propiedades propias que viajan al guardar (spec §4)
-FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads", "num", "mPerPx", "measureLabel", "caption", "detail", "resolved"];
+FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads", "num", "mPerPx", "measureLabel", "caption", "detail", "resolved", "link"];
 
 /** Tamaño de letra del texto de flechas y líneas. */
 export const CAPTION_SIZE = 14;
@@ -307,6 +310,8 @@ export async function createImage(dataUrl: string, at: Pt, scale = 1): Promise<F
 
 /** Reemplaza un objeto por otro en el mismo lugar del orden de apilado. */
 export function replaceObject(canvas: Canvas, oldObj: FabricObject, next: FabricObject) {
+  // lo que no depende de la forma pasa al objeto nuevo (al editar el texto, cambiar el estilo o el tamaño)
+  if (oldObj.link && next.link === undefined) next.set({ link: oldObj.link });
   const i = canvas.getObjects().indexOf(oldObj);
   canvas.remove(oldObj);
   canvas.insertAt(i < 0 ? canvas.getObjects().length : i, next);
