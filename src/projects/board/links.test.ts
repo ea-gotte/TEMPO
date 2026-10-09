@@ -15,6 +15,11 @@ describe("enlaces en los objetos", () => {
     expect(normalizeLink("intranet.local:8080/docs")).toBe("https://intranet.local:8080/docs");
     expect(normalizeLink("localhost:3000")).toBe("https://localhost:3000");
   });
+  it("una dirección armada para trabar la expresión regular responde al instante", () => {
+    const t0 = performance.now();
+    expect(normalizeLink("a" + ".a".repeat(26) + ":x")).toBeNull();
+    expect(performance.now() - t0).toBeLessThan(50);
+  });
   it("vacío = quitar el enlace", () => {
     expect(normalizeLink("   ")).toBe("");
   });

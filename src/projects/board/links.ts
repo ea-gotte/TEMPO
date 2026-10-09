@@ -5,7 +5,9 @@
  */
 
 const HAS_SCHEME = /^([a-z][a-z0-9+.-]*:\/\/|mailto:)/i;
-const HOST_LIKE = /^[^\s/:?#]+((\.[^\s/:?#]+)+(:\d+)?|:\d+)([/?#]|$)/;
+// los rótulos (entre puntos) no incluyen el punto: si lo incluyeran, la expresión tardaría exponencialmente
+// en rechazar "a.a.a.a…:x" y una dirección armada colgaría la página
+const HOST_LIKE = /^[^\s/:?#.]+((\.[^\s/:?#.]+)+(:\d+)?|:\d+)([/?#]|$)/;
 
 /** Dirección lista para guardar y abrir; "" = quitar el enlace; null = no es una dirección válida. */
 export function normalizeLink(input: string): string | null {
