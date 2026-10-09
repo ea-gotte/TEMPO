@@ -99,6 +99,24 @@ export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onL
           ))}
         </Row>
       )}
+      {(s.textColor !== null || s.weight !== null) && (
+        <Row label="Texto">
+          {s.textColor !== null && PALETTE.map((c) => <Swatch key={c} color={c} on={s.textColor === c} onClick={() => onStyle({ textColor: c })} />)}
+          {s.textColor !== null && <ColorInput value={s.textColor} label="Otro color de texto" onPick={(c) => onStyle({ textColor: c })} />}
+          {s.weight !== null && (
+            <button
+              type="button"
+              className={`bd-chip${s.weight === "bold" ? " on" : ""}`}
+              title="Negrita"
+              aria-label="Negrita"
+              aria-pressed={s.weight === "bold"}
+              onClick={() => onStyle({ weight: s.weight === "bold" ? "normal" : "bold" })}
+            >
+              <b>N</b>
+            </button>
+          )}
+        </Row>
+      )}
       {s.fontSize !== null && (
         <Row label="Tamaño del texto">
           <select

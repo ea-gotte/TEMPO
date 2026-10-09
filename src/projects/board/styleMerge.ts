@@ -8,7 +8,7 @@ import type { StyleState } from "./style";
 
 export const MIXED = "mixed";
 
-type Key = "fill" | "stroke" | "strokeWidth" | "fontSize" | "dash" | "heads";
+type Key = "fill" | "stroke" | "strokeWidth" | "fontSize" | "dash" | "heads" | "textColor" | "weight";
 
 function merge<K extends Key>(states: StyleState[], key: K, mixed: NonNullable<StyleState[K]>): StyleState[K] {
   const values = states.map((s) => s[key]).filter((v) => v !== null);
@@ -31,5 +31,7 @@ export function mergeStyles(states: StyleState[]): StyleState {
     strokeLabel: labels.length && labels.every((l) => l === labels[0]) ? labels[0] : "Color",
     dash: merge(states, "dash", MIXED),
     heads: merge(states, "heads", MIXED),
+    textColor: merge(states, "textColor", MIXED),
+    weight: merge(states, "weight", MIXED),
   };
 }

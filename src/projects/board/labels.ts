@@ -26,6 +26,9 @@ export interface LabeledSpec {
   strokeWidth?: number;
   fontSize?: number;
   dash?: DashStyle;
+  /** Color y negrita del texto (por defecto, tinta y normal) */
+  color?: string;
+  bold?: boolean;
   angle?: number;
   opacity?: number;
   id?: string;
@@ -54,7 +57,8 @@ export function createLabeled(s: LabeledSpec): Group {
     width: Math.max(area.width, 16),
     fontSize: wanted,
     fontFamily: FONT,
-    fill: INK,
+    fill: s.color ?? INK,
+    fontWeight: s.bold ? "bold" : "normal",
     textAlign: "center",
   });
   fitText(label, Math.max(area.height, 12), Math.min(MIN_FONT, wanted));
@@ -116,6 +120,8 @@ export function readLabeled(g: Group): LabeledSpec {
     stroke: String(shape.stroke),
     strokeWidth: shape.strokeWidth,
     dash: dashStyleOf(shape.strokeDashArray),
+    color: String(label.fill),
+    bold: label.fontWeight === "bold" || undefined,
     // el tamaño pedido, no el achicado: si la forma crece, la letra vuelve a su tamaño
     fontSize: g.baseFontSize ?? label.fontSize,
     angle: g.angle,
@@ -138,7 +144,8 @@ export function editLabel(canvas: Canvas, g: Group, onDone: (next: Group) => voi
       width: label.width * g.scaleX,
       fontSize: label.fontSize * g.scaleY,
       fontFamily: FONT,
-      fill: INK,
+      fill: spec.color ?? INK,
+      fontWeight: spec.bold ? "bold" : "normal",
       textAlign: "center",
       backgroundColor: spec.fill && spec.fill !== "transparent" ? spec.fill : "#ffffff",
     }),

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { StyleState } from "./style";
 import { MIXED, mergeStyles } from "./styleMerge";
 
-const base: StyleState = { kind: undefined, fill: null, stroke: null, strokeWidth: null, fontSize: null, opacity: 1, strokeLabel: "Borde", dash: null, heads: null };
+const base: StyleState = { kind: undefined, fill: null, stroke: null, strokeWidth: null, fontSize: null, opacity: 1, strokeLabel: "Borde", dash: null, heads: null, textColor: null, weight: null };
 const image: StyleState = { ...base, kind: "image" };
 const rect: StyleState = { ...base, kind: "rect", fill: "#ffffff", stroke: "#1f2937", strokeWidth: 2, fontSize: 16, dash: "solid" };
 const rect2: StyleState = { ...rect, fill: "#fef08a", fontSize: 24 };
@@ -43,5 +43,17 @@ describe("mergeStyles: trazo y puntas", () => {
   });
   it("una imagen sola no ofrece trazo ni puntas", () => {
     expect(mergeStyles([image, { ...image }]).dash).toBeNull();
+  });
+});
+
+describe("mergeStyles: texto", () => {
+  it("color del texto y negrita se combinan como el resto", () => {
+    const a: StyleState = { ...rect, textColor: "#1f2937", weight: "bold" };
+    const b: StyleState = { ...rect2, textColor: "#dc2626", weight: "bold" };
+    const m = mergeStyles([a, b, image]);
+    expect(m.textColor).toBe(MIXED);
+    expect(m.weight).toBe("bold");
+    expect(mergeStyles([a, { ...b, weight: "normal" }]).weight).toBe(MIXED);
+    expect(mergeStyles([image, arrow]).textColor).toBeNull();
   });
 });
