@@ -742,6 +742,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         { label: "Copiar", ico: "copy", onClick: () => document.execCommand("copy") },
         { label: "Cortar", onClick: () => document.execCommand("cut") },
         { label: "Duplicar", onClick: () => void duplicate() },
+        { label: "Girar 90°", ico: "rotate-cw", onClick: () => rotateSelection() },
         { label: "Traer al frente", ico: "bring-front", onClick: () => reorder(true) },
         { label: "Enviar al fondo", ico: "send-back", onClick: () => reorder(false) },
         { label: "Bloquear", ico: "lock", onClick: () => setLocked(takeSelection(), true) },
@@ -758,6 +759,20 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       );
     }
     setMenu({ x, y, items });
+  };
+
+  /**
+   * Gira lo seleccionado 90° a la derecha alrededor de su centro (un plano escaneado de costado).
+   * Se registra como cualquier giro a mano: object:modified rehace lo que haga falta y guarda.
+   */
+  const rotateSelection = () => {
+    const c = cRef.current;
+    const t = c?.getActiveObject();
+    if (!c || !t) return;
+    t.rotate((Math.round(t.angle / 90) * 90 + 90) % 360);
+    t.setCoords();
+    c.fire("object:modified", { target: t } as Parameters<typeof c.fire<"object:modified">>[1]);
+    c.requestRenderAll();
   };
 
   /** Descripción o estado de una observación numerada (desde el panel o la lista). */
@@ -783,7 +798,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
-    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openExportMenu, importFile,
+    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, tidySelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration, openTemplates, openExportMenu, importFile, rotateSelection,
     setMarkerInfo, copyObservations,
   };
   const act = useRef(actions);
@@ -889,6 +904,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             quiet.current = true;
             c.discardActiveObject();
             quiet.current = false;
+            // las cotas giradas o escaladas en grupo vuelven a escala 1 y sin giro, como al tocarlas solas
+            for (const o of objs) if (o.kind === "measure") { const e = lineEnds(o as Line); setLineEnds(o as Line, e.start, e.end); }
             const baked = new Map(bakeScaledLabels(c, objs).map((g) => [g.id, g]));
             refreshConnectors(c);
             act.current.select(objs.map((o) => (o.id && baked.get(o.id)) || o));
@@ -1255,6 +1272,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             onBack={() => act.current.reorder(false)}
             onLock={() => act.current.setLocked(act.current.takeSelection(), true)}
             onDuplicate={() => void act.current.duplicate()}
+            onRotate={() => act.current.rotateSelection()}
             onDelete={() => act.current.removeSelection()}
             onAlign={(m) => act.current.alignSelection(m)}
             onDistribute={(a) => act.current.distributeSelection(a)}
