@@ -84,6 +84,28 @@ export const TEMPLATES: Template[] = [
     ],
     links: [],
   },
+  {
+    key: "kanban",
+    label: "Tablero Kanban",
+    items: [
+      ...["Por hacer", "En curso", "Hecho"].map((text, col): TemplateItem => ({ kind: "rect", x: col * 240, y: 0, w: 220, h: 56, text, fill: [YELLOW, BLUE, GREEN][col] })),
+      ...[0, 1, 2].flatMap((col) => [0, 1].map((row): TemplateItem => ({ kind: "note", x: col * 240 + 10, y: 76 + row * 140, w: 200, h: 120, text: "", fill: [YELLOW, BLUE, GREEN][col] }))),
+    ],
+    links: [],
+  },
+  {
+    key: "action-plan",
+    label: "Plan de acción",
+    items: [
+      { kind: "rect", x: 0, y: 0, w: 320, h: 48, text: "Qué", fill: BLUE },
+      { kind: "rect", x: 330, y: 0, w: 180, h: 48, text: "Quién", fill: BLUE },
+      { kind: "rect", x: 520, y: 0, w: 160, h: 48, text: "Cuándo", fill: BLUE },
+      ...[0, 1, 2].flatMap((row) =>
+        ([[0, 320], [330, 180], [520, 160]] as const).map(([x, w]): TemplateItem => ({ kind: "rect", x, y: 58 + row * 78, w, h: 70, text: "" })),
+      ),
+    ],
+    links: [],
+  },
 ];
 
 /** Caja que encierra todos los elementos de la plantilla (para centrarla en la vista). */
