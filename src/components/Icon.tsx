@@ -20,7 +20,7 @@ export type IconName =
   // Tablero del proyecto
   | "mouse-pointer" | "sticky-note" | "square" | "circle" | "diamond" | "arrow-up-right" | "line" | "cloud" | "type"
   | "undo" | "redo" | "zoom-in" | "zoom-out" | "maximize" | "minimize" | "unlock" | "bring-front" | "send-back" | "scan"
-  | "align-left" | "align-hcenter" | "align-right" | "align-top" | "align-vmiddle" | "align-bottom" | "distribute-h" | "distribute-v" | "grid";
+  | "align-left" | "align-hcenter" | "align-right" | "align-top" | "align-vmiddle" | "align-bottom" | "distribute-h" | "distribute-v" | "grid" | "ruler";
 
 const P: Record<IconName, React.ReactNode> = {
   clock: (<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>),
@@ -132,6 +132,7 @@ const P: Record<IconName, React.ReactNode> = {
   "align-bottom": (<><path d="M3 20h18" /><rect x="6" y="4" width="4" height="12" rx="1" /><rect x="14" y="9" width="4" height="7" rx="1" /></>),
   "distribute-h": (<><path d="M4 3v18M20 3v18" /><rect x="9" y="7" width="6" height="10" rx="1" /></>),
   "distribute-v": (<><path d="M3 4h18M3 20h18" /><rect x="7" y="9" width="10" height="6" rx="1" /></>),
+  ruler: (<><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z" /><path d="m14.5 12.5 2-2M11.5 9.5l2-2M8.5 6.5l2-2M17.5 15.5l2-2" /></>),
   grid: (<><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18M15 3v18" /></>),
 };
 

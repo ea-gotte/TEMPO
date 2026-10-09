@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActiveSelection, IText, type Canvas, type FabricObject } from "fabric";
+import { ActiveSelection, IText, type Canvas, type FabricObject, type Line } from "fabric";
 import { Icon } from "../../components/Icon";
 import { ContextMenu, type CtxItem } from "../../components/ui";
 import { today, uid } from "../../utils";
 import { boardEpoch, loadBoard, saveBoard, type BoardDoc } from "./boardStore";
 import { applyToolMode, attachPanZoom, createBoardCanvas, exportPng, fitToContent, getViewport, setViewport, viewCenter, zoomAt, zoomStep } from "./canvas";
-import { isConnector, refreshConnectors, shapeBox } from "./connectors";
+import { isConnector, lineEnds, refreshConnectors, setLineEnds, shapeBox } from "./connectors";
+import { parseMeters } from "./measure";
+import { calibrateImage, refreshMeasures } from "./measures";
 import { attachDrawing } from "./draw";
 import { fitScale, gridSpec, snapDelta, type Box, type Pt } from "./geometry";
 import { alignDeltas, distributeDeltas, type AlignMode } from "./align";
@@ -85,7 +87,10 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   penRef.current = pen;
   const [hist, setHist] = useState({ undo: false, redo: false });
   const [zoom, setZoom] = useState(1);
-  const [sel, setSel] = useState<{ count: number; style: StyleState } | null>(null);
+  const [sel, setSel] = useState<{ count: number; style: StyleState; image: { calibrated: boolean } | null } | null>(null);
+  /** Calibrando la escala de esta imagen (se espera que se trace una línea) */
+  const [calibrating, setCalibrating] = useState(false);
+  const calibImg = useRef<FabricObject | null>(null);
   const [lockedFocus, setLockedFocus] = useState<FabricObject | null>(null);
   const [banner, setBanner] = useState<Banner | null>(null);
   const [lockPrompt, setLockPrompt] = useState<FabricObject | null>(null);
@@ -153,6 +158,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     commitTimer.current = 0; // 0 = no hay un commitSoon pendiente
     const c = cRef.current;
     if (!c || !loaded.current || restoring.current) return;
+    refreshMeasures(c); // las cotas muestran la longitud según la escala de la imagen que tienen debajo
     const snap = snapshot(c);
     if (!history.push(snap.json)) return;
     lastData.current = snap.data;
@@ -170,7 +176,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
     const c = cRef.current;
     const objs = c ? c.getActiveObjects().filter((o) => !isTransient(o)) : [];
     // con varios objetos, el panel ofrece lo que tenga cualquiera de ellos (no solo el primero)
-    setSel(objs.length ? { count: objs.length, style: mergeStyles(objs.map(readStyle)) } : null);
+    const img = objs.length === 1 && objs[0].kind === "image" ? objs[0] : null;
+    setSel(objs.length ? { count: objs.length, style: mergeStyles(objs.map(readStyle)), image: img ? { calibrated: !!img.mPerPx } : null } : null);
   }, []);
 
   /** Tras cambiar la vista: zoom en la barra, cuadrícula del fondo y guardado. */
@@ -463,6 +470,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
       case "escape":
         setHelp(false);
         setMenu(null);
+        cancelCalibration();
         c.discardActiveObject();
         c.requestRenderAll();
         setTool("select");
@@ -515,6 +523,37 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
   const alignSelection = (mode: AlignMode) => arrange((boxes) => alignDeltas(boxes, mode));
   const distributeSelection = (axis: "h" | "v") => arrange((boxes) => distributeDeltas(boxes, axis));
 
+  /** Calibrar la escala de la imagen seleccionada: se traza una línea sobre una distancia conocida. */
+  const startCalibration = () => {
+    const c = cRef.current;
+    const img = c?.getActiveObject();
+    if (!c || !img || img.kind !== "image") return;
+    calibImg.current = img;
+    setCalibrating(true);
+    setTool("calibrate");
+  };
+  const cancelCalibration = () => {
+    calibImg.current = null;
+    setCalibrating(false);
+  };
+  const finishCalibration = (a: Pt, b: Pt) => {
+    const c = cRef.current;
+    const img = calibImg.current;
+    cancelCalibration();
+    setTool("select");
+    if (!c || !img || !c.getObjects().includes(img) || Math.hypot(b.x - a.x, b.y - a.y) < 4) return;
+    const meters = parseMeters(window.prompt("¿Cuánto mide en la realidad la línea que trazaste? Por ejemplo: 3,5 m · 350 cm", ""));
+    if (meters === null) {
+      notify("No se calibró la escala: ingresá una longitud, por ejemplo 3,5 m.");
+      return;
+    }
+    calibrateImage(img, a, b, meters);
+    c.setActiveObject(img);
+    commit(); // también recalcula las cotas que ya estaban sobre la imagen
+    refreshPanel();
+    notify("Escala calibrada: ya podés medir sobre el plano con la herramienta Medir (K).");
+  };
+
   /** Menú del clic derecho: acciones sobre lo seleccionado, o sobre el lienzo si se hizo en vacío. */
   const openMenu = (x: number, y: number, target: FabricObject | undefined, at: Pt) => {
     const c = cRef.current;
@@ -553,7 +592,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
 
   const actions = {
     undo, redo, select, restyle, reorder, setLocked, takeSelection, removeSelection, copySelection, pasteObjects, pasteText,
-    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, toggleSnap, exportSelection,
+    duplicate, clearBoard, addImages, exportBoard, startOver, onKey, openMenu, alignSelection, distributeSelection, toggleSnap, exportSelection, startCalibration, cancelCalibration, finishCalibration,
   };
   const act = useRef(actions);
   act.current = actions;
@@ -602,6 +641,7 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
         tool: () => (spaceHeld.current ? "hand" : toolRef.current),
         noteColor: () => noteColorRef.current,
         snap: () => snapRef.current,
+        onCalibrate: (a, b) => act.current.finishCalibration(a, b),
         onCreated: (obj, editing) => {
           if (obj.kind !== "marker") setTool("select"); // las observaciones se ponen de a varias
           if (editing) return; // el texto nuevo se registra al salir de la edición
@@ -646,6 +686,11 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
           return;
         }
         if (isConnector(t)) t.set({ fromId: null, toId: null }); // mover una flecha a mano la desengancha
+        if (t.kind === "measure") {
+          // una cota escalada o girada vuelve a escala 1 (así sus marcas y su texto no se deforman)
+          const ends = lineEnds(t as Line);
+          setLineEnds(t as Line, ends.start, ends.end);
+        }
         if (isLabeled(t) && (t.scaleX !== 1 || t.scaleY !== 1)) {
           // Fabric dispara object:modified ANTES de cerrar la transformación: si acá se saca la forma
           // del lienzo, cerrarla vuelve a disparar el evento sin fin. Se rehace cuando Fabric terminó.
@@ -932,6 +977,12 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
           <button className="btn btn-secondary btn-sm" onClick={() => act.current.startOver()}>Empezar de nuevo</button>
         </div>
       )}
+      {calibrating && (
+        <div className="bd-banner info" role="status">
+          <Icon name="ruler" size={14} /> Calibrar la escala: trazá una línea sobre una distancia conocida del plano (por ejemplo, una cota) y después indicá cuánto mide.
+          <button className="btn btn-ghost btn-sm" onClick={() => { act.current.cancelCalibration(); setTool("select"); }}>Cancelar</button>
+        </div>
+      )}
       {lockPrompt && (
         <div className="bd-banner info" role="status">
           <Icon name="lock" size={14} /> La imagen es grande. ¿Bloquearla para marcar encima sin moverla?
@@ -968,6 +1019,8 @@ export default function BoardTab({ projectId, fileLabel }: { projectId: string; 
             onAlign={(m) => act.current.alignSelection(m)}
             onDistribute={(a) => act.current.distributeSelection(a)}
             onExport={() => void act.current.exportSelection()}
+            image={sel.image}
+            onCalibrate={() => act.current.startCalibration()}
           />
         ) : lockedFocus ? (
           <aside className="bd-panel" aria-label="Elemento bloqueado">

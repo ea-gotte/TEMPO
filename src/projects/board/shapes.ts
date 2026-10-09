@@ -10,7 +10,7 @@ import { FONT, INK, REVIEW_RED } from "./tools";
  * objeto es su CENTRO, así que left/top = centro.
  */
 
-export type Kind = "note" | "rect" | "ellipse" | "diamond" | "line" | "arrow" | "cloud" | "text" | "path" | "highlight" | "marker" | "image";
+export type Kind = "note" | "rect" | "ellipse" | "diamond" | "line" | "arrow" | "cloud" | "text" | "path" | "highlight" | "marker" | "measure" | "image";
 
 declare module "fabric" {
   interface FabricObject {
@@ -27,6 +27,10 @@ declare module "fabric" {
     heads?: HeadStyle;
     /** Observación numerada: su número */
     num?: number;
+    /** Imagen calibrada: metros que representa un píxel de la imagen */
+    mPerPx?: number;
+    /** Cota: el texto que muestra (longitud) */
+    measureLabel?: string;
   }
   interface SerializedObjectProps {
     id?: string;
@@ -38,11 +42,13 @@ declare module "fabric" {
     baseFontSize?: number;
     heads?: HeadStyle;
     num?: number;
+    mPerPx?: number;
+    measureLabel?: string;
   }
 }
 
 // Propiedades propias que viajan al guardar (spec §4)
-FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads", "num"];
+FabricObject.customProperties = ["id", "kind", "fromId", "toId", "lockedByUser", "baseFontSize", "heads", "num", "mPerPx", "measureLabel"];
 
 /** Línea con punta de flecha: al final (x2, y2) por defecto, al inicio, en ambos extremos o sin punta. */
 export class Arrow extends Line {
@@ -80,6 +86,53 @@ export class Arrow extends Line {
 }
 classRegistry.setClass(Arrow);
 
+/** Cota: línea con marcas en los extremos y la longitud escrita en el medio (ver measures.ts). */
+export class Measure extends Line {
+  static type = "Measure";
+
+  constructor(points?: [number, number, number, number], options?: ConstructorParameters<typeof Line>[1]) {
+    super(points, options);
+    this.objectCaching = false; // las marcas y el texto sobresalen de la caja de la línea
+  }
+
+  _render(ctx: CanvasRenderingContext2D) {
+    super._render(ctx);
+    const p = this.calcLinePoints();
+    const angle = Math.atan2(p.y2 - p.y1, p.x2 - p.x1);
+    const color = typeof this.stroke === "string" ? this.stroke : INK;
+    const tick = Math.max(6, this.strokeWidth * 4);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = this.strokeWidth;
+    ctx.setLineDash([]);
+    for (const [x, y] of [[p.x1, p.y1], [p.x2, p.y2]]) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(0, -tick);
+      ctx.lineTo(0, tick);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (this.measureLabel) {
+      // el texto va sobre la línea y nunca queda cabeza abajo
+      ctx.translate((p.x1 + p.x2) / 2, (p.y1 + p.y2) / 2);
+      ctx.rotate(angle > Math.PI / 2 || angle < -Math.PI / 2 ? angle + Math.PI : angle);
+      ctx.font = `600 13px ${FONT}`;
+      const w = ctx.measureText(this.measureLabel).width;
+      ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+      ctx.fillRect(-w / 2 - 4, -24, w + 8, 18);
+      ctx.fillStyle = color;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(this.measureLabel, 0, -15);
+    }
+    ctx.restore();
+  }
+}
+classRegistry.setClass(Measure);
+
 /** Objeto auxiliar (vista previa al dibujar, editor de texto): no se guarda ni entra al historial. */
 export function markTransient<T extends FabricObject>(o: T): T {
   o.excludeFromExport = true;
@@ -106,7 +159,7 @@ export function applyLock(o: FabricObject, locked: boolean) {
   });
 }
 
-const THIN: Kind[] = ["line", "arrow", "path", "highlight", "cloud"];
+const THIN: Kind[] = ["line", "arrow", "path", "highlight", "cloud", "measure"];
 
 /** Ajustes que no se serializan: se aplican al crear y al cargar. */
 export function prepareObject(o: FabricObject) {
@@ -119,6 +172,10 @@ function tag<T extends FabricObject>(o: T, kind: Kind): T {
   o.set({ id: uid(), kind });
   prepareObject(o);
   return o;
+}
+
+export function createMeasure(a: Pt, b: Pt, stroke = "#2563eb", strokeWidth = 2): Measure {
+  return tag(new Measure([a.x, a.y, b.x, b.y], { stroke, strokeWidth }), "measure");
 }
 
 export function createConnector(kind: "arrow" | "line", a: Pt, b: Pt, stroke = INK, strokeWidth = 2): Line {

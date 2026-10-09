@@ -33,7 +33,7 @@ export interface StylePatch {
   heads?: HeadStyle;
 }
 
-const LINES: Kind[] = ["line", "arrow", "path", "cloud"];
+const LINES: Kind[] = ["line", "arrow", "path", "cloud", "measure"];
 
 export function readStyle(o: FabricObject): StyleState {
   const base: StyleState = {

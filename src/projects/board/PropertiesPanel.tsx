@@ -24,6 +24,9 @@ export interface PanelProps {
   onAlign: (mode: AlignMode) => void;
   onDistribute: (axis: "h" | "v") => void;
   onExport: () => void;
+  /** Una imagen sola seleccionada: estado de su escala (para medir sobre el plano) */
+  image: { calibrated: boolean } | null;
+  onCalibrate: () => void;
 }
 
 /** Selector de color libre (además de la paleta). Con valores mixtos o sin color parte de un gris. */
@@ -41,7 +44,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onDelete, onAlign, onDistribute, onExport }: PanelProps) {
+export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onDelete, onAlign, onDistribute, onExport, image, onCalibrate }: PanelProps) {
   const fills = s.kind === "note" ? NOTE_COLORS : FILL_COLORS;
   // el resaltador tiene sus propios colores claros y trazos anchos
   const hl = s.strokeLabel === "Resaltador";
@@ -97,6 +100,13 @@ export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onL
       <Row label={`Opacidad · ${opacity} %`}>
         <input type="range" min={10} max={100} step={5} value={opacity} onChange={(e) => onStyle({ opacity: Number(e.target.value) / 100 })} style={{ width: "100%" }} aria-label="Opacidad" />
       </Row>
+      {image && (
+        <Row label={image.calibrated ? "Escala del plano: calibrada" : "Escala del plano: sin calibrar"}>
+          <button type="button" className="bd-chip" onClick={onCalibrate}>
+            {image.calibrated ? "Recalibrar" : "Calibrar escala"}
+          </button>
+        </Row>
+      )}
       {count > 1 && (
         <Row label="Alinear">
           <Btn icon="align-left" label="Alinear a la izquierda" onClick={() => onAlign("left")} />

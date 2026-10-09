@@ -5,7 +5,9 @@ import type { IconName } from "../../components/Icon";
  * Adaptado de constants/index.ts de Figma_Clone (github.com/Lyam0udi/Figma_Clone).
  */
 
-export type Tool = "select" | "hand" | "note" | "rect" | "ellipse" | "diamond" | "arrow" | "line" | "cloud" | "pencil" | "marker" | "image" | "text";
+export type Tool = "select" | "hand" | "note" | "rect" | "ellipse" | "diamond" | "arrow" | "line" | "cloud" | "pencil" | "marker" | "measure" | "image" | "text"
+  /** interna: trazar la línea con la que se calibra la escala de una imagen */
+  | "calibrate";
 export type ToolGroup = "nav" | "ideas" | "diagram" | "markup" | "common";
 
 export interface ToolDef {
@@ -28,6 +30,7 @@ export const TOOLS: ToolDef[] = [
   { key: "cloud", label: "Nube de revisión", icon: "cloud", shortcut: "C", group: "markup" },
   { key: "pencil", label: "Lápiz", icon: "pencil", shortcut: "P", group: "markup" },
   { key: "marker", label: "Observación numerada", icon: "map-pin", shortcut: "M", group: "markup" },
+  { key: "measure", label: "Medir (calibrá antes la escala del plano)", icon: "ruler", shortcut: "K", group: "markup" },
   { key: "image", label: "Imagen", icon: "image", shortcut: "I", group: "markup" },
   { key: "text", label: "Texto", icon: "type", shortcut: "T", group: "common" },
 ];

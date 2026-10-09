@@ -2,7 +2,7 @@ import { Line, Rect, type Canvas, type FabricObject } from "fabric";
 import { shapeAt, shapeBox } from "./connectors";
 import { boxFromPoints, connectorEnds, nextMarkerNumber, snap, squareFromPoints, type Box, type Pt } from "./geometry";
 import { createLabeled } from "./labels";
-import { createCloud, createConnector, createMarker, createText, markTransient } from "./shapes";
+import { createCloud, createConnector, createMarker, createMeasure, createText, markTransient } from "./shapes";
 import type { Tool } from "./tools";
 
 /**
@@ -11,7 +11,7 @@ import type { Tool } from "./tools";
  * Adaptado de handleCanvasMouseDown/Move/Up de Figma_Clone (github.com/Lyam0udi/Figma_Clone).
  */
 
-const DRAG_TOOLS: Tool[] = ["note", "rect", "ellipse", "diamond", "arrow", "line", "cloud"];
+const DRAG_TOOLS: Tool[] = ["note", "rect", "ellipse", "diamond", "arrow", "line", "cloud", "measure", "calibrate"];
 const PREVIEW = { stroke: "#5b6cff", strokeWidth: 1.5, strokeDashArray: [6, 4], strokeUniform: true, selectable: false, evented: false };
 
 export interface DrawOptions {
@@ -21,6 +21,8 @@ export interface DrawOptions {
   onCreated: (obj: FabricObject, editing: boolean) => void;
   /** Ajustar a la cuadrícula: los puntos del arrastre caen en la cuadrícula */
   snap: () => boolean;
+  /** Se trazó la línea para calibrar la escala (no crea ningún objeto) */
+  onCalibrate: (a: Pt, b: Pt) => void;
 }
 
 export function attachDrawing(c: Canvas, opts: DrawOptions): () => void {
@@ -51,7 +53,7 @@ export function attachDrawing(c: Canvas, opts: DrawOptions): () => void {
       if (!DRAG_TOOLS.includes(tool)) return;
       start = at(o.scenePoint);
       preview = markTransient(
-        tool === "arrow" || tool === "line"
+        tool === "arrow" || tool === "line" || tool === "measure" || tool === "calibrate"
           ? new Line([start.x, start.y, start.x, start.y], PREVIEW)
           : new Rect({ ...PREVIEW, left: start.x, top: start.y, width: 0, height: 0, fill: "rgba(91,108,255,0.06)" }),
       );
@@ -74,6 +76,11 @@ export function attachDrawing(c: Canvas, opts: DrawOptions): () => void {
       c.remove(preview);
       start = null;
       preview = null;
+      if (opts.tool() === "calibrate") {
+        opts.onCalibrate(a, b);
+        c.requestRenderAll();
+        return;
+      }
       const obj = finish(c, opts.tool(), a, b, (o.e as MouseEvent).shiftKey, opts.noteColor(), opts.snap());
       if (obj) {
         c.add(obj);
@@ -103,6 +110,8 @@ function finish(c: Canvas, tool: Tool, a: Pt, b: Pt, shift: boolean, noteColor: 
       });
     case "cloud":
       return dragged ? createCloud(boxFromPoints(a, b)) : null;
+    case "measure":
+      return dragged ? createMeasure(a, b) : null;
     case "arrow":
     case "line": {
       if (!dragged) return null;
