@@ -99,7 +99,7 @@ export function projectHoursByMonth(state: AppState, projectId: ID, from: string
 
 const H = (min: number) => Math.round((min / 60) * 100) / 100;
 
-/** Excel con una hoja por mes: Persona | Totales | Extra | Recuperadas | Netas (en horas). */
+/** Excel con una hoja Resumen y una por mes: Persona | Totales | Extra | Recuperadas | Netas (en horas). */
 export async function downloadProjectHoursXlsx(state: AppState, projectId: ID, from: string, to: string): Promise<string> {
   const XLSX = await import("xlsx");
   const { wb, file } = buildProjectHoursWorkbook(XLSX, state, projectId, from, to);
@@ -107,38 +107,87 @@ export async function downloadProjectHoursXlsx(state: AppState, projectId: ID, f
   return file;
 }
 
+const HEADER = ["Horas totales proyecto", "Horas extra proyecto", "Horas recuperadas proyecto", "Horas netas proyecto"];
+const NOTES = [
+  ["Integrantes: las personas asignadas al proyecto. Extra y recuperadas son los totales de cada persona (todos sus proyectos), sin repartir."],
+  ["Extra: lo cargado por encima de la jornada de cada semana. Recuperadas: compensaciones de horas aprobadas que empiezan en el mes."],
+  ["Netas: extra − recuperadas."],
+];
+type Sums = Pick<ProjectHoursRow, "totalMin" | "extraMin" | "recoveredMin" | "netMin">;
+const zero = (): Sums => ({ totalMin: 0, extraMin: 0, recoveredMin: 0, netMin: 0 });
+const add = (a: Sums, b: Sums) => { a.totalMin += b.totalMin; a.extraMin += b.extraMin; a.recoveredMin += b.recoveredMin; a.netMin += b.netMin; return a; };
+const hours = (r: Sums) => [H(r.totalMin), H(r.extraMin), H(r.recoveredMin), H(r.netMin)];
+
 export function buildProjectHoursWorkbook(XLSX: typeof import("xlsx"), state: AppState, projectId: ID, from: string, to: string) {
   const project = state.projects.find((p) => p.id === projectId);
   const pName = project?.name ?? "Proyecto";
   const wb = XLSX.utils.book_new();
   const fmt = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
+  const months = projectHoursByMonth(state, projectId, from, to);
 
-  for (const m of projectHoursByMonth(state, projectId, from, to)) {
-    const sum = (k: keyof Omit<ProjectHoursRow, "userId" | "name">) => m.rows.reduce((s, r) => s + r[k], 0);
-    const aoa: (string | number)[][] = [
-      [`${pName} · ${m.label}`],
-      [`Del ${fmt(m.from)} al ${fmt(m.to)}`],
-      [],
-      ["Persona", "Horas totales proyecto", "Horas extra proyecto", "Horas recuperadas proyecto", "Horas netas proyecto"],
-      ...m.rows.map((r) => [r.name, H(r.totalMin), H(r.extraMin), H(r.recoveredMin), H(r.netMin)]),
-      ["Total", H(sum("totalMin")), H(sum("extraMin")), H(sum("recoveredMin")), H(sum("netMin"))],
-      [],
-      ["Integrantes: las personas asignadas al proyecto. Extra y recuperadas son los totales de cada persona (todos sus proyectos), sin repartir."],
-      ["Extra: lo cargado por encima de la jornada de cada semana. Recuperadas: compensaciones de horas aprobadas que empiezan en el mes."],
-      ["Netas: extra − recuperadas."],
-    ];
+  /** Hoja con formato de horas (0.00) en las columnas numéricas de las filas indicadas */
+  const sheet = (aoa: (string | number)[][], numericRows: number[], firstCol = 32) => {
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws["!cols"] = [{ wch: 32 }, { wch: 22 }, { wch: 20 }, { wch: 26 }, { wch: 20 }];
-    const firstData = 5;
-    const lastData = firstData + m.rows.length;
-    for (let r = firstData; r <= lastData; r++) {
+    ws["!cols"] = [{ wch: firstCol }, { wch: 22 }, { wch: 20 }, { wch: 26 }, { wch: 20 }];
+    for (const r of numericRows) {
       for (const col of ["B", "C", "D", "E"]) {
         const c = ws[`${col}${r}`];
         if (c) c.z = "0.00";
       }
     }
-    // Nombre de hoja: máx. 31 caracteres y único
-    XLSX.utils.book_append_sheet(wb, ws, m.label.slice(0, 31));
+    return ws;
+  };
+
+  // ---------- Resumen: todo el período ----------
+  const byPerson = new Map<ID, { name: string } & Sums>();
+  const byMonth = months.map((m) => ({ label: m.label, sums: m.rows.reduce((acc, r) => add(acc, r), zero()) }));
+  for (const m of months) {
+    for (const r of m.rows) {
+      const cur = byPerson.get(r.userId) ?? { name: r.name, ...zero() };
+      byPerson.set(r.userId, add(cur, r) as { name: string } & Sums);
+    }
+  }
+  const people = [...byPerson.values()].sort((a, b) => a.name.localeCompare(b.name, "es"));
+  const grand = byMonth.reduce((acc, m) => add(acc, m.sums), zero());
+  const summary: (string | number)[][] = [
+    [`${pName} · Resumen`],
+    [`Del ${fmt(from)} al ${fmt(to)} · ${months.length} mes${months.length === 1 ? "" : "es"} · ${people.length} integrante${people.length === 1 ? "" : "s"}`],
+    [],
+    ["Por persona (todo el período)"],
+    ["Persona", ...HEADER],
+    ...people.map((p) => [p.name, ...hours(p)]),
+    ["Total", ...hours(grand)],
+    [],
+    ["Por mes"],
+    ["Mes", ...HEADER],
+    ...byMonth.map((m) => [m.label, ...hours(m.sums)]),
+    ["Total", ...hours(grand)],
+    [],
+    ...NOTES,
+  ];
+  const pStart = 6;
+  const mStart = pStart + people.length + 4; // total, vacía, "Por mes" y encabezado
+  const numeric = [
+    ...Array.from({ length: people.length + 1 }, (_, i) => pStart + i),
+    ...Array.from({ length: byMonth.length + 1 }, (_, i) => mStart + i),
+  ];
+  XLSX.utils.book_append_sheet(wb, sheet(summary, numeric), "Resumen");
+
+  // ---------- Una hoja por mes ----------
+  for (const m of months) {
+    const total = m.rows.reduce((acc, r) => add(acc, r), zero());
+    const aoa: (string | number)[][] = [
+      [`${pName} · ${m.label}`],
+      [`Del ${fmt(m.from)} al ${fmt(m.to)}`],
+      [],
+      ["Persona", ...HEADER],
+      ...m.rows.map((r) => [r.name, ...hours(r)]),
+      ["Total", ...hours(total)],
+      [],
+      ...NOTES,
+    ];
+    // Nombre de hoja: máx. 31 caracteres
+    XLSX.utils.book_append_sheet(wb, sheet(aoa, Array.from({ length: m.rows.length + 1 }, (_, i) => 5 + i)), m.label.slice(0, 31));
   }
 
   const safe = pName.replace(/[\\/:*?"<>|]+/g, "-").slice(0, 60);
