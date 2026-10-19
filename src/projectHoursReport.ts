@@ -3,15 +3,16 @@ import type { AppState, ID } from "./types";
 import { addDays, addMonths, monthLabel, weekStart } from "./utils";
 
 /**
- * Horas de un proyecto por persona y por mes:
- * - Totales: lo cargado al proyecto.
- * - Extra: por semana (lun–dom), lo cargado por encima de la jornada esperada
- *   (detectado, se haya informado o no), repartido entre los proyectos en
- *   proporción a lo cargado en cada uno esa semana.
- * - Recuperadas: compensaciones aprobadas, atribuidas al proyecto donde se
- *   generó la extra que consumen (el mismo orden FIFO que overtimeBalance) y
- *   al mes de la compensación.
- * - Netas: totales − recuperadas.
+ * Horas de los integrantes de un proyecto, por persona y por mes. El proyecto
+ * solo define QUIÉNES aparecen (sus integrantes); extra y recuperadas son los
+ * totales de cada persona, sin repartir entre proyectos:
+ * - Totales proyecto: lo que la persona cargó a este proyecto.
+ * - Extra: por semana (lun–dom), lo cargado en total por encima de la jornada
+ *   esperada (detectado, se haya informado o no). Si la semana cae entre dos
+ *   meses, cada mes se lleva la parte de la extra que corresponde a lo cargado
+ *   en sus días.
+ * - Recuperadas: compensaciones de horas aprobadas que empiezan en el mes.
+ * - Netas: extra − recuperadas.
  */
 export interface ProjectHoursRow {
   userId: ID;
@@ -32,86 +33,58 @@ export interface ProjectHoursMonth {
 }
 
 export function projectHoursByMonth(state: AppState, projectId: ID, from: string, to: string): ProjectHoursMonth[] {
-  const weekCache = new Map<string, { loaded: number; extra: number; project: number }>();
-  const week = (userId: ID, ws: string) => {
+  const project = state.projects.find((p) => p.id === projectId);
+  const members = state.users.filter((u) => project?.memberIds.includes(u.id));
+
+  const weekCache = new Map<string, number>();
+  /** Fracción de lo cargado en la semana que es extra (0 a 1) */
+  const extraRatio = (userId: ID, ws: string) => {
     const key = `${userId}|${ws}`;
     const hit = weekCache.get(key);
-    if (hit) return hit;
+    if (hit !== undefined) return hit;
     const we = addDays(ws, 6);
     let loaded = 0;
-    let project = 0;
-    for (const e of state.entries) {
-      if (e.userId !== userId || e.date < ws || e.date > we) continue;
-      loaded += e.end - e.start;
-      if (e.projectId === projectId) project += e.end - e.start;
-    }
+    for (const e of state.entries) if (e.userId === userId && e.date >= ws && e.date <= we) loaded += e.end - e.start;
     const u = state.users.find((x) => x.id === userId);
     const expected = u ? expectedMinutesInRange(state, u, ws, we) : 0;
     const extra = expected > 0 ? Math.max(0, loaded - expected) : loaded;
-    const w = { loaded, extra, project };
-    weekCache.set(key, w);
-    return w;
+    const ratio = loaded > 0 ? extra / loaded : 0;
+    weekCache.set(key, ratio);
+    return ratio;
   };
 
-  const acc = new Map<string, Map<ID, { total: number; extra: number; recovered: number }>>();
+  const acc = new Map<string, { total: number; extra: number; recovered: number }>();
   const cell = (month: string, userId: ID) => {
-    let m = acc.get(month);
-    if (!m) acc.set(month, (m = new Map()));
-    let c = m.get(userId);
-    if (!c) m.set(userId, (c = { total: 0, extra: 0, recovered: 0 }));
+    const key = `${month}|${userId}`;
+    let c = acc.get(key);
+    if (!c) acc.set(key, (c = { total: 0, extra: 0, recovered: 0 }));
     return c;
   };
 
+  const memberIds = new Set(members.map((u) => u.id));
   for (const e of state.entries) {
-    if (e.projectId !== projectId || e.date < from || e.date > to) continue;
+    if (!memberIds.has(e.userId) || e.date < from || e.date > to) continue;
     const mins = e.end - e.start;
-    const w = week(e.userId, weekStart(e.date));
     const c = cell(e.date.slice(0, 7), e.userId);
-    c.total += mins;
-    if (w.loaded > 0) c.extra += (mins * w.extra) / w.loaded;
+    if (e.projectId === projectId) c.total += mins;
+    c.extra += mins * extraRatio(e.userId, weekStart(e.date));
   }
 
-  // Recuperadas: se recorre TODO el historial de cada persona para que el
-  // consumo FIFO de sus horas extra aprobadas sea el mismo que el del saldo
-  const userIds = new Set(state.absences.filter((a) => a.type === "Compensación de horas" && a.status === "Aprobado").map((a) => a.userId));
-  for (const userId of userIds) {
-    const lots = state.overtime
-      .filter((o) => o.userId === userId && o.status === "Aprobado")
-      .sort((a, b) => a.weekStart.localeCompare(b.weekStart))
-      .map((o) => {
-        const w = week(userId, weekStart(o.weekStart));
-        return { remaining: o.minutes, share: w.loaded > 0 ? w.project / w.loaded : 0 };
-      });
-    const comps = state.absences
-      .filter((a) => a.userId === userId && a.type === "Compensación de horas" && a.status === "Aprobado")
-      .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom));
-    for (const a of comps) {
-      let left = compensationMinutes(state, userId, a);
-      const inRange = a.dateFrom >= from && a.dateFrom <= to;
-      for (const lot of lots) {
-        if (left <= 0) break;
-        const take = Math.min(lot.remaining, left);
-        lot.remaining -= take;
-        left -= take;
-        if (inRange && take > 0 && lot.share > 0) cell(a.dateFrom.slice(0, 7), userId).recovered += take * lot.share;
-      }
-    }
+  for (const a of state.absences) {
+    if (!memberIds.has(a.userId) || a.type !== "Compensación de horas" || a.status !== "Aprobado") continue;
+    if (a.dateFrom < from || a.dateFrom > to) continue;
+    cell(a.dateFrom.slice(0, 7), a.userId).recovered += compensationMinutes(state, a.userId, a);
   }
 
   const months: ProjectHoursMonth[] = [];
   for (let m = from.slice(0, 7) + "-01"; m <= to; m = addMonths(m, 1)) {
     const monthEnd = addDays(addMonths(m, 1), -1);
     const label = monthLabel(m).replace(" de ", " ");
-    const rows = [...(acc.get(m.slice(0, 7)) ?? new Map()).entries()]
-      .map(([userId, c]) => ({
-        userId,
-        name: state.users.find((u) => u.id === userId)?.name ?? "(persona eliminada)",
-        totalMin: c.total,
-        extraMin: c.extra,
-        recoveredMin: c.recovered,
-        netMin: c.total - c.recovered,
-      }))
-      .filter((r) => r.totalMin > 0 || r.recoveredMin > 0)
+    const rows = members
+      .map((u) => {
+        const c = acc.get(`${m.slice(0, 7)}|${u.id}`) ?? { total: 0, extra: 0, recovered: 0 };
+        return { userId: u.id, name: u.name, totalMin: c.total, extraMin: c.extra, recoveredMin: c.recovered, netMin: c.extra - c.recovered };
+      })
       .sort((a, b) => a.name.localeCompare(b.name, "es"));
     months.push({
       month: m.slice(0, 7),
@@ -150,9 +123,9 @@ export function buildProjectHoursWorkbook(XLSX: typeof import("xlsx"), state: Ap
       ...m.rows.map((r) => [r.name, H(r.totalMin), H(r.extraMin), H(r.recoveredMin), H(r.netMin)]),
       ["Total", H(sum("totalMin")), H(sum("extraMin")), H(sum("recoveredMin")), H(sum("netMin"))],
       [],
-      ["Extra: lo cargado por encima de la jornada de cada semana, repartido según las horas de cada proyecto esa semana."],
-      ["Recuperadas: compensaciones aprobadas en el mes, atribuidas al proyecto donde se generó la extra que consumen."],
-      ["Netas: totales − recuperadas."],
+      ["Integrantes: las personas asignadas al proyecto. Extra y recuperadas son los totales de cada persona (todos sus proyectos), sin repartir."],
+      ["Extra: lo cargado por encima de la jornada de cada semana. Recuperadas: compensaciones de horas aprobadas que empiezan en el mes."],
+      ["Netas: extra − recuperadas."],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws["!cols"] = [{ wch: 32 }, { wch: 22 }, { wch: 20 }, { wch: 26 }, { wch: 20 }];

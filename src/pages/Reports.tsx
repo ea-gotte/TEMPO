@@ -352,12 +352,12 @@ function ProjectXlsxModal({ initialProject, initialFrom, initialTo, onClose }: {
         </div>
       </div>
       <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>
-        Una hoja por mes{months > 0 ? ` (${months} hoja${months > 1 ? "s" : ""})` : ""}, con una fila por persona: horas totales, extra, recuperadas y netas del proyecto.
+        Una hoja por mes{months > 0 ? ` (${months} hoja${months > 1 ? "s" : ""})` : ""}, con una fila por cada integrante del proyecto: horas cargadas al proyecto, extra, recuperadas y netas.
       </div>
       <ul style={{ fontSize: 12, color: "var(--text-3)", margin: "8px 0 0", paddingLeft: 18 }}>
-        <li><b>Extra</b>: lo cargado por encima de la jornada de cada semana, repartido según las horas de cada proyecto esa semana.</li>
-        <li><b>Recuperadas</b>: compensaciones de horas aprobadas en el mes, atribuidas al proyecto donde se generó la extra que consumen.</li>
-        <li><b>Netas</b>: totales − recuperadas.</li>
+        <li><b>Extra</b>: total de la persona (todos sus proyectos), lo cargado por encima de la jornada de cada semana.</li>
+        <li><b>Recuperadas</b>: total de la persona, compensaciones de horas aprobadas que empiezan en el mes.</li>
+        <li><b>Netas</b>: extra − recuperadas.</li>
       </ul>
       {error && <div style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 6 }}>{error}</div>}
     </Modal>
