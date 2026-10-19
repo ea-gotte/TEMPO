@@ -32,9 +32,10 @@ export interface ProjectHoursMonth {
   rows: ProjectHoursRow[];
 }
 
-export function projectHoursByMonth(state: AppState, projectId: ID, from: string, to: string): ProjectHoursMonth[] {
+/** `userIds`: personas a incluir; si no se indica, los integrantes del proyecto. */
+export function projectHoursByMonth(state: AppState, projectId: ID, from: string, to: string, userIds?: ID[]): ProjectHoursMonth[] {
   const project = state.projects.find((p) => p.id === projectId);
-  const members = state.users.filter((u) => project?.memberIds.includes(u.id));
+  const members = state.users.filter((u) => (userIds ? userIds.includes(u.id) : project?.memberIds.includes(u.id)));
 
   const weekCache = new Map<string, number>();
   /** Fracción de lo cargado en la semana que es extra (0 a 1) */
@@ -100,16 +101,16 @@ export function projectHoursByMonth(state: AppState, projectId: ID, from: string
 const H = (min: number) => Math.round((min / 60) * 100) / 100;
 
 /** Excel con una hoja Resumen y una por mes: Persona | Totales | Extra | Recuperadas | Netas (en horas). */
-export async function downloadProjectHoursXlsx(state: AppState, projectId: ID, from: string, to: string): Promise<string> {
+export async function downloadProjectHoursXlsx(state: AppState, projectId: ID, from: string, to: string, userIds?: ID[]): Promise<string> {
   const XLSX = await import("xlsx");
-  const { wb, file } = buildProjectHoursWorkbook(XLSX, state, projectId, from, to);
+  const { wb, file } = buildProjectHoursWorkbook(XLSX, state, projectId, from, to, userIds);
   XLSX.writeFile(wb, file);
   return file;
 }
 
 const HEADER = ["Horas totales proyecto", "Horas extra proyecto", "Horas recuperadas proyecto", "Horas netas proyecto"];
 const NOTES = [
-  ["Integrantes: las personas asignadas al proyecto. Extra y recuperadas son los totales de cada persona (todos sus proyectos), sin repartir."],
+  ["Personas: las elegidas al exportar (por defecto, los integrantes del proyecto). Extra y recuperadas son los totales de cada persona (todos sus proyectos), sin repartir."],
   ["Extra: lo cargado por encima de la jornada de cada semana. Recuperadas: compensaciones de horas aprobadas que empiezan en el mes."],
   ["Netas: extra − recuperadas."],
 ];
@@ -118,12 +119,12 @@ const zero = (): Sums => ({ totalMin: 0, extraMin: 0, recoveredMin: 0, netMin: 0
 const add = (a: Sums, b: Sums) => { a.totalMin += b.totalMin; a.extraMin += b.extraMin; a.recoveredMin += b.recoveredMin; a.netMin += b.netMin; return a; };
 const hours = (r: Sums) => [H(r.totalMin), H(r.extraMin), H(r.recoveredMin), H(r.netMin)];
 
-export function buildProjectHoursWorkbook(XLSX: typeof import("xlsx"), state: AppState, projectId: ID, from: string, to: string) {
+export function buildProjectHoursWorkbook(XLSX: typeof import("xlsx"), state: AppState, projectId: ID, from: string, to: string, userIds?: ID[]) {
   const project = state.projects.find((p) => p.id === projectId);
   const pName = project?.name ?? "Proyecto";
   const wb = XLSX.utils.book_new();
   const fmt = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
-  const months = projectHoursByMonth(state, projectId, from, to);
+  const months = projectHoursByMonth(state, projectId, from, to, userIds);
 
   /** Hoja con formato de horas (0.00) en las columnas numéricas de las filas indicadas */
   const sheet = (aoa: (string | number)[][], numericRows: number[], firstCol = 32) => {
@@ -151,7 +152,7 @@ export function buildProjectHoursWorkbook(XLSX: typeof import("xlsx"), state: Ap
   const grand = byMonth.reduce((acc, m) => add(acc, m.sums), zero());
   const summary: (string | number)[][] = [
     [`${pName} · Resumen`],
-    [`Del ${fmt(from)} al ${fmt(to)} · ${months.length} mes${months.length === 1 ? "" : "es"} · ${people.length} integrante${people.length === 1 ? "" : "s"}`],
+    [`Del ${fmt(from)} al ${fmt(to)} · ${months.length} mes${months.length === 1 ? "" : "es"} · ${people.length} persona${people.length === 1 ? "" : "s"}`],
     [],
     ["Por persona (todo el período)"],
     ["Persona", ...HEADER],
