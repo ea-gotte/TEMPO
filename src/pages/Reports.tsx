@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { useStore, visibleProjects, expectedMinutesInRange } from "../store";
 import { addDays, addMonths, fmtDate, downloadFile, fmtDur, toCSV, today, weekStart } from "../utils";
-import { HBarChart, useToast } from "../components/ui";
+import { HBarChart, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
+import { downloadProjectHoursXlsx } from "../projectHoursReport";
 
 type Period = "semana" | "mes" | "personalizado";
 
@@ -26,6 +27,7 @@ export function Reports() {
   const [projectFilter, setProjectFilter] = useState("");
   const [subProjectFilter, setSubProjectFilter] = useState("");
   const [clientFilter, setClientFilter] = useState("");
+  const [projectXlsx, setProjectXlsx] = useState(false);
 
   const [rFrom, rTo] = useMemo((): [string, string] => {
     if (period === "semana") return [weekStart(anchor), addDays(weekStart(anchor), 6)];
@@ -126,6 +128,7 @@ export function Reports() {
         <h1>Reportes</h1>
         <span className="spacer" />
         <button className="btn btn-secondary" onClick={exportCSV}><Icon name="download" size={14} /> CSV / Excel</button>
+        {!isEmployee && <button className="btn btn-secondary" onClick={() => setProjectXlsx(true)}><Icon name="download" size={14} /> Excel por proyecto</button>}
         <button className="btn btn-secondary" onClick={() => { window.print(); }}><Icon name="printer" size={14} /> PDF</button>
       </div>
 
@@ -283,6 +286,80 @@ export function Reports() {
           </tbody>
         </table>
       </div>
+      {projectXlsx && (
+        <ProjectXlsxModal
+          initialProject={projectFilter} initialFrom={rFrom} initialTo={rTo}
+          onClose={() => setProjectXlsx(false)}
+        />
+      )}
     </>
+  );
+}
+
+/** Excel de un proyecto: una hoja por mes con las horas de cada persona. */
+function ProjectXlsxModal({ initialProject, initialFrom, initialTo, onClose }: { initialProject: string; initialFrom: string; initialTo: string; onClose: () => void }) {
+  const { state } = useStore();
+  const toast = useToast();
+  const [projectId, setProjectId] = useState(initialProject);
+  const [from, setFrom] = useState(initialFrom.slice(0, 8) + "01");
+  const [to, setTo] = useState(initialTo);
+  const [busy, setBusy] = useState(false);
+  const months = from && to && from <= to ? (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(to.slice(5, 7)) - Number(from.slice(5, 7)) + 1 : 0;
+  const error = !projectId ? "Elegí un proyecto." : !from || !to ? "Completá las fechas." : from > to ? "La fecha de inicio es posterior a la de fin." : months > 24 ? "El plazo puede abarcar hasta 24 meses." : "";
+
+  async function generate() {
+    if (error) return;
+    setBusy(true);
+    try {
+      const file = await downloadProjectHoursXlsx(state, projectId, from, to);
+      toast(`Excel generado: ${file}`);
+      onClose();
+    } catch {
+      toast("No se pudo generar el Excel.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      title="Excel de horas por proyecto"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" disabled={!!error || busy} onClick={generate}><Icon name="download" size={14} /> {busy ? "Generando…" : "Descargar Excel"}</button>
+        </>
+      }
+    >
+      <div className="field">
+        <label>Proyecto</label>
+        <select className="select" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+          <option value="">Elegir proyecto…</option>
+          {[...state.projects].sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
+            <option key={p.id} value={p.id}>{p.name}{p.status !== "activo" ? ` (${p.status})` : ""}</option>
+          ))}
+        </select>
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Desde</label>
+          <input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Hasta</label>
+          <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
+        </div>
+      </div>
+      <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+        Una hoja por mes{months > 0 ? ` (${months} hoja${months > 1 ? "s" : ""})` : ""}, con una fila por persona: horas totales, extra, recuperadas y netas del proyecto.
+      </div>
+      <ul style={{ fontSize: 12, color: "var(--text-3)", margin: "8px 0 0", paddingLeft: 18 }}>
+        <li><b>Extra</b>: lo cargado por encima de la jornada de cada semana, repartido según las horas de cada proyecto esa semana.</li>
+        <li><b>Recuperadas</b>: compensaciones de horas aprobadas en el mes, atribuidas al proyecto donde se generó la extra que consumen.</li>
+        <li><b>Netas</b>: totales − recuperadas.</li>
+      </ul>
+      {error && <div style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 6 }}>{error}</div>}
+    </Modal>
   );
 }

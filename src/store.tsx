@@ -1349,7 +1349,7 @@ export function overtimeClaimDeadline(weekStartISO: string): string {
 
 /** Minutos de una ausencia de "Compensación de horas" (por horario si está
  * cargado, si no por días hábiles a jornada completa/media del usuario). */
-function compensationMinutes(state: AppState, userId: string, a: AbsenceRequest): number {
+export function compensationMinutes(state: AppState, userId: string, a: AbsenceRequest): number {
   if (a.timeFrom && a.timeTo) {
     const [h1, m1] = a.timeFrom.split(":").map(Number);
     const [h2, m2] = a.timeTo.split(":").map(Number);
