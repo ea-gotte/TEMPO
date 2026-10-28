@@ -1,10 +1,14 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Avatar } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { fmtDate, fmtDur, safeHttpUrl, today } from "../utils";
 import { useEnv } from "./env";
 import { byDue, isPlanOverdue, taskProgress, type Perms } from "./logic";
-import { DocsModal, MetaModal } from "./Modals";
+import { DocsModal, MetaModal, type TaskDraft } from "./Modals";
+import { TasksTab } from "./TasksTab";
+import { MeetingsTab } from "./MeetingsTab";
+import { ChangesTab } from "./ChangesTab";
+import { scopeStats } from "./agile";
 import { Bar, DuePill, KpiCard, Person } from "./parts";
 import { projectIndicators } from "./indicators";
 import { ProjectIndicatorsCard } from "./IndicatorsPanel";
@@ -14,9 +18,19 @@ import { useWork, workActions } from "./workStore";
 
 type Tab = import("./ProjectWorkspace").Tab;
 
-export function OverviewTab({ projectId, perms, go, openTask }: { projectId: string; perms: Perms; go: (t: Tab) => void; openTask: (t: Task) => void }) {
+type Section = "tareas" | "reuniones" | "cambios";
+
+export function OverviewTab({ projectId, perms, go }: { projectId: string; perms: Perms; go: (t: Tab) => void }) {
   const env = useEnv();
   const work = useWork();
+  const [section, setSection] = useState<Section>("tareas");
+  const [draft, setDraft] = useState<TaskDraft | null>(null);
+  const workRef = useRef<HTMLDivElement>(null);
+  const showSection = (s: Section) => {
+    setSection(s);
+    workRef.current?.scrollIntoView({ block: "start" });
+  };
+  const openTask = (t: Task) => { setDraft(t); showSection("tareas"); };
   const [editMeta, setEditMeta] = useState(false);
   const [editDocs, setEditDocs] = useState(false);
   const [infoOpen, setInfoOpen] = useState<string[]>([]);
@@ -56,6 +70,14 @@ export function OverviewTab({ projectId, perms, go, openTask }: { projectId: str
   });
 
   const activeUsers = env.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name));
+  const nTasks = tasks.filter((t) => !t.archived).length;
+  const nMeetings = work.meetings.filter((m) => m.projectId === projectId).length;
+  const pendingChanges = scopeStats([], work.changes.filter((c) => c.projectId === projectId)).pending;
+  const sections: { key: Section; label: string }[] = [
+    { key: "tareas", label: `Tareas (${nTasks})` },
+    { key: "reuniones", label: `Reuniones (${nMeetings})` },
+    { key: "cambios", label: `Cambios del cliente${pendingChanges ? ` (${pendingChanges} pendiente${pendingChanges > 1 ? "s" : ""})` : ""}` },
+  ];
 
   return (
     <>
@@ -240,8 +262,23 @@ export function OverviewTab({ projectId, perms, go, openTask }: { projectId: str
               })}
             </div>
           </div>
-          <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => go("tareas")}>Ir a las tareas <Icon name="arrow-right" size={12} /></button>
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => showSection("tareas")}>Ir a las tareas <Icon name="arrow-right" size={12} style={{ transform: "rotate(90deg)" }} /></button>
         </div>
+      </div>
+
+      {/* ---------- Trabajo del proyecto: tareas, reuniones y cambios, embebidos ---------- */}
+      <div ref={workRef} className="card card-pad" style={{ marginTop: 14, scrollMarginTop: 70 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+          <div className="card-title" style={{ margin: 0 }}>Trabajo del proyecto</div>
+          <div className="tabs" role="tablist">
+            {sections.map((s) => (
+              <button key={s.key} role="tab" aria-selected={section === s.key} className={section === s.key ? "active" : ""} onClick={() => setSection(s.key)}>{s.label}</button>
+            ))}
+          </div>
+        </div>
+        {section === "tareas" && <TasksTab projectId={projectId} perms={perms} initialDraft={draft} onConsume={() => setDraft(null)} />}
+        {section === "reuniones" && <MeetingsTab projectId={projectId} perms={perms} />}
+        {section === "cambios" && <ChangesTab projectId={projectId} perms={perms} />}
       </div>
 
       <div className="card card-pad" style={{ marginTop: 14 }}>

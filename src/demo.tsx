@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import { Dot, ToastProvider } from "./components/ui";
 import { Icon } from "./components/Icon";
 import { fmtDur } from "./utils";
-import { Panorama } from "./projects/Panorama";
+import { GeneralPanel } from "./projects/GeneralPanel";
 import { ProjectWorkspace } from "./projects/ProjectWorkspace";
 import { DEMO_USERS, demoEnv } from "./projects/demoData";
 import "./styles.css";
@@ -15,7 +15,7 @@ import "./styles.css";
  */
 function DemoApp() {
   const [meId, setMeId] = useState("u1");
-  const [tab, setTab] = useState<"proyectos" | "panorama">("panorama");
+  const [tab, setTab] = useState<"proyectos" | "panel">("panel");
   const [open, setOpen] = useState<string | null>(null);
   const [dark, setDark] = useState(false);
   const env = useMemo(() => demoEnv(meId), [meId]);
@@ -24,7 +24,9 @@ function DemoApp() {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
 
-  const visible = env.projects.filter((p) => env.me.role === "admin" || env.me.role === "gerente" || p.memberIds.includes(env.me.id));
+  const isStaff = env.me.role === "admin" || env.me.role === "gerente";
+  const visible = env.projects.filter((p) => isStaff || p.memberIds.includes(env.me.id));
+  const shownTab = tab === "panel" && !isStaff ? "proyectos" : tab;
 
   return (
     <div style={{ minHeight: "100%", background: "var(--bg)" }}>
@@ -50,12 +52,12 @@ function DemoApp() {
                 <h1>Proyectos</h1>
                 <span className="spacer" />
                 <div className="tabs">
-                  <button className={tab === "proyectos" ? "active" : ""} onClick={() => setTab("proyectos")}>Proyectos</button>
-                  <button className={tab === "panorama" ? "active" : ""} onClick={() => setTab("panorama")}>Panorama</button>
+                  {isStaff && <button className={shownTab === "panel" ? "active" : ""} onClick={() => setTab("panel")}>Panel general</button>}
+                  <button className={shownTab === "proyectos" ? "active" : ""} onClick={() => setTab("proyectos")}>Proyectos</button>
                 </div>
               </div>
-              {tab === "panorama" ? (
-                <Panorama env={env} onOpen={setOpen} />
+              {shownTab === "panel" ? (
+                <GeneralPanel env={env} onOpen={setOpen} />
               ) : (
                 <div className="card" style={{ overflowX: "auto" }}>
                   <table className="table">

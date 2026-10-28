@@ -4,16 +4,11 @@ import { Icon } from "../components/Icon";
 import { fmtDate } from "../utils";
 import { EnvProvider, useEnv } from "./env";
 import { isProjectLate, projectPerms } from "./logic";
-import type { TaskDraft } from "./Modals";
 import { OverviewTab } from "./OverviewTab";
 import { PlanTab } from "./PlanTab";
 import { BacklogTab } from "./BacklogTab";
-import { ChangesTab } from "./ChangesTab";
 import { DiscoveryTab, RisksTab } from "./Uncertainty";
-import { scopeStats } from "./agile";
-import { TasksTab } from "./TasksTab";
-import { MeetingsTab } from "./MeetingsTab";
-import type { Task, WorkEnv } from "./types";
+import type { WorkEnv } from "./types";
 import { useWork, workActions } from "./workStore";
 import { clearAllBoards } from "./board/boardStore";
 import { BoardBoundary } from "./board/BoardBoundary";
@@ -22,7 +17,7 @@ import "./projects.css";
 // El tablero carga Fabric.js: se descarga recién al abrir la pestaña
 const BoardTab = lazy(() => import("./board/BoardTab"));
 
-export type Tab = "resumen" | "tareas" | "plan" | "backlog" | "cambios" | "riesgos" | "descubrimiento" | "reuniones" | "tablero";
+export type Tab = "resumen" | "plan" | "backlog" | "riesgos" | "descubrimiento" | "tablero";
 
 const MODE_LABEL = { planificado: "Planificado", agil: "Ágil", hibrido: "Híbrido" } as const;
 
@@ -56,7 +51,6 @@ function Workspace({ projectId, onBack, onEditProject }: { projectId: string; on
   const env = useEnv();
   const work = useWork();
   const [tab, setTab] = useState<Tab>("resumen");
-  const [draft, setDraft] = useState<TaskDraft | null>(null);
 
   const project = env.projects.find((p) => p.id === projectId);
   const index = Math.max(0, env.projects.findIndex((p) => p.id === projectId));
@@ -73,10 +67,7 @@ function Workspace({ projectId, onBack, onEditProject }: { projectId: string; on
   const meta = work.meta[projectId];
   const client = env.clients.find((c) => c.id === project.clientId);
   const late = isProjectLate(project, meta, work.milestones.filter((m) => m.projectId === projectId));
-  const nTasks = work.tasks.filter((t) => t.projectId === projectId && !t.archived).length;
   const mode = meta?.mode ?? "planificado";
-  const nMeetings = work.meetings.filter((m) => m.projectId === projectId).length;
-  const pending = scopeStats([], work.changes.filter((c) => c.projectId === projectId)).pending;
   const nRisks = work.risks.filter((r) => r.projectId === projectId && r.status === "abierto").length;
   const tabs: { key: Tab; label: string }[] = [
     { key: "resumen", label: "Resumen" },
@@ -84,9 +75,6 @@ function Workspace({ projectId, onBack, onEditProject }: { projectId: string; on
     ...(mode !== "planificado" ? [{ key: "backlog" as Tab, label: "Backlog y sprints" }] : []),
     // La programación se sigue por hitos y entregables en todos los modos; las tareas cuelgan de un hito
     { key: "plan", label: "Hitos y entregables" },
-    { key: "tareas", label: `Tareas (${nTasks})` },
-    { key: "reuniones", label: `Reuniones (${nMeetings})` },
-    { key: "cambios", label: `Cambios del cliente${pending ? ` (${pending})` : ""}` },
     { key: "riesgos", label: `Riesgos (${nRisks})` },
     { key: "tablero", label: "Tablero" },
   ];
@@ -124,13 +112,10 @@ function Workspace({ projectId, onBack, onEditProject }: { projectId: string; on
         {tabs.map((t) => <button key={t.key} className={current === t.key ? "active" : ""} onClick={() => setTab(t.key)}>{t.label}</button>)}
       </div>
 
-      {current === "resumen" && <OverviewTab projectId={projectId} perms={perms} go={setTab} openTask={(t: Task) => { setDraft(t); setTab("tareas"); }} />}
+      {current === "resumen" && <OverviewTab projectId={projectId} perms={perms} go={setTab} />}
       {current === "descubrimiento" && <DiscoveryTab projectId={projectId} perms={perms} />}
       {current === "backlog" && <BacklogTab projectId={projectId} perms={perms} />}
-      {current === "tareas" && <TasksTab projectId={projectId} perms={perms} initialDraft={draft} onConsume={() => setDraft(null)} />}
       {current === "plan" && <PlanTab projectId={projectId} perms={perms} />}
-      {current === "reuniones" && <MeetingsTab projectId={projectId} perms={perms} />}
-      {current === "cambios" && <ChangesTab projectId={projectId} perms={perms} />}
       {current === "riesgos" && <RisksTab projectId={projectId} perms={perms} />}
       {current === "tablero" && (
         <BoardBoundary key={projectId}>

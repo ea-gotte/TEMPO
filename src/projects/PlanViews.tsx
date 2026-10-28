@@ -4,6 +4,7 @@ import { addDays, fmtDate, monthLabel, parseISO, today } from "../utils";
 import { planInfo } from "./constants";
 import { useEnv } from "./env";
 import { isPlanOverdue, taskProgress } from "./logic";
+import { useDragPan, useWheelZoom } from "./PortfolioViews";
 import { forecastSchedule, planItems } from "./schedule";
 import type { Deliverable, Milestone, Task } from "./types";
 import { workActions } from "./workStore";
@@ -28,7 +29,8 @@ export interface PlanViewProps {
 
 interface DragState { id: string; edge: "start" | "end"; x0: number; start: string; end: string; delta: number }
 
-const DAY_W = 24;
+const MIN_DAY_W = 3;
+const MAX_DAY_W = 48;
 const NAME_W = 260;
 const ROW_H = 40;
 const DOT = 11;
@@ -48,6 +50,16 @@ export function PlanGantt({ milestones, deliverables, tasks, onOpenMs, onOpenDel
   const toast = useToast();
   const now = today();
   const scroller = useRef<HTMLDivElement>(null);
+
+  const rows = useMemo(() => [...milestones].sort((a, b) => (a.dueDate ?? "9").localeCompare(b.dueDate ?? "9")), [milestones]);
+  const fc = useMemo(() => forecastSchedule(planItems(milestones, deliverables), now), [milestones, deliverables, now]);
+  const dated = rows.filter((m) => m.dueDate);
+  const undated = rows.length - dated.length;
+  const orphanDel = deliverables.filter((d) => !d.milestoneId || !milestones.some((m) => m.id === d.milestoneId)).length;
+
+  const { dayW, setDayW, zoomCenter, dayWRef, clamp } = useWheelZoom(scroller, dated.length > 0, 24, MIN_DAY_W, MAX_DAY_W);
+  const { onPointerDown } = useDragPan(scroller);
+
   const [drag, setDrag] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
   dragRef.current = drag;
@@ -57,7 +69,7 @@ export function PlanGantt({ milestones, deliverables, tasks, onOpenMs, onOpenDel
   useEffect(() => {
     if (!drag) return;
     const move = (e: PointerEvent) => {
-      const delta = Math.round((e.clientX - drag.x0) / DAY_W);
+      const delta = Math.round((e.clientX - drag.x0) / dayWRef.current);
       setDrag((d) => (d && d.delta !== delta ? { ...d, delta } : d));
     };
     const up = () => {
@@ -92,12 +104,6 @@ export function PlanGantt({ milestones, deliverables, tasks, onOpenMs, onOpenDel
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!drag]);
 
-  const rows = useMemo(() => [...milestones].sort((a, b) => (a.dueDate ?? "9").localeCompare(b.dueDate ?? "9")), [milestones]);
-  const fc = useMemo(() => forecastSchedule(planItems(milestones, deliverables), now), [milestones, deliverables, now]);
-  const dated = rows.filter((m) => m.dueDate);
-  const undated = rows.length - dated.length;
-  const orphanDel = deliverables.filter((d) => !d.milestoneId || !milestones.some((m) => m.id === d.milestoneId)).length;
-
   const range = useMemo(() => {
     const all = [now, ...dated.flatMap((m) => {
       const f = fc.get(m.id);
@@ -115,27 +121,47 @@ export function PlanGantt({ milestones, deliverables, tasks, onOpenMs, onOpenDel
     const el = scroller.current;
     const open = dated.filter((m) => m.status !== "cumplido").map((m) => m.startDate ?? m.dueDate!);
     const anchor = open.length ? open.reduce((a, b) => (a < b ? a : b)) : now;
-    if (el) el.scrollLeft = Math.max(0, diffDays(anchor, range.start) * DAY_W - 30);
+    if (el) el.scrollLeft = Math.max(0, diffDays(anchor, range.start) * dayWRef.current - 30);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range.start, now]);
 
   function goToday() {
     const el = scroller.current;
-    if (el) el.scrollTo({ left: Math.max(0, diffDays(now, range.start) * DAY_W - (el.clientWidth - NAME_W) * 0.4), behavior: "smooth" });
+    if (el) el.scrollTo({ left: Math.max(0, diffDays(now, range.start) * dayW - (el.clientWidth - NAME_W) * 0.4), behavior: "smooth" });
+  }
+
+  function fitAll() {
+    const el = scroller.current;
+    if (!el || range.days <= 0) return;
+    const newW = clamp((el.clientWidth - NAME_W) / range.days);
+    el.scrollLeft = 0;
+    setDayW(newW);
+    requestAnimationFrame(() => {
+      if (scroller.current) scroller.current.scrollLeft = 0;
+    });
   }
 
   if (dated.length === 0) {
     return <div className="card card-pad"><Empty icon="calendar-days" text="Nada para graficar" sub="Los hitos necesitan una fecha (y, para ver la barra, un inicio planificado) para aparecer en el Gantt." /></div>;
   }
 
-  const width = range.days * DAY_W;
-  const X = (d: string) => diffDays(d, range.start) * DAY_W;
-  const todayX = X(now) + DAY_W / 2;
+  const width = range.days * dayW;
+  const X = (d: string) => diffDays(d, range.start) * dayW;
+  const todayX = X(now) + dayW / 2;
   const months: { label: string; x: number }[] = [];
+  const shortMonths = dayW * 30 < 130;
+  let firstMonday = 0;
   for (let i = 0; i < range.days; i++) {
     const d = addDays(range.start, i);
-    if (i === 0 || d.endsWith("-01")) months.push({ label: monthLabel(d), x: i * DAY_W });
+    if (!firstMonday && parseISO(d).getDay() === 1) firstMonday = i;
+    if (i === 0 || d.endsWith("-01")) {
+      const x = i * dayW;
+      // El primer mes (parcial) se omite si lo pisaría el rótulo del siguiente
+      if (months.length === 1 && x - months[0].x < (shortMonths ? 46 : 120)) months.pop();
+      months.push({ label: shortMonths ? `${monthLabel(d).slice(0, 3)} ${d.slice(2, 4)}` : monthLabel(d), x });
+    }
   }
+  const labelW = Math.max(dayW, 20);
 
   const plannedEnds = rows.map((m) => m.dueDate).filter(Boolean) as string[];
   const forecastEnds = rows.map((m) => fc.get(m.id)?.end).filter(Boolean) as string[];
@@ -147,6 +173,9 @@ export function PlanGantt({ milestones, deliverables, tasks, onOpenMs, onOpenDel
     <>
       <div className="pw-toolbar" style={{ marginBottom: 8 }}>
         <button className="btn btn-secondary btn-sm" onClick={goToday}>Ir a hoy</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => zoomCenter(1 / 1.15)} title="Alejar">−</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => zoomCenter(1.15)} title="Acercar">+</button>
+        <button className="btn btn-secondary btn-sm" onClick={fitAll} title="Ver todo">Ver todo</button>
         <span style={{ fontSize: 12, color: "var(--text-3)" }}>Clic en una barra o en un punto para abrirlo.</span>
         <span style={{ flex: 1 }} />
         {lastPlanned && lastForecast && (
@@ -155,15 +184,17 @@ export function PlanGantt({ milestones, deliverables, tasks, onOpenMs, onOpenDel
           </span>
         )}
       </div>
-      <div className="pw-gantt" ref={scroller}>
+      <div className="pw-gantt" ref={scroller} onPointerDown={onPointerDown} style={{ cursor: "grab" }}>
         <div className="pw-gantt-inner" style={{ width: NAME_W + width }}>
           <div className="pw-g-head">
             <div className="pw-g-name">Hito</div>
             <div className="pw-g-days" style={{ width }}>
               {months.map((m) => <span key={m.x} className="pw-g-month" style={{ left: m.x + 4 }}>{cap(m.label)}</span>)}
-              {Array.from({ length: range.days }, (_, i) => {
+              {dayW >= 6 && Array.from({ length: range.days }, (_, i) => {
                 const d = addDays(range.start, i);
-                return <span key={d} className={`pw-g-day ${d === now ? "today" : ""}`} style={{ left: i * DAY_W }}>{parseISO(d).getDate()}</span>;
+                const isMonday = parseISO(d).getDay() === 1;
+                if (dayW < 14 && !isMonday) return null;
+                return <span key={d} className={`pw-g-day ${d === now ? "today" : ""}`} style={{ left: i * dayW + (dayW - labelW) / 2, width: labelW }}>{parseISO(d).getDate()}</span>;
               })}
             </div>
           </div>
@@ -196,8 +227,8 @@ export function PlanGantt({ milestones, deliverables, tasks, onOpenMs, onOpenDel
                 e.preventDefault();
                 if (baseRs) setDrag({ id: m.id, edge, x0: e.clientX, start: baseRs, end: baseRe, delta: 0 });
               };
-              const endX = X(re) + DAY_W; // borde derecho de lo real/previsto (o, si no hay, del plan)
-              const dotsX = (hasBar ? endX : X(pEnd) + DAY_W) + 6;
+              const endX = X(re) + dayW; // borde derecho de lo real/previsto (o, si no hay, del plan)
+              const dotsX = (hasBar ? endX : X(pEnd) + dayW) + 6;
               const title = `${m.name}\nPlanificado: ${pStart ? fmtDate(pStart) + " → " : ""}${fmtDate(pEnd)}\n${f.done ? "Real" : "Previsto"}: ${rs ? fmtDate(rs) + " → " : ""}${fmtDate(re)}${f.delayDays ? ` (${sign(f.delayDays)} d)` : ""}${owner ? "\n" + owner.name : ""}\n${pr.total ? `${pr.done}/${pr.total} tareas` : "sin tareas"}${dels.length ? `\n${dels.length} entregable${dels.length > 1 ? "s" : ""}` : ""}`;
               return (
                 <div key={m.id} className="pw-g-row pw-g-group" style={{ height: ROW_H }}>
@@ -205,27 +236,27 @@ export function PlanGantt({ milestones, deliverables, tasks, onOpenMs, onOpenDel
                     <span className="t">◆ {m.name}</span>
                     {delayed && <span className={`pw-pill ${f.done ? "soon" : "late"}`} style={{ marginLeft: 6 }}>{sign(f.delayDays)} d</span>}
                   </div>
-                  <div className="pw-g-track" style={{ width, height: ROW_H }}>
+                  <div className="pw-g-track" style={{ width, height: ROW_H, backgroundSize: `${dayW >= 10 ? dayW : dayW * 7}px 100%`, backgroundPosition: dayW >= 10 ? undefined : `${firstMonday * dayW}px 0` }}>
                     {/* Planificado */}
                     {pStart ? (
-                      <div className="pw-g-plan" style={{ left: X(pStart), width: (diffDays(pEnd, pStart) + 1) * DAY_W }} title={title}>
-                        {(diffDays(pEnd, pStart) + 1) * DAY_W > 112 && <span>{fmtDate(pStart).slice(0, 5)} → {fmtDate(pEnd).slice(0, 5)}</span>}
+                      <div className="pw-g-plan" style={{ left: X(pStart), width: (diffDays(pEnd, pStart) + 1) * dayW }} title={title}>
+                        {(diffDays(pEnd, pStart) + 1) * dayW > 112 && <span>{fmtDate(pStart).slice(0, 5)} → {fmtDate(pEnd).slice(0, 5)}</span>}
                       </div>
                     ) : <div className="pw-g-plan-pt" style={{ left: X(pEnd) + 6 }} title={title} />}
                     {/* Real o previsto: se edita arrastrando los bordes */}
                     {hasBar ? (
                       <div
                         className={`pw-g-bar ${f.done ? "" : "forecast"} ${late || (delayed && !f.done) ? "late" : ""} ${dragging ? "dragging" : ""}`}
-                        style={{ left: X(rs!), width: (diffDays(re, rs!) + 1) * DAY_W, background: color, top: 22, height: 14 }}
+                        style={{ left: X(rs!), width: (diffDays(re, rs!) + 1) * dayW, background: color, top: 22, height: 14 }}
                         title={editable ? `${title}\n\nArrastrá los bordes para cambiar el inicio o el fin reales` : title} onClick={() => { if (!justDragged.current) open(); }}
                       >
                         <span className="fill" style={{ width: `${m.status === "cumplido" ? 100 : pr.pct}%` }} />
-                        {dragging ? <span>{fmtDate(rs!).slice(0, 5)} → {fmtDate(re).slice(0, 5)}</span> : (diffDays(re, rs!) + 1) * DAY_W > 90 && <span>{pr.total ? `${pr.pct}%` : ""}</span>}
+                        {dragging ? <span>{fmtDate(rs!).slice(0, 5)} → {fmtDate(re).slice(0, 5)}</span> : (diffDays(re, rs!) + 1) * dayW > 90 && <span>{pr.total ? `${pr.pct}%` : ""}</span>}
                         {editable && <i className="pw-g-handle l" onPointerDown={startHandle("start")} />}
                         {editable && <i className="pw-g-handle r" onPointerDown={startHandle("end")} />}
                       </div>
                     ) : (
-                      <div className="pw-g-hit" style={{ left: pStart ? X(pStart) : X(pEnd), width: pStart ? (diffDays(pEnd, pStart) + 1) * DAY_W : DAY_W }} title={title} onClick={open} />
+                      <div className="pw-g-hit" style={{ left: pStart ? X(pStart) : X(pEnd), width: pStart ? (diffDays(pEnd, pStart) + 1) * dayW : dayW }} title={title} onClick={open} />
                     )}
                     {/* Entregables: un punto cada uno, al final del hito (viajan con él) */}
                     {dels.map((d, i) => {
@@ -249,7 +280,7 @@ export function PlanGantt({ milestones, deliverables, tasks, onOpenMs, onOpenDel
         </div>
       </div>
       <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>
-        Barra azul con borde = plazo planificado (con sus fechas) · barra de abajo = real (cerrado) o previsto (rayada) · ▣ = un entregable, al final de su hito · la línea azul es hoy
+        Barra azul con borde = plazo planificado (con sus fechas) · barra de abajo = real (cerrado) o previsto (rayada) · ▣ = un entregable, al final de su hito · la línea azul es hoy · arrastrá el fondo para desplazarte · Shift + rueda para acercar o alejar
         {canEdit ? " · arrastrá los bordes de la barra de abajo para editar el inicio y el fin reales; los entregables se corren con el hito" : ""}
         {undated > 0 ? ` · ${undated} hito${undated > 1 ? "s" : ""} sin fecha no se muestra${undated > 1 ? "n" : ""}` : ""}
         {orphanDel > 0 ? ` · ${orphanDel} entregable${orphanDel > 1 ? "s" : ""} sin hito no se muestra${orphanDel > 1 ? "n" : ""}` : ""}.

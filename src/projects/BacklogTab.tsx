@@ -7,14 +7,11 @@ import { useEnv } from "./env";
 import type { Perms } from "./logic";
 import { TaskModal, type TaskDraft } from "./Modals";
 import { Bar, DuePill, OptDate, Person } from "./parts";
-import { KanbanView } from "./TaskViews";
 import type { Sprint, Task } from "./types";
 import { useWork, workActions } from "./workStore";
 
-type View = "plan" | "tablero" | "historial";
-
 const KIND_LABEL: Record<Task["kind"], string> = { tarea: "Tarea", historia: "Historia", bug: "Bug", spike: "Spike", cambio: "Cambio" };
-const CONF_COLOR: Record<string, string> = { alta: "var(--success)", media: "var(--warning)", baja: "var(--danger)" };
+const SUMMARY: React.CSSProperties = { cursor: "pointer", fontSize: 12.5, color: "var(--text-2)", fontWeight: 600, marginTop: 10 };
 
 export function KindTag({ kind }: { kind: Task["kind"] }) {
   return <span className="pw-tag ghost" style={kind === "cambio" ? { background: "var(--warning-soft)", color: "var(--warning)" } : kind === "bug" ? { background: "var(--danger-soft)", color: "var(--danger)" } : kind === "spike" ? { background: "var(--success-soft)", color: "var(--success)" } : undefined}>{KIND_LABEL[kind]}</span>;
@@ -31,7 +28,6 @@ export function BacklogTab({ projectId, perms }: { projectId: string; perms: Per
   const toast = useToast();
   const project = env.projects.find((p) => p.id === projectId)!;
   const meta = work.meta[projectId];
-  const [view, setView] = useState<View>("plan");
   const [weeks, setWeeks] = useState<1 | 2>(meta?.sprintWeeks ?? 2);
   const [sel, setSel] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -45,6 +41,7 @@ export function BacklogTab({ projectId, perms }: { projectId: string; perms: Per
   const active = activeSprint(sprints);
   const current = open.find((s) => s.id === sel) ?? active ?? open[0] ?? null;
   const backlog = backlogOf(tasks);
+  const vel = velocity(sprints, tasks);
 
   function addQuick() {
     const name = quick.trim();
@@ -56,11 +53,9 @@ export function BacklogTab({ projectId, perms }: { projectId: string; perms: Per
   return (
     <>
       <div className="pw-toolbar">
-        <div className="tabs">
-          <button className={view === "plan" ? "active" : ""} onClick={() => setView("plan")}>Planificación</button>
-          <button className={view === "tablero" ? "active" : ""} onClick={() => setView("tablero")}>Tablero del sprint</button>
-          <button className={view === "historial" ? "active" : ""} onClick={() => setView("historial")}>Historial y velocidad</button>
-        </div>
+        <span className="pw-pill" title="Horas completadas por sprint (promedio de los últimos 3) y sprints que faltan para vaciar el backlog a ese ritmo">
+          <Icon name="zap" size={11} /> {vel.closed.length ? `Velocidad: ${vel.avg ?? "—"} h/sprint · faltan ~${vel.sprintsLeft ?? "—"} sprints` : "Sin sprints cerrados todavía"}
+        </span>
         <span className="grow" />
         {perms.canManage && (
           <>
@@ -68,15 +63,14 @@ export function BacklogTab({ projectId, perms }: { projectId: string; perms: Per
               <option value={1}>1 semana</option>
               <option value={2}>2 semanas</option>
             </select>
-            <button className="btn btn-primary" onClick={() => { const s = workActions.addSprint(projectId, weeks); setSel(s.id); setView("plan"); toast(`${s.name} creado.`); }}>
+            <button className="btn btn-primary" onClick={() => { const s = workActions.addSprint(projectId, weeks); setSel(s.id); toast(`${s.name} creado.`); }}>
               <Icon name="plus" size={15} /> Nuevo sprint
             </button>
           </>
         )}
       </div>
 
-      {view === "plan" && (
-        <div className="pw-plan-grid">
+      <div className="pw-plan-grid">
           {/* ---------------- Backlog ---------------- */}
           <div className="card">
             <div className="pw-group-head">
@@ -104,7 +98,6 @@ export function BacklogTab({ projectId, perms }: { projectId: string; perms: Per
                 {perms.canManage && <span className="pw-grip" title="Arrastrar"><Icon name="menu" size={13} /></span>}
                 <KindTag kind={t.kind} />
                 <span className="name">{t.name}</span>
-                {t.confidence && <span className="pw-dotc" title={`Confianza ${t.confidence}`} style={{ background: CONF_COLOR[t.confidence] }} />}
                 {perms.canManage ? (
                   <input
                     className="input pw-hours" type="number" min={0} step={0.5} placeholder="h" title="Horas estimadas" value={t.estimateHours ?? ""}
@@ -146,28 +139,7 @@ export function BacklogTab({ projectId, perms }: { projectId: string; perms: Per
               </>
             )}
           </div>
-        </div>
-      )}
-
-      {view === "tablero" && (
-        active ? (
-          <>
-            <SprintHeader sprint={active} />
-            <div className="card card-pad" style={{ marginBottom: 14 }}>
-              <BurndownChart bd={burndown(active, tasks)} sprint={active} />
-            </div>
-            <KanbanView
-              tasks={sprintTasks(tasks, active.id)} projectId={projectId} perms={perms} columns={[]} groupFieldId={null} showHours
-              onOpen={(t) => setModal(t)} onNew={(p) => setModal({ projectId, sprintId: active.id, sprintAddedAt: today() > active.startDate ? today() : null, ...p })}
-            />
-            {perms.canManage && <div style={{ marginTop: 12 }}><button className="btn btn-secondary" onClick={() => setClosing(active)}>Cerrar {active.name}</button></div>}
-          </>
-        ) : (
-          <div className="card card-pad"><Empty icon="calendar-days" text="No hay un sprint en marcha" sub="Planificá uno y usá “Iniciar sprint” para ver su tablero y burndown." /></div>
-        )
-      )}
-
-      {view === "historial" && <HistoryView projectId={projectId} />}
+      </div>
 
       {modal && (
         <TaskModal
@@ -178,17 +150,6 @@ export function BacklogTab({ projectId, perms }: { projectId: string; perms: Per
       {closing && <CloseSprintModal sprint={closing} projectId={projectId} onClose={() => setClosing(null)} />}
       {project.status === "completado" && <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 10 }}>El proyecto está finalizado.</div>}
     </>
-  );
-}
-
-function SprintHeader({ sprint }: { sprint: Sprint }) {
-  return (
-    <div className="pw-head" style={{ marginBottom: 8 }}>
-      <h1 style={{ fontSize: 17 }}>{sprint.name}</h1>
-      <span className={`pw-pill ${sprint.status === "activo" ? "ok" : ""}`}>{sprint.status}</span>
-      <span style={{ color: "var(--text-2)", fontSize: 13 }}>{fmtDate(sprint.startDate)} → {fmtDate(sprint.endDate)}</span>
-      {sprint.goal && <span style={{ color: "var(--text-2)", fontSize: 13 }}>· Objetivo: {sprint.goal}</span>}
-    </div>
   );
 }
 
@@ -237,17 +198,9 @@ function SprintPanel({
             <button className="btn btn-ghost btn-sm" onClick={() => setOver2(false)}>Revisar</button>
           </div>
         )}
-        <div className="form-grid" style={{ marginTop: 10 }}>
-          <div className="field full">
-            <label>Objetivo del sprint</label>
-            <input className="input" disabled={!perms.canManage} value={sprint.goal} onChange={(e) => workActions.updateSprint(sprint.id, { goal: e.target.value })} placeholder="¿Qué queremos lograr?" />
-          </div>
-          <div className="field"><label>Inicio</label>{planned && perms.canManage ? <OptDate value={sprint.startDate} onChange={(v) => v && workActions.updateSprint(sprint.id, { startDate: v })} /> : <div className="input" style={{ opacity: 0.7 }}>{fmtDate(sprint.startDate)}</div>}</div>
-          <div className="field"><label>Fin</label>{planned && perms.canManage ? <OptDate value={sprint.endDate} onChange={(v) => v && workActions.updateSprint(sprint.id, { endDate: v })} /> : <div className="input" style={{ opacity: 0.7 }}>{fmtDate(sprint.endDate)}</div>}</div>
-          <div className="field">
-            <label>Foco del equipo en este proyecto: {sprint.focusPct}%</label>
-            <input type="range" min={30} max={100} step={5} disabled={!perms.canManage || sprint.status === "cerrado"} value={sprint.focusPct} onChange={(e) => workActions.updateSprint(sprint.id, { focusPct: Number(e.target.value) })} />
-          </div>
+        <div className="field" style={{ marginTop: 10 }}>
+          <label>Objetivo del sprint</label>
+          <input className="input" disabled={!perms.canManage} value={sprint.goal} onChange={(e) => workActions.updateSprint(sprint.id, { goal: e.target.value })} placeholder="¿Qué queremos lograr?" />
         </div>
 
         <div className="pw-mini-label" style={{ marginTop: 12 }}>Compromiso vs. capacidad</div>
@@ -263,6 +216,25 @@ function SprintPanel({
             {cap.unassigned > 0 && <>{cap.unassigned} sin responsable.</>}
           </div>
         )}
+
+        {sprint.status === "activo" && (
+          <details>
+            <summary style={SUMMARY}>Ver burndown</summary>
+            <div style={{ marginTop: 8 }}><BurndownChart bd={burndown(sprint, tasks)} sprint={sprint} /></div>
+          </details>
+        )}
+
+        <details>
+          <summary style={SUMMARY}>Ajustes y capacidad por persona</summary>
+        <div className="form-grid" style={{ marginTop: 10 }}>
+          <div className="field"><label>Inicio</label>{planned && perms.canManage ? <OptDate value={sprint.startDate} onChange={(v) => v && workActions.updateSprint(sprint.id, { startDate: v })} /> : <div className="input" style={{ opacity: 0.7 }}>{fmtDate(sprint.startDate)}</div>}</div>
+          <div className="field"><label>Fin</label>{planned && perms.canManage ? <OptDate value={sprint.endDate} onChange={(v) => v && workActions.updateSprint(sprint.id, { endDate: v })} /> : <div className="input" style={{ opacity: 0.7 }}>{fmtDate(sprint.endDate)}</div>}</div>
+          <div className="field">
+            <label>Foco del equipo en este proyecto: {sprint.focusPct}%</label>
+            <input type="range" min={30} max={100} step={5} disabled={!perms.canManage || sprint.status === "cerrado"} value={sprint.focusPct} onChange={(e) => workActions.updateSprint(sprint.id, { focusPct: Number(e.target.value) })} />
+          </div>
+        </div>
+
         <div style={{ marginTop: 10 }}>
           {cap.people.map((p) => (
             <div key={p.user.id} className="pw-load" style={{ gridTemplateColumns: "140px 1fr 110px" }}>
@@ -273,6 +245,7 @@ function SprintPanel({
           ))}
           <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>Capacidad = días laborales del sprint × jornada × foco, descontando ausencias aprobadas.</div>
         </div>
+        </details>
       </div>
 
       <div className="pw-group-head" style={{ borderTop: "1px solid var(--border)" }}>Ítems del sprint <span className="count">{tasks.length}</span></div>
@@ -329,56 +302,6 @@ export function BurndownChart({ bd, sprint }: { bd: Burndown; sprint: Sprint }) 
         {bd.points.map((p, i) => (p.actual === null ? null : <circle key={i} cx={x(i)} cy={y(p.actual)} r="3" fill={behind > 8 ? "var(--danger)" : "var(--accent)"} />))}
       </svg>
       <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>Línea punteada: ritmo ideal · línea llena: trabajo que queda (horas estimadas) · línea azul vertical: hoy. Si sube, entró alcance nuevo.</div>
-    </>
-  );
-}
-
-/* ====================================================================
- * Historial: velocidad, pronóstico y notas de revisión / retrospectiva
- * ==================================================================== */
-function HistoryView({ projectId }: { projectId: string }) {
-  const work = useWork();
-  const tasks = work.tasks.filter((t) => t.projectId === projectId);
-  const sprints = work.sprints.filter((s) => s.projectId === projectId);
-  const vel = velocity(sprints, tasks);
-  const maxV = Math.max(1, ...vel.closed.map((s) => Math.max(s.committedHours ?? 0, s.completedHours ?? 0)));
-  if (vel.closed.length === 0) return <div className="card card-pad"><Empty icon="history" text="Todavía no hay sprints cerrados" sub="Al cerrar el primero vas a ver la velocidad del equipo." /></div>;
-  return (
-    <>
-      <div className="kpi-grid">
-        <div className="card kpi"><span className="label"><Icon name="zap" size={14} /> Velocidad promedio</span><div className="value">{vel.avg ?? "—"} h</div><div className="hint">por sprint (últimos 3)</div></div>
-        <div className="card kpi"><span className="label"><Icon name="clipboard" size={14} /> Backlog restante</span><div className="value">{vel.backlogHours} h</div><div className="hint">sin sprint o en sprints sin iniciar</div></div>
-        <div className="card kpi"><span className="label"><Icon name="calendar-days" size={14} /> Sprints que faltan</span><div className="value">{vel.sprintsLeft ?? "—"}</div><div className="hint">al ritmo actual</div></div>
-      </div>
-      <div className="card card-pad" style={{ marginBottom: 14 }}>
-        <div className="card-title">Comprometido vs. completado por sprint</div>
-        <div className="pw-vel">
-          {vel.closed.map((s) => (
-            <div key={s.id} className="pw-vel-col">
-              <div className="pw-vel-bars">
-                <div className="pw-vel-bar" style={{ height: `${((s.committedHours ?? 0) / maxV) * 100}%`, background: "var(--accent-soft)", border: "1px solid var(--accent)" }} title={`Comprometido: ${s.committedHours} h`}><span>{s.committedHours}</span></div>
-                <div className="pw-vel-bar" style={{ height: `${((s.completedHours ?? 0) / maxV) * 100}%`, background: "var(--accent)" }} title={`Completado: ${s.completedHours} h`}><span style={{ color: "#fff" }}>{s.completedHours}</span></div>
-              </div>
-              <div className="pw-vel-lbl">{s.name}</div>
-            </div>
-          ))}
-        </div>
-        <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 6 }}>Hueco = comprometido pero no cerrado en el sprint. La velocidad es lo realmente completado.</div>
-      </div>
-      <div className="grid-2" style={{ alignItems: "start" }}>
-        {[...vel.closed].reverse().map((s) => (
-          <div key={s.id} className="card card-pad">
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <strong>{s.name}</strong><span style={{ color: "var(--text-3)", fontSize: 12 }}>{fmtDate(s.startDate)} → {fmtDate(s.endDate)}</span>
-            </div>
-            {s.goal && <div style={{ fontSize: 12.5, color: "var(--text-2)", marginBottom: 8 }}>Objetivo: {s.goal}</div>}
-            <div className="pw-mini-label">Revisión con el cliente</div>
-            <div style={{ fontSize: 13, marginBottom: 8 }}>{s.reviewNotes || <span style={{ color: "var(--text-3)" }}>Sin notas.</span>}</div>
-            <div className="pw-mini-label">Retrospectiva</div>
-            <div style={{ fontSize: 13 }}>{s.retroNotes || <span style={{ color: "var(--text-3)" }}>Sin notas.</span>}</div>
-          </div>
-        ))}
-      </div>
     </>
   );
 }

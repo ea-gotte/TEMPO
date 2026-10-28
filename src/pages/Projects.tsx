@@ -5,7 +5,7 @@ import { fmtDur, safeHttpUrl, uid } from "../utils";
 import { Avatar, Dot, Empty, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { ProjectWorkspace } from "../projects/ProjectWorkspace";
-import { Panorama } from "../projects/Panorama";
+import { GeneralPanel } from "../projects/GeneralPanel";
 
 export const COLORS = ["#5b6cff", "#12b5a5", "#f5a524", "#f0446c", "#8b5cf6", "#0ea5e9", "#84cc16", "#f97316"];
 
@@ -17,7 +17,7 @@ export function Projects() {
   // mismo participa) — ni crea/elimina proyectos ni toca presupuesto,
   // cliente, estado, etc. Ver el branch de retorno más abajo.
   const isSupervisorOnly = me.role === "supervisor";
-  const [tab, setTab] = useState<"proyectos" | "clientes" | "etiquetas" | "panorama">("proyectos");
+  const [tab, setTab] = useState<"proyectos" | "panel" | "clientes" | "etiquetas">("panel");
   // Gestión de proyectos (demo): espacio de trabajo del proyecto abierto
   const [openProjectId, setOpenProjectId] = useState<string | null>(null);
   const [editProject, setEditProject] = useState<Project | "new" | null>(null);
@@ -244,9 +244,9 @@ export function Projects() {
         <h1>Proyectos</h1>
         <span className="spacer" />
         <div className="tabs">
-          {(["proyectos", "clientes", "etiquetas", "panorama"] as const).map((v) => (
+          {(["panel", "proyectos", "clientes", "etiquetas"] as const).map((v) => (
             <button key={v} className={tab === v ? "active" : ""} onClick={() => setTab(v)} style={{ textTransform: "capitalize" }}>
-              {v}
+              {v === "panel" ? "Panel general" : v}
             </button>
           ))}
         </div>
@@ -470,7 +470,7 @@ export function Projects() {
         </div>
       )}
 
-      {tab === "panorama" && <Panorama env={workEnv} onOpen={setOpenProjectId} />}
+      {tab === "panel" && <GeneralPanel env={workEnv} onOpen={setOpenProjectId} />}
 
       {editProject && (
         <ProjectModal
