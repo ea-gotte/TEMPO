@@ -79,7 +79,7 @@ function AttachmentChip({ f }: { f: Attachment }) {
   return (
     <span className="badge" style={{ gap: 6 }} title={f.url ? f.name : "Archivo de demostración (sin contenido cargado)"}>
       <Icon name="paperclip" size={12} /> {f.name}
-      {f.size != null && <span style={{ color: "var(--text-3)" }}>({(f.size / 1024 / 1024).toFixed(1)} MB)</span>}
+      {f.size != null && <span style={{ color: "var(--text-3)" }}>({f.size < 1024 * 1024 ? `${Math.max(1, Math.round(f.size / 1024))} KB` : `${(f.size / 1024 / 1024).toFixed(1)} MB`})</span>}
       {f.url && (
         <>
           {viewMime && (
@@ -759,52 +759,62 @@ function RequestDetail({
   const { state } = useStore();
   const u = state.users.find((x) => x.id === a.userId);
   const resolver = state.users.find((x) => x.id === a.resolvedBy);
-  const warnings = canApprove ? absenceWarnings(state, a) : [];
-  const blockers = canApprove && a.type === "Horas extra" ? overtimeOverlapIssues(state, a.userId, monthStart(a.dateFrom)) : [];
-  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div style={{ display: "flex", gap: 10, padding: "7px 0", borderBottom: "1px solid var(--border)" }}>
-      <span style={{ width: 130, flexShrink: 0, color: "var(--text-3)", fontSize: 12.5, fontWeight: 600 }}>{label}</span>
-      <span style={{ fontSize: 13.5, flex: 1 }}>{children}</span>
+  const isOt = a.type === "Horas extra";
+  const ot = isOt ? findOvertimeFor(state, a) : undefined;
+  const sum = ot ? buildOvertimeSummary(state, ot) : null;
+  // En horas extra el rango es el mes entero: avisar de fines de semana no aporta nada
+  const warnings = canApprove && !isOt ? absenceWarnings(state, a) : [];
+  const blockers = canApprove && isOt ? overtimeOverlapIssues(state, a.userId, monthStart(a.dateFrom)) : [];
+  const autoReason = isOt && a.reason.startsWith("Horas extra de ");
+  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div>
+      <div style={{ color: "var(--text-3)", fontSize: 11.5, fontWeight: 650, textTransform: "uppercase", letterSpacing: 0.3 }}>{label}</div>
+      <div style={{ fontSize: 13.5, marginTop: 2 }}>{children}</div>
     </div>
   );
+  const verb = a.status === "Aprobado" ? "Aprobado" : a.status === "Rechazado" ? "Rechazado" : "Devuelto";
 
   return (
     <Modal
       title="Detalle de la solicitud"
+      width={640}
       onClose={onClose}
       footer={
         <>
-          {onReport && <button className="btn btn-ghost" onClick={onReport}><Icon name="scale" size={13} /> Trazabilidad</button>}
-          {canManage && (
-            <>
-              <button className="btn btn-ghost" onClick={onEdit}><Icon name="pencil" size={13} /> Editar</button>
-              <button className="btn btn-ghost" onClick={onDelete}><Icon name="trash" size={13} /> Eliminar</button>
-            </>
-          )}
-          <span style={{ flex: 1 }} />
+          <div style={{ display: "flex", gap: 2, marginRight: "auto" }}>
+            {onReport && <button className="btn btn-ghost btn-sm" onClick={onReport} title="Trazabilidad de la solicitud"><Icon name="scale" size={14} /> Trazabilidad</button>}
+            {canManage && (
+              <>
+                <button className="btn btn-ghost btn-sm" onClick={onEdit} title="Editar" aria-label="Editar"><Icon name="pencil" size={14} /></button>
+                <button className="btn btn-ghost btn-sm" onClick={onDelete} title="Eliminar" aria-label="Eliminar"><Icon name="trash" size={14} /></button>
+              </>
+            )}
+          </div>
           {canApprove ? (
             <>
-              <button className="btn btn-danger" onClick={() => onResolve("Rechazado")}>Rechazar</button>
-              <button className="btn btn-secondary" onClick={() => onResolve("Devuelto")}>Devolver con comentario</button>
-              <button className="btn btn-primary" disabled={blockers.length > 0} onClick={() => onResolve("Aprobado")}>Aprobar</button>
+              <button className="btn btn-danger btn-sm" onClick={() => onResolve("Rechazado")}>Rechazar</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => onResolve("Devuelto")}>Devolver</button>
+              <button className="btn btn-primary btn-sm" disabled={blockers.length > 0} onClick={() => onResolve("Aprobado")}>Aprobar</button>
             </>
           ) : (
             <>
-              <button className="btn btn-secondary" onClick={onClose}>Cerrar</button>
-              {onResubmit && <button className="btn btn-primary" onClick={onResubmit}>Corregir y reenviar</button>}
+              <button className="btn btn-secondary btn-sm" onClick={onClose}>Cerrar</button>
+              {onResubmit && <button className="btn btn-primary btn-sm" onClick={onResubmit}>Corregir y reenviar</button>}
             </>
           )}
         </>
       }
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <span style={{ color: "var(--accent)" }}><Icon name={TYPE_ICON[a.type]} size={24} /></span>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ color: "var(--accent)" }}><Icon name={TYPE_ICON[a.type]} size={22} /></span>
         <strong style={{ fontSize: 16 }}>{a.type}</strong>
         <StatusBadge s={a.status} />
+        <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-3)" }}>Solicitada el {fmtDate(a.createdAt)}</span>
       </div>
+
       {blockers.length > 0 && <OverlapBlock issues={blockers} />}
       {warnings.length > 0 && (
-        <div style={{ background: "var(--warning-soft)", color: "var(--warning)", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, marginBottom: 10 }}>
+        <div style={{ background: "var(--warning-soft)", color: "var(--warning)", borderRadius: 8, padding: "8px 12px", fontSize: 12.5 }}>
           {warnings.map((w, i) => (
             <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start", marginTop: i > 0 ? 4 : 0 }}>
               <Icon name="alert" size={13} style={{ marginTop: 2, flexShrink: 0 }} /> <span>{w}</span>
@@ -812,41 +822,71 @@ function RequestDetail({
           ))}
         </div>
       )}
-      <div>
-        <Row label="Solicitante">
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 14, background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px" }}>
+        <Field label="Solicitante">
           <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-            <Avatar name={u?.name ?? "?"} size={22} /> {u?.name ?? "—"}
+            <Avatar name={u?.name ?? "?"} size={20} /> {u?.name ?? "—"}
           </span>
-        </Row>
-        <Row label="Fechas">
-          {fmtDate(a.dateFrom)}
-          {a.dateFrom !== a.dateTo && ` → ${fmtDate(a.dateTo)}`}
-        </Row>
-        {(a.timeFrom || a.timeTo) && <Row label="Horario">{a.timeFrom || "—"} – {a.timeTo || "—"}</Row>}
-        <Row label="Solicitado el">{fmtDate(a.createdAt)}</Row>
-        <Row label="Motivo">{a.reason ? a.reason : <em style={{ color: "var(--text-3)" }}>Sin especificar</em>}</Row>
-        <Row label="Adjuntos">
-          {a.attachments.length === 0 ? (
-            <em style={{ color: "var(--text-3)" }}>Sin adjuntos</em>
-          ) : (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {a.attachments.map((f, i) => (
-                <AttachmentChip key={i} f={f} />
-              ))}
-            </div>
-          )}
-        </Row>
-        {a.status !== "Pendiente" && (
-          <Row label={a.status === "Aprobado" ? "Aprobado por" : "Rechazado por"}>
-            {resolver?.name ?? "—"}{a.resolvedAt && ` · ${fmtDate(a.resolvedAt)}`}
-          </Row>
+        </Field>
+        {isOt && sum ? (
+          <>
+            <Field label="Período">{sum.period}</Field>
+            <Field label="Horas extra"><strong>{fmtDur(sum.extraMin)}</strong></Field>
+          </>
+        ) : (
+          <>
+            <Field label="Fechas">
+              {fmtDate(a.dateFrom)}
+              {a.dateFrom !== a.dateTo && ` → ${fmtDate(a.dateTo)}`}
+            </Field>
+            {(a.timeFrom || a.timeTo) && <Field label="Horario">{a.timeFrom || "—"} – {a.timeTo || "—"}</Field>}
+          </>
         )}
-        {a.supervisorComment && <Row label="Comentario">{a.supervisorComment}</Row>}
       </div>
+
+      {isOt && sum && sum.rows.length > 0 && (
+        <table className="table table-compact" style={{ fontSize: 12.5 }}>
+          <thead>
+            <tr><th>Proyecto</th><th style={{ textAlign: "right" }}>Horas totales</th><th style={{ textAlign: "right" }}>Horas extra</th></tr>
+          </thead>
+          <tbody>
+            {sum.rows.map((r) => (
+              <tr key={r.projectId ?? "none"}>
+                <td>{r.name}</td>
+                <td style={{ textAlign: "right" }}>{fmtDur(r.totalMin)}</td>
+                <td style={{ textAlign: "right", fontWeight: r.extraMin ? 700 : 400 }}>{r.extraMin ? fmtDur(r.extraMin) : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {a.reason && !autoReason && <Field label="Motivo">{a.reason}</Field>}
+
+      <Field label="Adjuntos">
+        {a.attachments.length === 0 ? (
+          <em style={{ color: "var(--text-3)" }}>Sin adjuntos</em>
+        ) : (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {a.attachments.map((f, i) => (
+              <AttachmentChip key={i} f={f} />
+            ))}
+          </div>
+        )}
+      </Field>
+
+      {(a.status === "Aprobado" || a.status === "Rechazado" || a.status === "Devuelto") && (
+        <div style={{ borderLeft: `3px solid ${a.status === "Aprobado" ? "var(--success)" : a.status === "Rechazado" ? "var(--danger)" : "var(--accent)"}`, paddingLeft: 12 }}>
+          <div style={{ fontSize: 13 }}><strong>{verb}</strong> por {resolver?.name ?? "—"}{a.resolvedAt && ` · ${fmtDate(a.resolvedAt)}`}</div>
+          {a.supervisorComment && <div style={{ fontSize: 13, color: "var(--text-2)", marginTop: 3 }}>“{a.supervisorComment}”</div>}
+        </div>
+      )}
+
       {canApprove && (
-        <div className="field" style={{ marginTop: 6 }}>
+        <div className="field" style={{ margin: 0 }}>
           <label>Comentario <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(obligatorio para devolver)</span></label>
-          <textarea className="textarea" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comentario para el solicitante: qué hay que corregir…" />
+          <textarea className="textarea" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Qué hay que corregir: horas, fechas, algo que llame la atención…" />
         </div>
       )}
     </Modal>
