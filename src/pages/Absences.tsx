@@ -262,33 +262,17 @@ export function Absences() {
 
       {tab === "extra" && (
         <>
-          <div className="card card-pad" style={{ marginBottom: 14 }}>
-            <div className="card-title"><Icon name="scale" size={14} /> Mi saldo de horas extra</div>
-            <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 24, fontWeight: 700 }}>{fmtDur(myOtApproved)}</div>
-                <div style={{ fontSize: 12, color: "var(--text-3)" }}>≈ {otDays} día{otDays !== 1 ? "s" : ""} disponibles para recuperar</div>
-              </div>
-              <div style={{ fontSize: 12.5, color: "var(--text-2)", flex: 1, minWidth: 240 }}>
-                Las horas extra se detectan por mes en <strong>Control de horas</strong> (no cuentan las horas de los proyectos No laborable y Vacaciones) y hay que informarlas dentro de los <strong>3 meses</strong> siguientes a ese mes, o quedan vencidas. Si el calendario tiene horas superpuestas, hay que corregirlas antes de solicitarlas.
-                Solo cuentan en el saldo cuando el supervisor las aprueba. Una vez aprobadas, hay <strong>1 año</strong> desde esa semana para recuperarlas solicitando una ausencia del tipo <strong>Compensación de horas</strong>, o se pierden.
-              </div>
-              {myOtApproved > 0 && (
-                <button className="btn btn-primary" onClick={() => setShowNew(true)}>Recuperar horas</button>
-              )}
+          {myOtBalance.expiringSoonMin > 0 && myOtBalance.nextExpiration && (
+            <div style={{ marginBottom: 8, fontSize: 12.5, background: "var(--warning-soft)", color: "var(--warning)", padding: "7px 12px", borderRadius: 8, fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}>
+              <Icon name="alert" size={14} /> {fmtDur(myOtBalance.expiringSoonMin)} vencen el {fmtDate(myOtBalance.nextExpiration)} si no las recuperás antes.
             </div>
-            {myOtBalance.expiringSoonMin > 0 && myOtBalance.nextExpiration && (
-              <div style={{ marginTop: 10, fontSize: 12.5, background: "var(--warning-soft)", color: "var(--warning)", padding: "8px 12px", borderRadius: 8, fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}>
-                <Icon name="alert" size={14} /> {fmtDur(myOtBalance.expiringSoonMin)} vencen el {fmtDate(myOtBalance.nextExpiration)} si no las recuperás antes.
-              </div>
-            )}
-            {myOtBalance.expiredMin > 0 && (
-              <div style={{ marginTop: 10, fontSize: 12.5, background: "var(--surface-2)", color: "var(--text-3)", padding: "8px 12px", borderRadius: 8, display: "flex", gap: 6, alignItems: "center" }}>
-                <Icon name="ban" size={14} /> {fmtDur(myOtBalance.expiredMin)} vencieron sin recuperarse.
-              </div>
-            )}
-          </div>
-          <MonthRequest onReport={setReportOt} />
+          )}
+          {myOtBalance.expiredMin > 0 && (
+            <div style={{ marginBottom: 8, fontSize: 12.5, background: "var(--surface-2)", color: "var(--text-3)", padding: "7px 12px", borderRadius: 8, display: "flex", gap: 6, alignItems: "center" }}>
+              <Icon name="ban" size={14} /> {fmtDur(myOtBalance.expiredMin)} vencieron sin recuperarse.
+            </div>
+          )}
+          <MonthRequest onReport={setReportOt} recoverMin={myOtApproved} onRecover={() => setShowNew(true)} />
           <div className="card">
             {[...(canApprove ? otPending : []), ...myOvertime].length === 0 && (
               <Empty icon="flame" text="Sin horas extra registradas" sub="Cuando un mes supere la jornada, el administrador las enviará a supervisión desde Control de horas." />
@@ -546,7 +530,7 @@ function EditOvertimeModal({ ot, onClose }: { ot: OvertimeRequest; onClose: () =
  * registros, valida el calendario, genera la solicitud de Gestión junto con el informe y la
  * deja pendiente de aprobación de Recursos Humanos.
  */
-function MonthRequest({ onReport }: { onReport: (o: OvertimeRequest) => void }) {
+function MonthRequest({ onReport, recoverMin, onRecover }: { onReport: (o: OvertimeRequest) => void; recoverMin: number; onRecover: () => void }) {
   const { state, dispatch } = useStore();
   const toast = useToast();
   const me = state.users.find((u) => u.id === state.currentUserId)!;
@@ -603,24 +587,22 @@ function MonthRequest({ onReport }: { onReport: (o: OvertimeRequest) => void }) 
   }
 
   return (
-    <div className="card card-pad" style={{ marginBottom: 14 }}>
-      <div className="card-title"><Icon name="flame" size={14} /> Solicitar las horas extra de un mes</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <button className="btn btn-secondary btn-sm" onClick={() => setMs(addMonths(ms, -1))} aria-label="Mes anterior"><Icon name="arrow-left" size={14} /></button>
-        <strong style={{ textTransform: "capitalize", minWidth: 130, textAlign: "center" }}>{label}</strong>
-        <button className="btn btn-secondary btn-sm" onClick={() => setMs(addMonths(ms, 1))} disabled={open} aria-label="Mes siguiente"><Icon name="arrow-right" size={14} /></button>
-      </div>
-      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", fontSize: 13, marginBottom: 10 }}>
-        <span>Cargadas <strong>{fmtDur(loaded)}</strong></span>
-        <span>Computables <strong>{fmtDur(computable)}</strong></span>
-        <span>Esperadas <strong>{fmtDur(expected)}</strong></span>
-        <span>Horas extra <strong>{fmtDur(overtimeMin)}</strong></span>
-      </div>
-      {loaded > computable && (
-        <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 8 }}>
-          {fmtDur(loaded - computable)} cargadas en No laborable / Vacaciones no cuentan para horas extra.
+    <div className="card card-pad" style={{ marginBottom: 12, padding: "12px 16px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 8 }}>
+        <div className="card-title" style={{ margin: 0 }}><Icon name="flame" size={14} /> Horas extra del mes</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setMs(addMonths(ms, -1))} aria-label="Mes anterior"><Icon name="arrow-left" size={13} /></button>
+          <strong style={{ textTransform: "capitalize", minWidth: 120, textAlign: "center" }}>{label}</strong>
+          <button className="btn btn-secondary btn-sm" onClick={() => setMs(addMonths(ms, 1))} disabled={open} aria-label="Mes siguiente"><Icon name="arrow-right" size={13} /></button>
         </div>
-      )}
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13 }}>
+          <span>Cargadas <strong>{fmtDur(loaded)}</strong>{loaded > computable && <span style={{ color: "var(--text-3)" }}> ({fmtDur(computable)} computables)</span>}</span>
+          <span>Esperadas <strong>{fmtDur(expected)}</strong></span>
+          <span>Extra <strong>{fmtDur(overtimeMin)}</strong></span>
+        </div>
+        <span style={{ flex: 1 }} />
+        {recoverMin > 0 && <button className="btn btn-secondary btn-sm" onClick={onRecover}>Recuperar horas</button>}
+      </div>
       {!existing && issues.length > 0 && !open && <OverlapBlock issues={issues} />}
       {existing ? (
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -635,6 +617,13 @@ function MonthRequest({ onReport }: { onReport: (o: OvertimeRequest) => void }) 
           {reason && <span style={{ fontSize: 12.5, color: "var(--text-3)" }}>{reason}</span>}
         </div>
       )}
+      <details style={{ marginTop: 8, fontSize: 12, color: "var(--text-2)" }}>
+        <summary style={{ cursor: "pointer", color: "var(--text-3)" }}>Cómo funcionan las horas extra</summary>
+        <div style={{ marginTop: 4 }}>
+          Se detectan por mes (cada día, lo que pasa de la jornada); No laborable y Vacaciones no cuentan. Hay <strong>3 meses</strong> desde ese mes para solicitarlas y no puede haber horas superpuestas en el calendario.
+          Suman al saldo cuando Recursos Humanos las aprueba, y hay <strong>1 año</strong> para recuperarlas con una ausencia de tipo <strong>Compensación de horas</strong>.
+        </div>
+      </details>
     </div>
   );
 }
