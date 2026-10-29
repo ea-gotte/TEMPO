@@ -76,7 +76,7 @@ export function CorpCalendar() {
       }
     }
     const year = anchor.slice(0, 4);
-    for (const u of state.users) {
+    for (const u of state.users.filter((x) => x.active)) {
       push(`${year}-${u.birthday.slice(5)}`, { key: `bd-${u.id}`, label: `${u.name}`, type: "Cumpleaños" });
     }
     return map;

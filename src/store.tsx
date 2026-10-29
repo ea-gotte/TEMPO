@@ -1172,6 +1172,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               mustChangePassword: p.must_change_password ?? false
             }));
 
+            if (mappedUsers.find((u) => u.id === currentUserId)?.active === false) {
+              // Dado de baja: sin acceso, aunque conserve la sesión abierta
+              await supabase.auth.signOut();
+              return;
+            }
+
             if (!mappedUsers.some((u) => u.id === currentUserId)) {
               // Sin fila en profiles: rol mínimo. Nunca tomar el rol de user_metadata,
               // que el propio usuario puede cambiar con auth.updateUser({ data }).

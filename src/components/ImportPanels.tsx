@@ -379,7 +379,7 @@ export function TimeEntriesImportPanel() {
                       onChange={(e) => e.target.value && updateRow(v.row.id, { userId: e.target.value })}
                     >
                       <option value="">{v.row.personName ? `${v.row.personName} (no encontrado)` : "Elegir persona…"}</option>
-                      {[...state.users].sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
+                      {state.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
                         <option key={u.id} value={u.id}>{u.name}</option>
                       ))}
                     </select>

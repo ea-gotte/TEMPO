@@ -349,7 +349,7 @@ export function Absences() {
         <div className="card card-pad no-print" style={{ marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
           <select className="select" style={{ width: "auto" }} value={fPerson} onChange={(e) => setFPerson(e.target.value)}>
             <option value="">Todas las personas</option>
-            {state.users.slice().sort((a, b) => a.name.localeCompare(b.name)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            {state.users.slice().sort((a, b) => a.name.localeCompare(b.name)).map((u) => <option key={u.id} value={u.id}>{u.name}{u.active ? "" : " (baja)"}</option>)}
           </select>
           <select className="select" style={{ width: "auto" }} value={fType} onChange={(e) => setFType(e.target.value)}>
             <option value="">Todos los tipos</option>
@@ -1024,7 +1024,7 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
           <div className="field">
             <label>Persona</label>
             <select className="select" value={personId} onChange={(e) => setPersonId(e.target.value)}>
-              {state.users.slice().sort((a, b) => a.name.localeCompare(b.name)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              {state.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>
           <div className="field">

@@ -174,7 +174,7 @@ export function Reports() {
               <select className="select" value={userFilterRaw} onChange={(e) => setUserFilter(e.target.value)}>
                 <option value="">Todas</option>
                 {[...state.users].sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
+                  <option key={u.id} value={u.id}>{u.name}{u.active ? "" : " (baja)"}</option>
                 ))}
               </select>
             </div>

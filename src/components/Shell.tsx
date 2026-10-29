@@ -183,7 +183,7 @@ export function Shell({
     const out: { kind: string; label: string; go: PageKey }[] = [];
     state.projects.forEach((p) => p.name.toLowerCase().includes(q) && out.push({ kind: "Proyecto", label: p.name, go: "projects" }));
     state.clients.forEach((c) => c.name.toLowerCase().includes(q) && out.push({ kind: "Cliente", label: c.name, go: "projects" }));
-    state.users.forEach((u) => u.name.toLowerCase().includes(q) && out.push({ kind: "Persona", label: u.name, go: "team" }));
+    state.users.forEach((u) => u.active && u.name.toLowerCase().includes(q) && out.push({ kind: "Persona", label: u.name, go: "team" }));
     state.entries.forEach(
       (e) => e.description.toLowerCase().includes(q) && out.push({ kind: "Registro", label: `${e.description} · ${fmtDate(e.date)}`, go: "tracker" }),
     );

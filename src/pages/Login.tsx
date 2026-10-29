@@ -44,6 +44,14 @@ export function Login() {
       }
 
       if (data?.user) {
+        const { data: prof } = await supabase.from("profiles").select("active").eq("id", data.user.id).maybeSingle();
+        if (prof && prof.active === false) {
+          await supabase.auth.signOut();
+          const off = "Tu usuario está dado de baja. Consultá con Recursos Humanos.";
+          setError(off);
+          toast(off);
+          return;
+        }
         const msg = "¡Inicio de sesión correcto! Bienvenido/a.";
         setSuccessMsg(msg);
         toast(msg);
