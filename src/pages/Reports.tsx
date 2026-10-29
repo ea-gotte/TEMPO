@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useStore, visibleProjects, expectedMinutesInRange } from "../store";
+import { useStore, visibleProjects, expectedMinutesInRange, overtimeBreakdown, computableMinutes } from "../store";
 import { addDays, addMonths, fmtDate, downloadFile, fmtDur, toCSV, today, weekStart } from "../utils";
 import { HBarChart, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
@@ -88,8 +88,12 @@ export function Reports() {
       // Si el período no tiene ningún día laboral (p. ej. se filtró solo un fin
       // de semana), no hay nada "esperado": lo cargado ahí es todo extra, no
       // un faltante — nunca debe leerse como "debajo".
-      const overtime = expected > 0 ? Math.max(0, mins - expected) : mins;
-      const util = expected > 0 ? Math.min(150, Math.round((mins / expected) * 100)) : mins > 0 ? 150 : 0;
+      // Extra: se cuenta cada día hasta completar la jornada y No laborable / Vacaciones
+      // no computan (ver overtimeBreakdown); con filtros, solo lo que cae en los registros filtrados.
+      const bd = overtimeBreakdown(state, u, rFrom, rTo);
+      const overtime = userEntries.reduce((a, e) => a + (bd.perEntry.get(e.id) ?? 0), 0);
+      const computable = userEntries.reduce((a, e) => a + computableMinutes(state, e), 0);
+      const util = expected > 0 ? Math.min(150, Math.round((computable / expected) * 100)) : computable > 0 ? 150 : 0;
       return { u, mins, days, overtime, util };
     })
     .filter((x) => x.mins > 0)
@@ -394,7 +398,7 @@ function ProjectXlsxModal({ initialProject, initialFrom, initialTo, onClose }: {
         Una hoja Resumen y una por mes{months > 0 ? ` (${months} hoja${months > 1 ? "s" : ""} de mes)` : ""}, con una fila por cada persona elegida: horas cargadas al proyecto, extra, recuperadas y netas.
       </div>
       <ul style={{ fontSize: 12, color: "var(--text-3)", margin: "8px 0 0", paddingLeft: 18 }}>
-        <li><b>Extra</b>: total de la persona (todos sus proyectos), lo cargado por encima de la jornada de cada semana.</li>
+        <li><b>Extra</b>: total de la persona (todos sus proyectos), cada día se cuentan las horas hasta completar la jornada y el resto es extra; No laborable y Vacaciones no computan.</li>
         <li><b>Recuperadas</b>: total de la persona, compensaciones de horas aprobadas que empiezan en el mes.</li>
         <li><b>Netas</b>: extra − recuperadas.</li>
       </ul>

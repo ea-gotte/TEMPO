@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useStore, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings, overtimeOverlapIssues, overtimeClaimDeadline, overtimeRange, overtimeBreakdown, expectedMinutesInRange, findOvertimeFor, findAbsenceFor } from "../store";
 import { OvertimeReportModal } from "../components/OvertimeReport";
+import { buildOvertimeSummary, overtimePdfDataUrl } from "../overtimeSummary";
 import type { AbsenceRequest, AbsenceType, Attachment, OvertimeRequest } from "../types";
 import { ATTACHMENT_ACCEPT, addMonths, attachmentMime, fmtDate, fmtDur, monthEnd, monthStart, today, uid } from "../utils";
 import { Avatar, Empty, Modal, useToast } from "../components/ui";
@@ -578,19 +579,27 @@ function MonthRequest({ onReport }: { onReport: (o: OvertimeRequest) => void }) 
             ? "Corregí las horas superpuestas del calendario para poder solicitarlas."
             : null;
 
-  function request() {
-    const created = today();
-    const o: OvertimeRequest = { id: uid(), userId: me.id, weekStart: ms, minutes: overtimeMin, status: "Pendiente", createdAt: created };
+  const [draft, setDraft] = useState<OvertimeRequest | null>(null);
+
+  /** Borrador de la solicitud: se previsualiza el informe antes de enviarla */
+  function preview() {
+    setDraft({ id: uid(), userId: me.id, weekStart: ms, minutes: overtimeMin, status: "Pendiente", createdAt: today() });
+  }
+
+  function request(o: OvertimeRequest) {
+    const created = o.createdAt;
+    const pdf = overtimePdfDataUrl(buildOvertimeSummary(state, o));
+    const file = `informe-horas-extra_${ms.slice(0, 7)}.pdf`;
+    setDraft(null);
     dispatch({ type: "addOvertime", o });
     dispatch({
       type: "addAbsence",
       absence: {
         id: uid(), userId: me.id, type: "Horas extra", dateFrom: ms, dateTo: me2,
-        reason: `Horas extra de ${label}`, attachments: [], status: "Pendiente", createdAt: created,
+        reason: `Horas extra de ${label}`, attachments: [{ name: file, url: pdf, size: Math.round(pdf.length * 0.75) }], status: "Pendiente", createdAt: created,
       },
     });
-    toast("Solicitud enviada a Recursos Humanos con su informe.");
-    onReport(o);
+    toast("Solicitud enviada a Recursos Humanos con el informe adjunto.");
   }
 
   return (
@@ -621,7 +630,8 @@ function MonthRequest({ onReport }: { onReport: (o: OvertimeRequest) => void }) 
         </div>
       ) : (
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <button className="btn btn-primary" disabled={reason !== null} onClick={request}>Solicitar y generar informe</button>
+          {draft && <OvertimeReportModal ot={draft} onClose={() => setDraft(null)} onSend={() => request(draft)} />}
+          <button className="btn btn-primary" disabled={reason !== null} onClick={preview}>Previsualizar informe y solicitar</button>
           {reason && <span style={{ fontSize: 12.5, color: "var(--text-3)" }}>{reason}</span>}
         </div>
       )}

@@ -1,16 +1,14 @@
-import { compensationMinutes, expectedMinutesInRange } from "./store";
+import { compensationMinutes, overtimeBreakdown } from "./store";
 import type { AppState, ID } from "./types";
-import { addDays, addMonths, monthLabel, weekStart } from "./utils";
+import { addDays, addMonths, monthLabel } from "./utils";
 
 /**
  * Horas de los integrantes de un proyecto, por persona y por mes. El proyecto
  * solo define QUIÉNES aparecen (sus integrantes); extra y recuperadas son los
  * totales de cada persona, sin repartir entre proyectos:
  * - Totales proyecto: lo que la persona cargó a este proyecto.
- * - Extra: por semana (lun–dom), lo cargado en total por encima de la jornada
- *   esperada (detectado, se haya informado o no). Si la semana cae entre dos
- *   meses, cada mes se lleva la parte de la extra que corresponde a lo cargado
- *   en sus días.
+ * - Extra: por mes, cada día se cuentan las horas hasta completar la jornada y el
+ *   resto es extra; No laborable y Vacaciones no computan (overtimeBreakdown).
  * - Recuperadas: compensaciones de horas aprobadas que empiezan en el mes.
  * - Netas: extra − recuperadas.
  */
@@ -37,23 +35,6 @@ export function projectHoursByMonth(state: AppState, projectId: ID, from: string
   const project = state.projects.find((p) => p.id === projectId);
   const members = state.users.filter((u) => (userIds ? userIds.includes(u.id) : project?.memberIds.includes(u.id)));
 
-  const weekCache = new Map<string, number>();
-  /** Fracción de lo cargado en la semana que es extra (0 a 1) */
-  const extraRatio = (userId: ID, ws: string) => {
-    const key = `${userId}|${ws}`;
-    const hit = weekCache.get(key);
-    if (hit !== undefined) return hit;
-    const we = addDays(ws, 6);
-    let loaded = 0;
-    for (const e of state.entries) if (e.userId === userId && e.date >= ws && e.date <= we) loaded += e.end - e.start;
-    const u = state.users.find((x) => x.id === userId);
-    const expected = u ? expectedMinutesInRange(state, u, ws, we) : 0;
-    const extra = expected > 0 ? Math.max(0, loaded - expected) : loaded;
-    const ratio = loaded > 0 ? extra / loaded : 0;
-    weekCache.set(key, ratio);
-    return ratio;
-  };
-
   const acc = new Map<string, { total: number; extra: number; recovered: number }>();
   const cell = (month: string, userId: ID) => {
     const key = `${month}|${userId}`;
@@ -68,7 +49,15 @@ export function projectHoursByMonth(state: AppState, projectId: ID, from: string
     const mins = e.end - e.start;
     const c = cell(e.date.slice(0, 7), e.userId);
     if (e.projectId === projectId) c.total += mins;
-    c.extra += mins * extraRatio(e.userId, weekStart(e.date));
+  }
+
+  // Extra por mes: cada día se cuentan las horas hasta completar la jornada y el resto es
+  // extra; No laborable y Vacaciones no computan (overtimeBreakdown)
+  for (let m = from.slice(0, 7) + "-01"; m <= to; m = addMonths(m, 1)) {
+    const mFrom = m < from ? from : m;
+    const mEnd = addDays(addMonths(m, 1), -1);
+    const mTo = mEnd > to ? to : mEnd;
+    for (const u of members) cell(m.slice(0, 7), u.id).extra = overtimeBreakdown(state, u, mFrom, mTo).extraMin;
   }
 
   for (const a of state.absences) {
@@ -111,7 +100,7 @@ export async function downloadProjectHoursXlsx(state: AppState, projectId: ID, f
 const HEADER = ["Horas totales proyecto", "Horas extra proyecto", "Horas recuperadas proyecto", "Horas netas proyecto"];
 const NOTES = [
   ["Personas: las elegidas al exportar (por defecto, los integrantes del proyecto). Extra y recuperadas son los totales de cada persona (todos sus proyectos), sin repartir."],
-  ["Extra: lo cargado por encima de la jornada de cada semana. Recuperadas: compensaciones de horas aprobadas que empiezan en el mes."],
+  ["Extra: cada día se cuentan las horas hasta completar la jornada y el resto es extra; No laborable y Vacaciones no computan. Recuperadas: compensaciones de horas aprobadas que empiezan en el mes."],
   ["Netas: extra − recuperadas."],
 ];
 type Sums = Pick<ProjectHoursRow, "totalMin" | "extraMin" | "recoveredMin" | "netMin">;
