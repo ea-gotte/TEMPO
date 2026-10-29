@@ -210,6 +210,7 @@ a { color: var(--accent); text-decoration: none; }
 }
 .table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .table tr:last-child td { border-bottom: none; }
+.table-compact td { padding: 6px 10px; }
 .table tbody tr { transition: background 0.1s; }
 .table tbody tr:hover { background: var(--surface-2); }
 .th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
