@@ -106,7 +106,10 @@ export function Absences() {
   // un gerente de España (para aprobar). No carga solicitudes propias ni
   // informa horas extra propias en esta plataforma.
   const isEspana = me.team === "espana";
-  const [tab, setTab] = useState<"mias" | "aprobar" | "extra" | "registro">(isEspana ? "aprobar" : "mias");
+  const [tab, setTab] = useState<"mias" | "aprobar" | "todas" | "extra" | "registro">(isEspana ? "aprobar" : "mias");
+  const [fPerson, setFPerson] = useState("");
+  const [fType, setFType] = useState("");
+  const [fStatus, setFStatus] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [detail, setDetail] = useState<AbsenceRequest | null>(null);
   const [comment, setComment] = useState("");
@@ -127,7 +130,10 @@ export function Absences() {
   const [resolveOtId, setResolveOtId] = useState<string | null>(null);
 
   const vac = vacationInfo(state, me.id, today());
-  const list = tab === "mias" ? mine : toApprove;
+  const all = state.absences.filter(
+    (a) => (!fPerson || a.userId === fPerson) && (!fType || a.type === fType) && (!fStatus || a.status === fStatus),
+  );
+  const list = tab === "mias" ? mine : tab === "todas" ? all : toApprove;
 
   function resolve(status: "Aprobado" | "Rechazado") {
     if (!detail) return;
@@ -161,6 +167,10 @@ export function Absences() {
   function confirmDeleteAbsence() {
     if (!deleteAbsenceReq) return;
     dispatch({ type: "deleteAbsence", id: deleteAbsenceReq.id });
+    if (deleteAbsenceReq.type === "Horas extra") {
+      const ot = state.overtime.find((o) => o.userId === deleteAbsenceReq.userId && o.createdAt === deleteAbsenceReq.createdAt);
+      if (ot) dispatch({ type: "deleteOvertime", id: ot.id });
+    }
     toast("Solicitud eliminada.");
     setDeleteAbsenceReq(null);
   }
@@ -225,6 +235,9 @@ export function Absences() {
           <button className={tab === "aprobar" ? "active" : ""} onClick={() => setTab("aprobar")}>
             Por aprobar {toApprove.length > 0 && `(${toApprove.length})`}
           </button>
+        )}
+        {canManage && (
+          <button className={tab === "todas" ? "active" : ""} onClick={() => setTab("todas")}>Todas las solicitudes</button>
         )}
         {!isEspana && (
           <button className={tab === "extra" ? "active" : ""} onClick={() => setTab("extra")}>
@@ -317,7 +330,27 @@ export function Absences() {
         </>
       )}
 
-      {(tab === "mias" || tab === "aprobar") && (
+      {tab === "todas" && (
+        <div className="card card-pad no-print" style={{ marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <select className="select" style={{ width: "auto" }} value={fPerson} onChange={(e) => setFPerson(e.target.value)}>
+            <option value="">Todas las personas</option>
+            {state.users.slice().sort((a, b) => a.name.localeCompare(b.name)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+          <select className="select" style={{ width: "auto" }} value={fType} onChange={(e) => setFType(e.target.value)}>
+            <option value="">Todos los tipos</option>
+            {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select className="select" style={{ width: "auto" }} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+            <option value="">Todos los estados</option>
+            <option value="Pendiente">Pendiente</option>
+            <option value="Aprobado">Aprobado</option>
+            <option value="Rechazado">Rechazado</option>
+          </select>
+          <span style={{ fontSize: 12.5, color: "var(--text-3)", alignSelf: "center" }}>{all.length} solicitudes</span>
+        </div>
+      )}
+
+      {(tab === "mias" || tab === "aprobar" || tab === "todas") && (
       <div className="card">
         {list.length === 0 && <Empty icon="sun" text="Sin solicitudes" sub={tab === "mias" ? "Creá una nueva solicitud de ausencia." : "No hay solicitudes pendientes de aprobación."} />}
         {list
@@ -337,7 +370,7 @@ export function Absences() {
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <strong>{a.type}</strong>
                     <StatusBadge s={a.status} />
-                    {tab === "aprobar" && u && (
+                    {tab !== "mias" && u && (
                       <span style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)" }}>
                         <Avatar name={u.name} size={20} /> {u.name}
                       </span>
@@ -692,6 +725,10 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
   const [timeTo, setTimeTo] = useState(edit?.timeTo ?? "");
   const [reason, setReason] = useState(edit?.reason ?? "");
   const [files, setFiles] = useState<Attachment[]>(edit?.attachments ?? []);
+  // Admin/gerente pueden cargar o corregir una solicitud a nombre de otra persona y dejarla ya resuelta
+  const staff = ["admin", "gerente"].includes(state.users.find((u) => u.id === state.currentUserId)?.role ?? "");
+  const [personId, setPersonId] = useState(edit?.userId ?? state.currentUserId);
+  const [status, setStatus] = useState<AbsenceRequest["status"]>(edit?.status ?? "Pendiente");
 
   const partial = ["Salida médica", "Medio día", "Horario reducido", "Compensación de horas", "Horas extra"].includes(type);
   // Cambio 6: solo el tipo y la fecha son obligatorios; el resto es opcional
@@ -732,11 +769,42 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
   function submit() {
     if (!valid) return;
 
+    const target = staff ? personId : state.currentUserId;
+    const finalStatus = staff ? status : "Pendiente";
+    const resolution = finalStatus === "Pendiente"
+      ? { resolvedBy: undefined, resolvedAt: undefined }
+      : finalStatus === edit?.status
+        ? { resolvedBy: edit.resolvedBy, resolvedAt: edit.resolvedAt }
+        : { resolvedBy: state.currentUserId, resolvedAt: today() };
+
     if (edit) {
+      if (edit.type === "Horas extra" || type === "Horas extra") {
+        const ot = state.overtime.find((o) => o.userId === edit.userId && o.createdAt === edit.createdAt);
+        if (edit.type === "Horas extra" && type !== "Horas extra" && ot) {
+          dispatch({ type: "deleteOvertime", id: ot.id });
+        } else if (type === "Horas extra") {
+          let minutes = ot?.minutes ?? 0;
+          if (timeFrom && timeTo) {
+            const [h1, m1] = timeFrom.split(":").map(Number);
+            const [h2, m2] = timeTo.split(":").map(Number);
+            minutes = Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1)) || minutes;
+          }
+          const u = state.users.find((x) => x.id === target);
+          if (!minutes) minutes = u ? (u.jornada === "media" ? 4 * 60 : Math.round((u.weeklyHours * 60) / Math.max(1, u.workDays.length))) : 8 * 60;
+          const next: OvertimeRequest = {
+            id: ot?.id ?? uid(), userId: target, weekStart: dateFrom, minutes, status: finalStatus,
+            createdAt: edit.createdAt, ...resolution, supervisorComment: reason.trim() || undefined,
+          };
+          dispatch(ot ? { type: "updateOvertime", o: next } : { type: "addOvertime", o: next });
+        }
+      }
       dispatch({
         type: "updateAbsence",
         absence: {
           ...edit,
+          userId: target,
+          status: finalStatus,
+          ...resolution,
           type,
           dateFrom,
           dateTo,
@@ -761,7 +829,7 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
         minutes = Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1));
       }
       if (minutes === 0) {
-        const u = state.users.find((x) => x.id === state.currentUserId);
+        const u = state.users.find((x) => x.id === target);
         minutes = u
           ? u.jornada === "media"
             ? 4 * 60
@@ -772,11 +840,12 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
         type: "addOvertime",
         o: {
           id: uid(),
-          userId: state.currentUserId,
+          userId: target,
           weekStart: dateFrom,
           minutes,
-          status: "Pendiente",
+          status: finalStatus,
           createdAt: created,
+          ...resolution,
           supervisorComment: reason.trim() || undefined,
         },
       });
@@ -786,7 +855,7 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
       type: "addAbsence",
       absence: {
         id: uid(),
-        userId: state.currentUserId,
+        userId: target,
         type,
         dateFrom,
         dateTo,
@@ -794,11 +863,12 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
         timeTo: partial ? timeTo || undefined : undefined,
         reason: reason.trim(),
         attachments: files,
-        status: "Pendiente",
+        status: finalStatus,
         createdAt: created,
+        ...resolution,
       },
     });
-    toast("Solicitud enviada. Tu supervisor la revisará.");
+    toast(finalStatus === "Pendiente" ? "Solicitud enviada. Tu supervisor la revisará." : "Solicitud cargada.");
     onClose();
   }
 
@@ -813,6 +883,24 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
         </>
       }
     >
+      {staff && (
+        <div className="form-grid">
+          <div className="field">
+            <label>Persona</label>
+            <select className="select" value={personId} onChange={(e) => setPersonId(e.target.value)}>
+              {state.users.slice().sort((a, b) => a.name.localeCompare(b.name)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Estado</label>
+            <select className="select" value={status} onChange={(e) => setStatus(e.target.value as AbsenceRequest["status"])}>
+              <option value="Pendiente">Pendiente</option>
+              <option value="Aprobado">Aprobado</option>
+              <option value="Rechazado">Rechazado</option>
+            </select>
+          </div>
+        </div>
+      )}
       <div className="field">
         <label>Tipo de ausencia <span style={{ color: "var(--danger)" }}>*</span></label>
         <select className="select" value={type} onChange={(e) => setType(e.target.value as AbsenceType)}>
