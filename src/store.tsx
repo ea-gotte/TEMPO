@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
 import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, AbsenceType, ID, Notification, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role, FlightCategory, FlightActivity, ProfessionalProfile, Survey, SurveyResponse, FeedbackItem } from "./types";
 import { seedState } from "./data";
-import { isoDate, uid, hashPassword, addDays, addMonths, parseISO, today } from "./utils";
+import { isoDate, uid, hashPassword, addDays, addMonths, parseISO, today, monthStart, monthEnd, minToHM } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
 
 const LS_KEY = "tempo-state-v1";
@@ -1563,7 +1563,7 @@ export function absenceWarnings(state: AppState, absence: AbsenceRequest): strin
  */
 export function overtimeWarnings(state: AppState, ot: OvertimeRequest): string[] {
   const warnings: string[] = [];
-  const weekEnd = addDays(ot.weekStart, 6);
+  const weekEnd = overtimeRange(ot.weekStart)[1];
   const overlapping = state.absences.filter(
     (a) => a.userId === ot.userId && a.status === "Aprobado" && a.dateFrom <= weekEnd && ot.weekStart <= a.dateTo,
   );
@@ -1571,6 +1571,47 @@ export function overtimeWarnings(state: AppState, ot: OvertimeRequest): string[]
     warnings.push(`Esa semana se superpone con una ausencia aprobada: ${a.type} (${fmtDateShort(a.dateFrom)}${a.dateFrom !== a.dateTo ? ` → ${fmtDateShort(a.dateTo)}` : ""}).`);
   }
   return warnings;
+}
+
+/** Proyectos que no cuentan para horas extra: se cargan solo para que el calendario no quede vacío. */
+const NON_COMPUTABLE_PROJECTS = ["no laborable", "vacaciones"];
+
+export function isNonComputableProject(p: Project | null | undefined): boolean {
+  return !!p && NON_COMPUTABLE_PROJECTS.includes(p.name.trim().toLowerCase());
+}
+
+/** Minutos de un registro que cuentan para horas extra (0 si es de No laborable / Vacaciones) */
+export function computableMinutes(state: AppState, e: TimeEntry): number {
+  const p = e.projectId ? state.projects.find((x) => x.id === e.projectId) : null;
+  return isNonComputableProject(p) ? 0 : e.end - e.start;
+}
+
+/**
+ * Período que cubre una solicitud de horas extra: el mes completo cuando weekStart es el
+ * día 1 (solicitudes mensuales), o la semana para las anteriores, que eran semanales.
+ */
+export function overtimeRange(weekStartISO: string): [string, string] {
+  return weekStartISO.endsWith("-01") ? [weekStartISO, monthEnd(weekStartISO)] : [weekStartISO, addDays(weekStartISO, 6)];
+}
+
+/**
+ * Registros de tiempo que se pisan entre sí en el calendario de la persona dentro del período
+ * de la solicitud. Mientras haya alguno, las horas extra no se pueden solicitar ni aprobar.
+ */
+export function overtimeOverlapIssues(state: AppState, userId: string, weekStartISO: string): string[] {
+  const [from, to] = overtimeRange(weekStartISO);
+  const mine = state.entries.filter((e) => e.userId === userId && e.date >= from && e.date <= to);
+  const issues: string[] = [];
+  const seen = new Set<string>();
+  for (const e of mine.slice().sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start)) {
+    for (const o of overlaps(mine, e)) {
+      const key = [e.id, o.id].sort().join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      issues.push(`${fmtDateShort(e.date)}: ${minToHM(e.start)}–${minToHM(e.end)} se superpone con ${minToHM(o.start)}–${minToHM(o.end)}.`);
+    }
+  }
+  return issues;
 }
 
 function fmtDateShort(iso: string): string {

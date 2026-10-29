@@ -24,6 +24,16 @@ export function addMonths(s: string, n: number): string {
   return isoDate(d);
 }
 
+/** Primer día (YYYY-MM-01) del mes de una fecha */
+export function monthStart(s: string): string {
+  return s.slice(0, 8) + "01";
+}
+
+/** Último día del mes de una fecha */
+export function monthEnd(s: string): string {
+  return addDays(addMonths(monthStart(s), 1), -1);
+}
+
 export function today(): string {
   return isoDate(new Date());
 }

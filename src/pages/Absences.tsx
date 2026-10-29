@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { useStore, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings } from "../store";
+import { useStore, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings, overtimeOverlapIssues } from "../store";
 import type { AbsenceRequest, AbsenceType, Attachment, OvertimeRequest } from "../types";
-import { ATTACHMENT_ACCEPT, attachmentMime, fmtDate, fmtDur, today, uid } from "../utils";
+import { ATTACHMENT_ACCEPT, attachmentMime, fmtDate, fmtDur, monthStart, today, uid } from "../utils";
 import { Avatar, Empty, Modal, useToast } from "../components/ui";
 import { Icon, type IconName } from "../components/Icon";
 
@@ -137,6 +137,10 @@ export function Absences() {
 
   function resolve(status: "Aprobado" | "Rechazado") {
     if (!detail) return;
+    if (status === "Aprobado" && detail.type === "Horas extra" && overtimeOverlapIssues(state, detail.userId, monthStart(detail.dateFrom)).length > 0) {
+      toast("Hay horas superpuestas en el calendario: hay que corregirlas antes de aprobar.");
+      return;
+    }
     dispatch({ type: "resolveAbsence", id: detail.id, status, comment, by: me.id });
     if (detail.type === "Horas extra") {
       const matchingOt = state.overtime.find((o) => o.userId === detail.userId && o.createdAt === detail.createdAt);
@@ -152,6 +156,10 @@ export function Absences() {
   function resolveOt(status: "Aprobado" | "Rechazado") {
     if (!resolveOtId) return;
     const ot = state.overtime.find((x) => x.id === resolveOtId);
+    if (status === "Aprobado" && ot && overtimeOverlapIssues(state, ot.userId, ot.weekStart).length > 0) {
+      toast("Hay horas superpuestas en el calendario: hay que corregirlas antes de aprobar.");
+      return;
+    }
     dispatch({ type: "resolveOvertime", id: resolveOtId, status, comment, by: me.id });
     if (ot) {
       const matchingAbs = state.absences.find((a) => a.userId === ot.userId && a.type === "Horas extra" && a.createdAt === ot.createdAt);
@@ -259,7 +267,7 @@ export function Absences() {
                 <div style={{ fontSize: 12, color: "var(--text-3)" }}>≈ {otDays} día{otDays !== 1 ? "s" : ""} disponibles para recuperar</div>
               </div>
               <div style={{ fontSize: 12.5, color: "var(--text-2)", flex: 1, minWidth: 240 }}>
-                Las horas extra se detectan por semana en <strong>Control de horas</strong> y hay que informarlas dentro de los <strong>3 meses</strong> siguientes a esa semana, o quedan vencidas.
+                Las horas extra se detectan por mes en <strong>Control de horas</strong> (no cuentan las horas de los proyectos No laborable y Vacaciones) y hay que informarlas dentro de los <strong>3 meses</strong> siguientes a ese mes, o quedan vencidas. Si el calendario tiene horas superpuestas, hay que corregirlas antes de solicitarlas.
                 Solo cuentan en el saldo cuando el supervisor las aprueba. Una vez aprobadas, hay <strong>1 año</strong> desde esa semana para recuperarlas solicitando una ausencia del tipo <strong>Compensación de horas</strong>, o se pierden.
               </div>
               {myOtApproved > 0 && (
@@ -279,7 +287,7 @@ export function Absences() {
           </div>
           <div className="card">
             {[...(canApprove ? otPending : []), ...myOvertime].length === 0 && (
-              <Empty icon="flame" text="Sin horas extra registradas" sub="Cuando una semana supere la jornada, el administrador las enviará a supervisión desde Control de horas." />
+              <Empty icon="flame" text="Sin horas extra registradas" sub="Cuando un mes supere la jornada, el administrador las enviará a supervisión desde Control de horas." />
             )}
             {[...(canApprove ? otPending : []), ...myOvertime].map((o) => {
               const u = state.users.find((x) => x.id === o.userId);
@@ -431,6 +439,7 @@ export function Absences() {
       {resolveOtId && (() => {
         const ot = state.overtime.find((x) => x.id === resolveOtId);
         const warnings = ot ? overtimeWarnings(state, ot) : [];
+        const blockers = ot ? overtimeOverlapIssues(state, ot.userId, ot.weekStart) : [];
         return (
           <Modal
             title="Revisar horas extra"
@@ -438,13 +447,14 @@ export function Absences() {
             footer={
               <>
                 <button className="btn btn-danger" onClick={() => resolveOt("Rechazado")}>Rechazar</button>
-                <button className="btn btn-primary" onClick={() => resolveOt("Aprobado")}>Aprobar</button>
+                <button className="btn btn-primary" disabled={blockers.length > 0} onClick={() => resolveOt("Aprobado")}>Aprobar</button>
               </>
             }
           >
             <p style={{ fontSize: 13, color: "var(--text-2)" }}>
               Al aprobar, las horas quedan disponibles para que la persona las recupere mediante una solicitud de <strong>Compensación de horas</strong>.
             </p>
+            {blockers.length > 0 && <OverlapBlock issues={blockers} />}
             {warnings.length > 0 && (
               <div style={{ background: "var(--warning-soft)", color: "var(--warning)", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, marginBottom: 10 }}>
                 {warnings.map((w, i) => (
@@ -521,6 +531,17 @@ function EditOvertimeModal({ ot, onClose }: { ot: OvertimeRequest; onClose: () =
   );
 }
 
+/** Horas superpuestas en el calendario: impiden solicitar o aprobar horas extra hasta corregirlas */
+function OverlapBlock({ issues }: { issues: string[] }) {
+  return (
+    <div style={{ background: "var(--danger-soft)", color: "var(--danger)", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, marginBottom: 10 }}>
+      <strong>Hay horas superpuestas en el calendario del mes. Hay que corregirlas antes de continuar:</strong>
+      {issues.slice(0, 6).map((t, i) => <div key={i} style={{ marginTop: 3 }}>{t}</div>)}
+      {issues.length > 6 && <div style={{ marginTop: 3 }}>y {issues.length - 6} más…</div>}
+    </div>
+  );
+}
+
 /** Detalle completo de una solicitud, con adjuntos y (para supervisores) acciones de aprobación/edición */
 function RequestDetail({
   request: a,
@@ -547,6 +568,7 @@ function RequestDetail({
   const u = state.users.find((x) => x.id === a.userId);
   const resolver = state.users.find((x) => x.id === a.resolvedBy);
   const warnings = canApprove ? absenceWarnings(state, a) : [];
+  const blockers = canApprove && a.type === "Horas extra" ? overtimeOverlapIssues(state, a.userId, monthStart(a.dateFrom)) : [];
   const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <div style={{ display: "flex", gap: 10, padding: "7px 0", borderBottom: "1px solid var(--border)" }}>
       <span style={{ width: 130, flexShrink: 0, color: "var(--text-3)", fontSize: 12.5, fontWeight: 600 }}>{label}</span>
@@ -570,7 +592,7 @@ function RequestDetail({
           {canApprove ? (
             <>
               <button className="btn btn-danger" onClick={() => onResolve("Rechazado")}>Rechazar</button>
-              <button className="btn btn-primary" onClick={() => onResolve("Aprobado")}>Aprobar</button>
+              <button className="btn btn-primary" disabled={blockers.length > 0} onClick={() => onResolve("Aprobado")}>Aprobar</button>
             </>
           ) : (
             <button className="btn btn-secondary" onClick={onClose}>Cerrar</button>
@@ -583,6 +605,7 @@ function RequestDetail({
         <strong style={{ fontSize: 16 }}>{a.type}</strong>
         <StatusBadge s={a.status} />
       </div>
+      {blockers.length > 0 && <OverlapBlock issues={blockers} />}
       {warnings.length > 0 && (
         <div style={{ background: "var(--warning-soft)", color: "var(--warning)", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, marginBottom: 10 }}>
           {warnings.map((w, i) => (
@@ -729,10 +752,13 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
   const staff = ["admin", "gerente"].includes(state.users.find((u) => u.id === state.currentUserId)?.role ?? "");
   const [personId, setPersonId] = useState(edit?.userId ?? state.currentUserId);
   const [status, setStatus] = useState<AbsenceRequest["status"]>(edit?.status ?? "Pendiente");
+  const target = staff ? personId : state.currentUserId;
 
   const partial = ["Salida médica", "Medio día", "Horario reducido", "Compensación de horas", "Horas extra"].includes(type);
   // Cambio 6: solo el tipo y la fecha son obligatorios; el resto es opcional
-  const valid = Boolean(type) && Boolean(dateFrom) && dateTo >= dateFrom;
+  // Horas extra: no se pueden solicitar con horas superpuestas en el calendario del mes
+  const overlapIssues = type === "Horas extra" && dateFrom && status !== "Rechazado" ? overtimeOverlapIssues(state, target, monthStart(dateFrom)) : [];
+  const valid = Boolean(type) && Boolean(dateFrom) && dateTo >= dateFrom && overlapIssues.length === 0;
 
   // Solo se listan los tipos habilitados en Administración (el tipo inicial forzado siempre se incluye)
   const enabledTypes = state.leaveTypeConfig.filter((t) => t.enabled).map((t) => t.type);
@@ -769,7 +795,6 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
   function submit() {
     if (!valid) return;
 
-    const target = staff ? personId : state.currentUserId;
     const finalStatus = staff ? status : "Pendiente";
     const resolution = finalStatus === "Pendiente"
       ? { resolvedBy: undefined, resolvedAt: undefined }
@@ -792,7 +817,7 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
           const u = state.users.find((x) => x.id === target);
           if (!minutes) minutes = u ? (u.jornada === "media" ? 4 * 60 : Math.round((u.weeklyHours * 60) / Math.max(1, u.workDays.length))) : 8 * 60;
           const next: OvertimeRequest = {
-            id: ot?.id ?? uid(), userId: target, weekStart: dateFrom, minutes, status: finalStatus,
+            id: ot?.id ?? uid(), userId: target, weekStart: monthStart(dateFrom), minutes, status: finalStatus,
             createdAt: edit.createdAt, ...resolution, supervisorComment: reason.trim() || undefined,
           };
           dispatch(ot ? { type: "updateOvertime", o: next } : { type: "addOvertime", o: next });
@@ -841,7 +866,7 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
         o: {
           id: uid(),
           userId: target,
-          weekStart: dateFrom,
+          weekStart: monthStart(dateFrom),
           minutes,
           status: finalStatus,
           createdAt: created,
@@ -909,6 +934,7 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
           ))}
         </select>
       </div>
+      {overlapIssues.length > 0 && <OverlapBlock issues={overlapIssues} />}
       {type === "Compensación de horas" && (
         <div style={{ fontSize: 12.5, background: otBalance > 0 ? "var(--success-soft)" : "var(--warning-soft)", color: otBalance > 0 ? "var(--success)" : "var(--warning)", padding: "8px 12px", borderRadius: 8, fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}>
           <Icon name={otBalance > 0 ? "scale" : "alert"} size={14} />
