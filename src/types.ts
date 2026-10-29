@@ -229,7 +229,7 @@ export type AbsenceType =
   | "Compensación de horas"
   | "Horas extra";
 
-export type AbsenceStatus = "Pendiente" | "Aprobado" | "Rechazado";
+export type AbsenceStatus = "Pendiente" | "Aprobado" | "Rechazado" | "Devuelto";
 
 export interface Attachment {
   name: string;
@@ -310,7 +310,7 @@ export interface Notification {
   read: boolean;
 }
 
-export type OvertimeStatus = "Pendiente" | "Aprobado" | "Rechazado";
+export type OvertimeStatus = "Pendiente" | "Aprobado" | "Rechazado" | "Devuelto";
 
 /** Horas extra de una semana, informadas y enviadas a supervisión */
 export interface OvertimeRequest {

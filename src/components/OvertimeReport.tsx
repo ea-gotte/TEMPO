@@ -130,7 +130,7 @@ function TraceDoc({ ot }: { ot: OvertimeRequest }) {
   const s = buildOvertimeSummary(state, ot);
   const annex = findAbsenceFor(state, ot)?.attachments ?? [];
   const current = s.steps.findIndex((st) => !st.done);
-  const finished = current === -1 || s.steps.some((st) => st.bad);
+  const finished = current === -1 || s.steps.some((st) => st.bad) || ot.status === "Devuelto";
 
   return (
     <div style={{ background: "#fff", color: INK, padding: 24, fontFamily: "var(--font, system-ui, sans-serif)", lineHeight: 1.4 }}>
@@ -156,12 +156,12 @@ function TraceDoc({ ot }: { ot: OvertimeRequest }) {
 
       <div style={{ margin: "16px 0 4px" }}>
         {s.steps.map((st, i) => {
-          const color = st.bad ? "#b91c1c" : st.done ? "#15803d" : i === current ? "#b45309" : "#9ca3af";
+          const color = st.bad ? "#b91c1c" : st.warn ? "#b45309" : st.done ? "#15803d" : i === current ? "#b45309" : "#9ca3af";
           return (
             <div key={i} style={{ display: "flex", gap: 14, breakInside: "avoid" }}>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <div style={{ width: 24, height: 24, borderRadius: 12, background: st.done || st.bad ? color : "#fff", border: `2px solid ${color}`, color: st.done || st.bad ? "#fff" : color, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700 }}>
-                  {st.bad ? "✕" : st.done ? "✓" : i + 1}
+                  {st.bad ? "✕" : st.warn && st.done ? "↩" : st.done ? "✓" : i + 1}
                 </div>
                 {i < s.steps.length - 1 && <div style={{ flex: 1, width: 2, background: st.done ? color : LINE, minHeight: 28 }} />}
               </div>
@@ -171,6 +171,7 @@ function TraceDoc({ ot }: { ot: OvertimeRequest }) {
                 {st.at && <div style={{ fontSize: 12, color: MUTED }}>{st.at}</div>}
                 {st.note && <div style={{ fontSize: 12.5, fontStyle: "italic", marginTop: 2 }}>“{st.note}”</div>}
                 {!st.done && !st.bad && i === current && <div style={{ fontSize: 11.5, color: "#b45309", marginTop: 2 }}>Etapa en curso</div>}
+                {st.warn && st.done && <div style={{ fontSize: 11.5, color: "#b45309", marginTop: 2 }}>La persona debe corregir y reenviar</div>}
               </div>
             </div>
           );

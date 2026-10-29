@@ -3,7 +3,7 @@ import { pdfDataUrl, PDF_H, type PdfOp } from "./simplePdf";
 import type { AppState, ID, OvertimeRequest } from "./types";
 import { addDays, fmtDate, fmtDur, today } from "./utils";
 
-export interface OvertimeStep { title: string; who: string; at: string; note?: string; done: boolean; bad?: boolean }
+export interface OvertimeStep { title: string; who: string; at: string; note?: string; done: boolean; bad?: boolean; /** devuelta con observaciones */ warn?: boolean }
 
 export interface OvertimeSummary {
   issued: string;
@@ -67,15 +67,20 @@ export function buildOvertimeSummary(state: AppState, ot: OvertimeRequest): Over
       { title: "Solicitud generada por el usuario", who: name(ot.userId), at: fmtDate(ot.createdAt), done: true },
       {
         title: "Revisión de Recursos Humanos",
-        who: ot.status === "Pendiente" ? "Pendiente de revisión" : name(ot.resolvedBy),
+        who: ot.status === "Devuelto"
+          ? `Devuelta con observaciones por ${name(ot.resolvedBy)}`
+          : ot.status === "Pendiente"
+            ? ot.resolvedBy ? `Reenviada tras las observaciones de ${name(ot.resolvedBy)}` : "Pendiente de revisión"
+            : name(ot.resolvedBy),
         at: ot.resolvedAt ? fmtDate(ot.resolvedAt) : "",
         note: ot.supervisorComment,
-        done: ot.status !== "Pendiente",
+        done: ot.status === "Aprobado" || ot.status === "Rechazado" || ot.status === "Devuelto",
         bad: ot.status === "Rechazado",
+        warn: ot.status === "Devuelto" || (ot.status === "Pendiente" && !!ot.resolvedBy),
       },
       {
         title: "Cómputo en el saldo del usuario",
-        who: ot.status === "Aprobado" ? `${fmtDur(ot.minutes)} acreditadas` : ot.status === "Rechazado" ? "No se acreditan horas" : "Pendiente",
+        who: ot.status === "Aprobado" ? `${fmtDur(ot.minutes)} acreditadas` : ot.status === "Rechazado" ? "No se acreditan horas" : ot.status === "Devuelto" ? "Esperando que la persona corrija y reenvíe" : "Pendiente",
         at: ot.status === "Aprobado" ? `Vencen el ${fmtDate(addDays(ot.weekStart, 365))}` : "",
         done: ot.status === "Aprobado",
         bad: ot.status === "Rechazado",

@@ -20,11 +20,11 @@ type Action =
   | { type: "resumeTimer"; id: string }
   | { type: "stopTimer"; id: string; discard?: boolean; entries?: TimeEntry[] }
   | { type: "addAbsence"; absence: AbsenceRequest }
-  | { type: "resolveAbsence"; id: string; status: "Aprobado" | "Rechazado"; comment: string; by: string }
+  | { type: "resolveAbsence"; id: string; status: "Aprobado" | "Rechazado" | "Devuelto"; comment: string; by: string }
   | { type: "updateAbsence"; absence: AbsenceRequest }
   | { type: "deleteAbsence"; id: string }
   | { type: "addOvertime"; o: OvertimeRequest }
-  | { type: "resolveOvertime"; id: string; status: "Aprobado" | "Rechazado"; comment: string; by: string }
+  | { type: "resolveOvertime"; id: string; status: "Aprobado" | "Rechazado" | "Devuelto"; comment: string; by: string }
   | { type: "updateOvertime"; o: OvertimeRequest }
   | { type: "deleteOvertime"; id: string }
   | { type: "notify"; n: Omit<Notification, "id" | "read" | "date"> }
@@ -132,7 +132,13 @@ function absenceSubmittedNotification(absence: AbsenceRequest): NotificationCont
     body: `${absence.type} del ${absence.dateFrom} al ${absence.dateTo}.`,
   };
 }
-function absenceResolvedNotification(absence: AbsenceRequest, status: "Aprobado" | "Rechazado"): NotificationContent {
+function absenceResolvedNotification(absence: AbsenceRequest, status: "Aprobado" | "Rechazado" | "Devuelto", comment = ""): NotificationContent {
+  if (status === "Devuelto") {
+    return {
+      kind: "aprobacion", title: "Solicitud devuelta",
+      body: `${absence.type} (${absence.dateFrom}) volvió con observaciones${comment ? `: ${comment}` : ""}. Corregila y reenviala.`,
+    };
+  }
   return {
     kind: "aprobacion", title: `Solicitud ${status.toLowerCase()}`,
     body: `${absence.type} (${absence.dateFrom}) fue ${status.toLowerCase()}.`,
@@ -144,7 +150,13 @@ function overtimeSubmittedNotification(s: AppState, o: OvertimeRequest): Notific
     body: `${s.users.find((u) => u.id === o.userId)?.name ?? "?"}: ${Math.round(o.minutes / 60 * 10) / 10} h extra (semana ${o.weekStart}) enviadas a supervisión.`,
   };
 }
-function overtimeResolvedNotification(o: OvertimeRequest, status: "Aprobado" | "Rechazado"): NotificationContent {
+function overtimeResolvedNotification(o: OvertimeRequest, status: "Aprobado" | "Rechazado" | "Devuelto", comment = ""): NotificationContent {
+  if (status === "Devuelto") {
+    return {
+      kind: "aprobacion", title: "Horas extra devueltas",
+      body: `Tus horas extra (${o.weekStart}) volvieron con observaciones${comment ? `: ${comment}` : ""}. Corregí lo indicado y reenviá la solicitud.`,
+    };
+  }
   return {
     kind: "aprobacion", title: `Horas extra ${status.toLowerCase()}s`,
     body: `${Math.round(o.minutes / 60 * 10) / 10} h extra de la semana ${o.weekStart} fueron ${status.toLowerCase()}s${status === "Aprobado" ? " y ya se pueden recuperar como compensación" : ""}.`,
@@ -246,7 +258,7 @@ function baseReducer(s: AppState, a: Action): AppState {
           x.id === a.id ? { ...x, status: a.status, supervisorComment: a.comment, resolvedBy: a.by, resolvedAt: isoDate(new Date()) } : x,
         ),
       };
-      const notified = withNotification(withResolved, ab.userId, absenceResolvedNotification(ab, a.status));
+      const notified = withNotification(withResolved, ab.userId, absenceResolvedNotification(ab, a.status, a.comment));
       return withAudit(
         notified,
         `Ausencia ${a.status.toLowerCase()}`,
@@ -285,7 +297,7 @@ function baseReducer(s: AppState, a: Action): AppState {
           x.id === a.id ? { ...x, status: a.status, supervisorComment: a.comment, resolvedBy: a.by, resolvedAt: isoDate(new Date()) } : x,
         ),
       };
-      const notified = withNotification(withResolved, o.userId, overtimeResolvedNotification(o, a.status));
+      const notified = withNotification(withResolved, o.userId, overtimeResolvedNotification(o, a.status, a.comment));
       return withAudit(
         notified,
         `Horas extra ${a.status.toLowerCase()}s`,
@@ -1021,7 +1033,7 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
         })
         .eq("id", a.id);
       const ab = prevState.absences.find((x) => x.id === a.id);
-      const notifErr = ab ? await insertNotification(ab.userId, absenceResolvedNotification(ab, a.status)) : null;
+      const notifErr = ab ? await insertNotification(ab.userId, absenceResolvedNotification(ab, a.status, a.comment)) : null;
       return error?.message ?? notifErr;
     }
     case "updateAbsence": {
@@ -1056,7 +1068,7 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
         })
         .eq("id", a.id);
       const o = prevState.overtime.find((x) => x.id === a.id);
-      const notifErr = o ? await insertNotification(o.userId, overtimeResolvedNotification(o, a.status)) : null;
+      const notifErr = o ? await insertNotification(o.userId, overtimeResolvedNotification(o, a.status, a.comment)) : null;
       return error?.message ?? notifErr;
     }
     case "updateOvertime": {

@@ -38,7 +38,7 @@ const TYPE_ICON: Record<AbsenceType, IconName> = {
 };
 
 function StatusBadge({ s }: { s: AbsenceRequest["status"] }) {
-  const cls = s === "Aprobado" ? "ok" : s === "Rechazado" ? "bad" : "warn";
+  const cls = s === "Aprobado" ? "ok" : s === "Rechazado" ? "bad" : s === "Devuelto" ? "acc" : "warn";
   return <span className={`badge ${cls}`}>{s}</span>;
 }
 
@@ -120,6 +120,7 @@ export function Absences() {
   const [editOt, setEditOt] = useState<OvertimeRequest | null>(null);
   const [deleteOtReq, setDeleteOtReq] = useState<OvertimeRequest | null>(null);
   const [reportOt, setReportOt] = useState<OvertimeRequest | null>(null);
+  const [resubmitOt, setResubmitOt] = useState<OvertimeRequest | null>(null);
 
   const mine = state.absences.filter((a) => a.userId === me.id);
   const toApprove = state.absences.filter((a) => a.status === "Pendiente" && a.userId !== me.id);
@@ -138,8 +139,12 @@ export function Absences() {
   );
   const list = tab === "mias" ? mine : tab === "todas" ? all : toApprove;
 
-  function resolve(status: "Aprobado" | "Rechazado") {
+  function resolve(status: "Aprobado" | "Rechazado" | "Devuelto") {
     if (!detail) return;
+    if (status === "Devuelto" && !comment.trim()) {
+      toast("Para devolverla, escribí qué hay que corregir en el comentario.");
+      return;
+    }
     if (status === "Aprobado" && detail.type === "Horas extra" && overtimeOverlapIssues(state, detail.userId, monthStart(detail.dateFrom)).length > 0) {
       toast("Hay horas superpuestas en el calendario: hay que corregirlas antes de aprobar.");
       return;
@@ -151,13 +156,17 @@ export function Absences() {
         dispatch({ type: "resolveOvertime", id: matchingOt.id, status, comment, by: me.id });
       }
     }
-    toast(`Solicitud ${status.toLowerCase()}.`);
+    toast(status === "Devuelto" ? "Solicitud devuelta a la persona con tu comentario." : `Solicitud ${status.toLowerCase()}.`);
     setDetail(null);
     setComment("");
   }
 
-  function resolveOt(status: "Aprobado" | "Rechazado") {
+  function resolveOt(status: "Aprobado" | "Rechazado" | "Devuelto") {
     if (!resolveOtId) return;
+    if (status === "Devuelto" && !comment.trim()) {
+      toast("Para devolverla, escribí qué hay que corregir en el comentario.");
+      return;
+    }
     const ot = state.overtime.find((x) => x.id === resolveOtId);
     if (status === "Aprobado" && ot && overtimeOverlapIssues(state, ot.userId, ot.weekStart).length > 0) {
       toast("Hay horas superpuestas en el calendario: hay que corregirlas antes de aprobar.");
@@ -170,7 +179,7 @@ export function Absences() {
         dispatch({ type: "resolveAbsence", id: matchingAbs.id, status, comment, by: me.id });
       }
     }
-    toast(`Horas extra ${status.toLowerCase()}s.`);
+    toast(status === "Devuelto" ? "Horas extra devueltas a la persona con tu comentario." : `Horas extra ${status.toLowerCase()}s.`);
     setResolveOtId(null);
     setComment("");
   }
@@ -272,7 +281,7 @@ export function Absences() {
               <Icon name="ban" size={14} /> {fmtDur(myOtBalance.expiredMin)} vencieron sin recuperarse.
             </div>
           )}
-          <MonthRequest onReport={setReportOt} recoverMin={myOtApproved} onRecover={() => setShowNew(true)} />
+          <MonthRequest onReport={setReportOt} onResubmit={setResubmitOt} recoverMin={myOtApproved} onRecover={() => setShowNew(true)} />
           <div className="card">
             {[...(canApprove ? otPending : []), ...myOvertime].length === 0 && (
               <Empty icon="flame" text="Sin horas extra registradas" sub="Cuando un mes supere la jornada, el administrador las enviará a supervisión desde Control de horas." />
@@ -311,6 +320,9 @@ export function Absences() {
                   </button>
                   {canApprove && !isMineOt && o.status === "Pendiente" && (
                     <button className="btn btn-secondary btn-sm" onClick={() => setResolveOtId(o.id)}>Revisar</button>
+                  )}
+                  {isMineOt && o.status === "Devuelto" && (
+                    <button className="btn btn-primary btn-sm" onClick={() => setResubmitOt(o)}>Corregir y reenviar</button>
                   )}
                   {canManage && (
                     <>
@@ -403,6 +415,15 @@ export function Absences() {
           comment={comment}
           setComment={setComment}
           onResolve={resolve}
+          onResubmit={detail.userId === me.id && detail.status === "Devuelto"
+            ? (() => {
+                if (detail.type === "Horas extra") {
+                  const o = findOvertimeFor(state, detail);
+                  if (o) setResubmitOt(o);
+                } else setEditAbsence(detail);
+                setDetail(null);
+              })
+            : undefined}
           onReport={detail.type === "Horas extra" ? (() => { const o = findOvertimeFor(state, detail); if (o) { setReportOt(o); setDetail(null); } }) : undefined}
           onEdit={() => { setEditAbsence(detail); setDetail(null); }}
           onDelete={() => { setDeleteAbsenceReq(detail); setDetail(null); }}
@@ -439,6 +460,7 @@ export function Absences() {
             footer={
               <>
                 <button className="btn btn-danger" onClick={() => resolveOt("Rechazado")}>Rechazar</button>
+                <button className="btn btn-secondary" onClick={() => resolveOt("Devuelto")}>Devolver con comentario</button>
                 <button className="btn btn-primary" disabled={blockers.length > 0} onClick={() => resolveOt("Aprobado")}>Aprobar</button>
               </>
             }
@@ -457,12 +479,14 @@ export function Absences() {
               </div>
             )}
             <div className="field">
-              <label>Comentario del supervisor</label>
-              <textarea className="textarea" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comentario opcional…" />
+              <label>Comentario</label>
+              <textarea className="textarea" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Opcional al aprobar o rechazar. Obligatorio para devolver: indicá qué hay que corregir (horas, fechas…)." />
             </div>
           </Modal>
         );
       })()}
+
+      {resubmitOt && <ResubmitOvertime ot={resubmitOt} onClose={() => setResubmitOt(null)} />}
 
       {reportOt && <OvertimeTraceModal ot={reportOt} onClose={() => setReportOt(null)} />}
 
@@ -530,7 +554,7 @@ function EditOvertimeModal({ ot, onClose }: { ot: OvertimeRequest; onClose: () =
  * registros, valida el calendario, genera la solicitud de Gestión junto con el informe y la
  * deja pendiente de aprobación de Recursos Humanos.
  */
-function MonthRequest({ onReport, recoverMin, onRecover }: { onReport: (o: OvertimeRequest) => void; recoverMin: number; onRecover: () => void }) {
+function MonthRequest({ onReport, onResubmit, recoverMin, onRecover }: { onReport: (o: OvertimeRequest) => void; onResubmit: (o: OvertimeRequest) => void; recoverMin: number; onRecover: () => void }) {
   const { state, dispatch } = useStore();
   const toast = useToast();
   const me = state.users.find((u) => u.id === state.currentUserId)!;
@@ -607,7 +631,12 @@ function MonthRequest({ onReport, recoverMin, onRecover }: { onReport: (o: Overt
       {existing ? (
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <StatusBadge s={existing.status} />
-          <span style={{ fontSize: 12.5, color: "var(--text-2)" }}>Ya solicitaste {fmtDur(existing.minutes)} de este mes el {fmtDate(existing.createdAt)}.</span>
+          <span style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+            {existing.status === "Devuelto"
+              ? <>Recursos Humanos te la devolvió{existing.supervisorComment ? <>: <em>“{existing.supervisorComment}”</em></> : "."}</>
+              : <>Ya solicitaste {fmtDur(existing.minutes)} de este mes el {fmtDate(existing.createdAt)}.</>}
+          </span>
+          {existing.status === "Devuelto" && existing.userId === me.id && <button className="btn btn-primary btn-sm" onClick={() => onResubmit(existing)}>Corregir y reenviar</button>}
           <button className="btn btn-secondary btn-sm" onClick={() => onReport(existing)}><Icon name="scale" size={13} /> Ver trazabilidad</button>
         </div>
       ) : (
@@ -625,6 +654,68 @@ function MonthRequest({ onReport, recoverMin, onRecover }: { onReport: (o: Overt
         </div>
       </details>
     </div>
+  );
+}
+
+/**
+ * Reenvío de horas extra devueltas por Recursos Humanos: la persona corrige sus registros,
+ * se recalcula el mes, se previsualiza el informe nuevo y la solicitud vuelve a Pendiente.
+ */
+function ResubmitOvertime({ ot, onClose }: { ot: OvertimeRequest; onClose: () => void }) {
+  const { state, dispatch } = useStore();
+  const toast = useToast();
+  const me = state.users.find((u) => u.id === state.currentUserId)!;
+  const [from, to] = overtimeRange(ot.weekStart);
+  const bd = overtimeBreakdown(state, me, from, to);
+  const issues = overtimeOverlapIssues(state, me.id, monthStart(from));
+  const expired = today() > overtimeClaimDeadline(to);
+  const [preview, setPreview] = useState(false);
+  const draft: OvertimeRequest = { ...ot, minutes: bd.extraMin, status: "Pendiente" };
+  const blocked = bd.extraMin === 0 || issues.length > 0 || expired || from !== monthStart(from);
+
+  function send() {
+    const abs = findAbsenceFor(state, ot);
+    const pdf = overtimePdfDataUrl(buildOvertimeSummary(state, draft));
+    const file = `informe-horas-extra_${from.slice(0, 7)}.pdf`;
+    dispatch({ type: "updateOvertime", o: draft });
+    if (abs) {
+      const kept = abs.attachments.filter((f) => !f.name.startsWith("informe-horas-extra_"));
+      dispatch({ type: "updateAbsence", absence: { ...abs, status: "Pendiente", attachments: [...kept, { name: file, url: pdf, size: Math.round(pdf.length * 0.75) }] } });
+    }
+    toast("Solicitud reenviada a Recursos Humanos con el informe actualizado.");
+    onClose();
+  }
+
+  return (
+    <>
+      <Modal
+        title="Corregir y reenviar horas extra"
+        onClose={onClose}
+        footer={
+          <>
+            <button className="btn btn-secondary" onClick={onClose}>Cerrar</button>
+            <button className="btn btn-primary" disabled={blocked} onClick={() => setPreview(true)}>Previsualizar informe y reenviar</button>
+          </>
+        }
+      >
+        {ot.supervisorComment && (
+          <div style={{ background: "var(--surface-2)", borderRadius: 8, padding: "8px 12px", fontSize: 13, marginBottom: 10 }}>
+            <strong>{state.users.find((x) => x.id === ot.resolvedBy)?.name ?? "Recursos Humanos"} pidió corregir:</strong> {ot.supervisorComment}
+          </div>
+        )}
+        <p style={{ fontSize: 13, color: "var(--text-2)", marginTop: 0 }}>
+          Corregí tus registros de horas (en Registrar o en el Calendario) y volvé acá: el informe se recalcula con lo que haya cargado ahora.
+        </p>
+        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, marginBottom: 8 }}>
+          <span>Pedido antes <strong>{fmtDur(ot.minutes)}</strong></span>
+          <span>Ahora <strong>{fmtDur(bd.extraMin)}</strong></span>
+        </div>
+        {issues.length > 0 && <OverlapBlock issues={issues} />}
+        {expired && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>Pasaron más de 3 meses: ya no se puede reclamar.</div>}
+        {bd.extraMin === 0 && !expired && <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>Con los registros actuales ya no hay horas extra en el mes.</div>}
+      </Modal>
+      {preview && <OvertimeReportModal ot={draft} onClose={() => setPreview(false)} onSend={send} />}
+    </>
   );
 }
 
@@ -648,6 +739,7 @@ function RequestDetail({
   setComment,
   onResolve,
   onReport,
+  onResubmit,
   onEdit,
   onDelete,
   onClose,
@@ -657,8 +749,9 @@ function RequestDetail({
   canManage: boolean;
   comment: string;
   setComment: (s: string) => void;
-  onResolve: (s: "Aprobado" | "Rechazado") => void;
+  onResolve: (s: "Aprobado" | "Rechazado" | "Devuelto") => void;
   onReport?: () => void;
+  onResubmit?: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -692,10 +785,14 @@ function RequestDetail({
           {canApprove ? (
             <>
               <button className="btn btn-danger" onClick={() => onResolve("Rechazado")}>Rechazar</button>
+              <button className="btn btn-secondary" onClick={() => onResolve("Devuelto")}>Devolver con comentario</button>
               <button className="btn btn-primary" disabled={blockers.length > 0} onClick={() => onResolve("Aprobado")}>Aprobar</button>
             </>
           ) : (
-            <button className="btn btn-secondary" onClick={onClose}>Cerrar</button>
+            <>
+              <button className="btn btn-secondary" onClick={onClose}>Cerrar</button>
+              {onResubmit && <button className="btn btn-primary" onClick={onResubmit}>Corregir y reenviar</button>}
+            </>
           )}
         </>
       }
@@ -748,8 +845,8 @@ function RequestDetail({
       </div>
       {canApprove && (
         <div className="field" style={{ marginTop: 6 }}>
-          <label>Comentario del supervisor (opcional)</label>
-          <textarea className="textarea" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comentario para el solicitante…" />
+          <label>Comentario <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(obligatorio para devolver)</span></label>
+          <textarea className="textarea" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Comentario para el solicitante: qué hay que corregir…" />
         </div>
       )}
     </Modal>
