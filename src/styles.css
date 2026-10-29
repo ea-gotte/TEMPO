@@ -507,7 +507,11 @@ a { color: var(--accent); text-decoration: none; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-3); border: 3px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-track { background: transparent; }
 
+.print-only { display: none; }
+
 @media print {
+  body.printing-report #root { display: none !important; }
+  body.printing-report .print-only { display: block; }
   .sidebar, .topbar, .no-print { display: none !important; }
   .content { overflow: visible; }
   body { background: #fff; }

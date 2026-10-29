@@ -1573,6 +1573,18 @@ export function overtimeWarnings(state: AppState, ot: OvertimeRequest): string[]
   return warnings;
 }
 
+/** Horas extra que acompañan a una solicitud de "Horas extra" de Gestión (misma persona, fecha de carga y mes) */
+export function findOvertimeFor(state: AppState, a: AbsenceRequest): OvertimeRequest | undefined {
+  const c = state.overtime.filter((o) => o.userId === a.userId && o.createdAt === a.createdAt);
+  return c.find((o) => monthStart(o.weekStart) === monthStart(a.dateFrom)) ?? c[0];
+}
+
+/** Solicitud de Gestión que acompaña a unas horas extra */
+export function findAbsenceFor(state: AppState, o: OvertimeRequest): AbsenceRequest | undefined {
+  const c = state.absences.filter((a) => a.userId === o.userId && a.type === "Horas extra" && a.createdAt === o.createdAt);
+  return c.find((a) => monthStart(a.dateFrom) === monthStart(o.weekStart)) ?? c[0];
+}
+
 /** Proyectos que no cuentan para horas extra: se cargan solo para que el calendario no quede vacío. */
 const NON_COMPUTABLE_PROJECTS = ["no laborable", "vacaciones"];
 

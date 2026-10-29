@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { useStore, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings, overtimeOverlapIssues } from "../store";
+import { useStore, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings, overtimeOverlapIssues, overtimeClaimDeadline, overtimeRange, computableMinutes, expectedMinutesInRange, findOvertimeFor, findAbsenceFor } from "../store";
+import { OvertimeReportModal } from "../components/OvertimeReport";
 import type { AbsenceRequest, AbsenceType, Attachment, OvertimeRequest } from "../types";
-import { ATTACHMENT_ACCEPT, attachmentMime, fmtDate, fmtDur, monthStart, today, uid } from "../utils";
+import { ATTACHMENT_ACCEPT, addMonths, attachmentMime, fmtDate, fmtDur, monthEnd, monthStart, today, uid } from "../utils";
 import { Avatar, Empty, Modal, useToast } from "../components/ui";
 import { Icon, type IconName } from "../components/Icon";
 
@@ -117,6 +118,7 @@ export function Absences() {
   const [deleteAbsenceReq, setDeleteAbsenceReq] = useState<AbsenceRequest | null>(null);
   const [editOt, setEditOt] = useState<OvertimeRequest | null>(null);
   const [deleteOtReq, setDeleteOtReq] = useState<OvertimeRequest | null>(null);
+  const [reportOt, setReportOt] = useState<OvertimeRequest | null>(null);
 
   const mine = state.absences.filter((a) => a.userId === me.id);
   const toApprove = state.absences.filter((a) => a.status === "Pendiente" && a.userId !== me.id);
@@ -143,7 +145,7 @@ export function Absences() {
     }
     dispatch({ type: "resolveAbsence", id: detail.id, status, comment, by: me.id });
     if (detail.type === "Horas extra") {
-      const matchingOt = state.overtime.find((o) => o.userId === detail.userId && o.createdAt === detail.createdAt);
+      const matchingOt = findOvertimeFor(state, detail);
       if (matchingOt) {
         dispatch({ type: "resolveOvertime", id: matchingOt.id, status, comment, by: me.id });
       }
@@ -162,7 +164,7 @@ export function Absences() {
     }
     dispatch({ type: "resolveOvertime", id: resolveOtId, status, comment, by: me.id });
     if (ot) {
-      const matchingAbs = state.absences.find((a) => a.userId === ot.userId && a.type === "Horas extra" && a.createdAt === ot.createdAt);
+      const matchingAbs = findAbsenceFor(state, ot);
       if (matchingAbs) {
         dispatch({ type: "resolveAbsence", id: matchingAbs.id, status, comment, by: me.id });
       }
@@ -176,7 +178,7 @@ export function Absences() {
     if (!deleteAbsenceReq) return;
     dispatch({ type: "deleteAbsence", id: deleteAbsenceReq.id });
     if (deleteAbsenceReq.type === "Horas extra") {
-      const ot = state.overtime.find((o) => o.userId === deleteAbsenceReq.userId && o.createdAt === deleteAbsenceReq.createdAt);
+      const ot = findOvertimeFor(state, deleteAbsenceReq);
       if (ot) dispatch({ type: "deleteOvertime", id: ot.id });
     }
     toast("Solicitud eliminada.");
@@ -285,6 +287,7 @@ export function Absences() {
               </div>
             )}
           </div>
+          <MonthRequest onReport={setReportOt} />
           <div className="card">
             {[...(canApprove ? otPending : []), ...myOvertime].length === 0 && (
               <Empty icon="flame" text="Sin horas extra registradas" sub="Cuando un mes supere la jornada, el administrador las enviará a supervisión desde Control de horas." />
@@ -318,6 +321,9 @@ export function Absences() {
                       </div>
                     )}
                   </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setReportOt(o)} title="Informe con trazabilidad (PDF)">
+                    <Icon name="printer" size={13} /> Informe
+                  </button>
                   {canApprove && !isMineOt && o.status === "Pendiente" && (
                     <button className="btn btn-secondary btn-sm" onClick={() => setResolveOtId(o.id)}>Revisar</button>
                   )}
@@ -412,6 +418,7 @@ export function Absences() {
           comment={comment}
           setComment={setComment}
           onResolve={resolve}
+          onReport={detail.type === "Horas extra" ? (() => { const o = findOvertimeFor(state, detail); if (o) { setReportOt(o); setDetail(null); } }) : undefined}
           onEdit={() => { setEditAbsence(detail); setDetail(null); }}
           onDelete={() => { setDeleteAbsenceReq(detail); setDetail(null); }}
           onClose={() => setDetail(null)}
@@ -472,6 +479,8 @@ export function Absences() {
         );
       })()}
 
+      {reportOt && <OvertimeReportModal ot={reportOt} onClose={() => setReportOt(null)} />}
+
       {editOt && <EditOvertimeModal ot={editOt} onClose={() => setEditOt(null)} />}
 
       {deleteOtReq && (
@@ -531,6 +540,95 @@ function EditOvertimeModal({ ot, onClose }: { ot: OvertimeRequest; onClose: () =
   );
 }
 
+/**
+ * Solicitud de horas extra de un mes para la persona que inicia sesión: las calcula desde sus
+ * registros, valida el calendario, genera la solicitud de Gestión junto con el informe y la
+ * deja pendiente de aprobación de Recursos Humanos.
+ */
+function MonthRequest({ onReport }: { onReport: (o: OvertimeRequest) => void }) {
+  const { state, dispatch } = useStore();
+  const toast = useToast();
+  const me = state.users.find((u) => u.id === state.currentUserId)!;
+  const [ms, setMs] = useState(addMonths(monthStart(today()), -1));
+  const me2 = monthEnd(ms);
+  const label = new Date(ms + "T00:00:00").toLocaleDateString("es", { month: "long", year: "numeric" });
+
+  const mine = state.entries.filter((e) => e.userId === me.id && e.date >= ms && e.date <= me2);
+  const loaded = mine.reduce((a, e) => a + (e.end - e.start), 0);
+  const computable = mine.reduce((a, e) => a + computableMinutes(state, e), 0);
+  const expected = expectedMinutesInRange(state, me, ms, me2);
+  const overtimeMin = Math.max(0, computable - expected);
+  const issues = overtimeOverlapIssues(state, me.id, ms);
+  const existing = state.overtime.find((o) => {
+    if (o.userId !== me.id) return false;
+    const [from, to] = overtimeRange(o.weekStart);
+    return from <= me2 && ms <= to;
+  });
+  const expired = today() > overtimeClaimDeadline(me2);
+  const open = ms >= monthStart(today());
+  const reason = existing
+    ? null
+    : open
+      ? "El mes todavía no terminó."
+      : overtimeMin === 0
+        ? "No hay horas extra en este mes."
+        : expired
+          ? "Pasaron más de 3 meses: ya no se puede reclamar."
+          : issues.length > 0
+            ? "Corregí las horas superpuestas del calendario para poder solicitarlas."
+            : null;
+
+  function request() {
+    const created = today();
+    const o: OvertimeRequest = { id: uid(), userId: me.id, weekStart: ms, minutes: overtimeMin, status: "Pendiente", createdAt: created };
+    dispatch({ type: "addOvertime", o });
+    dispatch({
+      type: "addAbsence",
+      absence: {
+        id: uid(), userId: me.id, type: "Horas extra", dateFrom: ms, dateTo: me2,
+        reason: `Horas extra de ${label}`, attachments: [], status: "Pendiente", createdAt: created,
+      },
+    });
+    toast("Solicitud enviada a Recursos Humanos con su informe.");
+    onReport(o);
+  }
+
+  return (
+    <div className="card card-pad" style={{ marginBottom: 14 }}>
+      <div className="card-title"><Icon name="flame" size={14} /> Solicitar las horas extra de un mes</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <button className="btn btn-secondary btn-sm" onClick={() => setMs(addMonths(ms, -1))} aria-label="Mes anterior"><Icon name="arrow-left" size={14} /></button>
+        <strong style={{ textTransform: "capitalize", minWidth: 130, textAlign: "center" }}>{label}</strong>
+        <button className="btn btn-secondary btn-sm" onClick={() => setMs(addMonths(ms, 1))} disabled={open} aria-label="Mes siguiente"><Icon name="arrow-right" size={14} /></button>
+      </div>
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", fontSize: 13, marginBottom: 10 }}>
+        <span>Cargadas <strong>{fmtDur(loaded)}</strong></span>
+        <span>Computables <strong>{fmtDur(computable)}</strong></span>
+        <span>Esperadas <strong>{fmtDur(expected)}</strong></span>
+        <span>Horas extra <strong>{fmtDur(overtimeMin)}</strong></span>
+      </div>
+      {loaded > computable && (
+        <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 8 }}>
+          {fmtDur(loaded - computable)} cargadas en No laborable / Vacaciones no cuentan para horas extra.
+        </div>
+      )}
+      {!existing && issues.length > 0 && !open && <OverlapBlock issues={issues} />}
+      {existing ? (
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <StatusBadge s={existing.status} />
+          <span style={{ fontSize: 12.5, color: "var(--text-2)" }}>Ya solicitaste {fmtDur(existing.minutes)} de este mes el {fmtDate(existing.createdAt)}.</span>
+          <button className="btn btn-secondary btn-sm" onClick={() => onReport(existing)}><Icon name="printer" size={13} /> Ver informe</button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <button className="btn btn-primary" disabled={reason !== null} onClick={request}>Solicitar y generar informe</button>
+          {reason && <span style={{ fontSize: 12.5, color: "var(--text-3)" }}>{reason}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Horas superpuestas en el calendario: impiden solicitar o aprobar horas extra hasta corregirlas */
 function OverlapBlock({ issues }: { issues: string[] }) {
   return (
@@ -550,6 +648,7 @@ function RequestDetail({
   comment,
   setComment,
   onResolve,
+  onReport,
   onEdit,
   onDelete,
   onClose,
@@ -560,6 +659,7 @@ function RequestDetail({
   comment: string;
   setComment: (s: string) => void;
   onResolve: (s: "Aprobado" | "Rechazado") => void;
+  onReport?: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -582,6 +682,7 @@ function RequestDetail({
       onClose={onClose}
       footer={
         <>
+          {onReport && <button className="btn btn-ghost" onClick={onReport}><Icon name="printer" size={13} /> Informe</button>}
           {canManage && (
             <>
               <button className="btn btn-ghost" onClick={onEdit}><Icon name="pencil" size={13} /> Editar</button>
@@ -804,7 +905,7 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
 
     if (edit) {
       if (edit.type === "Horas extra" || type === "Horas extra") {
-        const ot = state.overtime.find((o) => o.userId === edit.userId && o.createdAt === edit.createdAt);
+        const ot = findOvertimeFor(state, edit);
         if (edit.type === "Horas extra" && type !== "Horas extra" && ot) {
           dispatch({ type: "deleteOvertime", id: ot.id });
         } else if (type === "Horas extra") {
