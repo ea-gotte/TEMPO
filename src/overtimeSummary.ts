@@ -6,7 +6,6 @@ import { addDays, fmtDate, fmtDur, today } from "./utils";
 export interface OvertimeStep { title: string; who: string; at: string; note?: string; done: boolean; bad?: boolean }
 
 export interface OvertimeSummary {
-  folio: string;
   issued: string;
   company: string;
   person: string;
@@ -21,6 +20,7 @@ export interface OvertimeSummary {
   expectedMin: number;
   /** Cargadas en No laborable / Vacaciones: no computan */
   nonComputableMin: number;
+  /** Etapas de la aprobación: se completan a medida que avanza la solicitud (ver OvertimeTraceModal) */
   steps: OvertimeStep[];
   absence?: string;
 }
@@ -50,7 +50,6 @@ export function buildOvertimeSummary(state: AppState, ot: OvertimeRequest): Over
   const abs = findAbsenceFor(state, ot);
 
   return {
-    folio: ot.id.slice(0, 8).toUpperCase(),
     issued: fmtDate(today()),
     company: state.company.name,
     person: u?.name ?? "—",
@@ -98,13 +97,12 @@ export function overtimePdfDataUrl(sum: OvertimeSummary): string {
   const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
   text(L, sum.company.toUpperCase(), 8, false, 0.4);
-  text(R - 130, `Folio ${sum.folio}`, 9);
   y -= 22;
   text(L, "Informe de horas extra", 18, true);
   text(R - 130, `Emitido el ${sum.issued}`, 8, false, 0.4);
   y -= 10; rule(1.4); y -= 20;
 
-  for (const [k, v] of [["Persona", sum.person], ["Supervisor", sum.supervisor], ["Período", sum.period], ["Estado", sum.status]]) {
+  for (const [k, v] of [["Persona", sum.person], ["Supervisor", sum.supervisor], ["Período", sum.period]]) {
     text(L, k, 10, false, 0.4);
     text(L + 90, v, 10, true);
     y -= 16;
@@ -126,18 +124,5 @@ export function overtimePdfDataUrl(sum: OvertimeSummary): string {
     y -= 14;
   }
   text(L, "Cada día se cuentan las horas hasta completar la jornada; el resto es extra del proyecto en que se cargó.", 8, false, 0.4);
-  y -= 30;
-
-  if (y < 200) next();
-  text(L, "Trazabilidad de la aprobación", 11, true); y -= 8; rule(0.8); y -= 16;
-  for (const s of sum.steps) {
-    text(L, s.bad ? "x" : s.done ? "+" : "-", 10, true);
-    text(L + 18, s.title, 10, true);
-    y -= 13;
-    text(L + 18, cut(`${s.who}${s.at ? " · " + s.at : ""}`, 90), 9, false, 0.4);
-    y -= 13;
-    if (s.note) { text(L + 18, cut(`“${s.note}”`, 90), 9); y -= 13; }
-    y -= 4;
-  }
   return pdfDataUrl(pages);
 }

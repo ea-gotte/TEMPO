@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useStore, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings, overtimeOverlapIssues, overtimeClaimDeadline, overtimeRange, overtimeBreakdown, expectedMinutesInRange, findOvertimeFor, findAbsenceFor } from "../store";
-import { OvertimeReportModal } from "../components/OvertimeReport";
+import { OvertimeReportModal, OvertimeTraceModal } from "../components/OvertimeReport";
 import { buildOvertimeSummary, overtimePdfDataUrl } from "../overtimeSummary";
 import type { AbsenceRequest, AbsenceType, Attachment, OvertimeRequest } from "../types";
 import { ATTACHMENT_ACCEPT, addMonths, attachmentMime, fmtDate, fmtDur, monthEnd, monthStart, today, uid } from "../utils";
@@ -306,8 +306,8 @@ export function Absences() {
                       </div>
                     )}
                   </div>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setReportOt(o)} title="Informe con trazabilidad (PDF)">
-                    <Icon name="printer" size={13} /> Informe
+                  <button className="btn btn-ghost btn-sm" onClick={() => setReportOt(o)} title="Trazabilidad de la solicitud (se puede exportar a PDF)">
+                    <Icon name="scale" size={13} /> Trazabilidad
                   </button>
                   {canApprove && !isMineOt && o.status === "Pendiente" && (
                     <button className="btn btn-secondary btn-sm" onClick={() => setResolveOtId(o.id)}>Revisar</button>
@@ -464,7 +464,7 @@ export function Absences() {
         );
       })()}
 
-      {reportOt && <OvertimeReportModal ot={reportOt} onClose={() => setReportOt(null)} />}
+      {reportOt && <OvertimeTraceModal ot={reportOt} onClose={() => setReportOt(null)} />}
 
       {editOt && <EditOvertimeModal ot={editOt} onClose={() => setEditOt(null)} />}
 
@@ -608,7 +608,7 @@ function MonthRequest({ onReport, recoverMin, onRecover }: { onReport: (o: Overt
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <StatusBadge s={existing.status} />
           <span style={{ fontSize: 12.5, color: "var(--text-2)" }}>Ya solicitaste {fmtDur(existing.minutes)} de este mes el {fmtDate(existing.createdAt)}.</span>
-          <button className="btn btn-secondary btn-sm" onClick={() => onReport(existing)}><Icon name="printer" size={13} /> Ver informe</button>
+          <button className="btn btn-secondary btn-sm" onClick={() => onReport(existing)}><Icon name="scale" size={13} /> Ver trazabilidad</button>
         </div>
       ) : (
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -681,7 +681,7 @@ function RequestDetail({
       onClose={onClose}
       footer={
         <>
-          {onReport && <button className="btn btn-ghost" onClick={onReport}><Icon name="printer" size={13} /> Informe</button>}
+          {onReport && <button className="btn btn-ghost" onClick={onReport}><Icon name="scale" size={13} /> Trazabilidad</button>}
           {canManage && (
             <>
               <button className="btn btn-ghost" onClick={onEdit}><Icon name="pencil" size={13} /> Editar</button>
