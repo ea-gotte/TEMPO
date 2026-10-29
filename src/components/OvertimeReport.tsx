@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { computableMinutes, expectedMinutesInRange, findAbsenceFor, overtimeRange, useStore } from "../store";
+import { computableMinutes, expectedMinutesInRange, findAbsenceFor, overtimeBreakdown, overtimeRange, useStore } from "../store";
 import { addDays, fmtDate, fmtDur, minToHM, today } from "../utils";
 import { Modal } from "./ui";
 import { Icon } from "./Icon";
@@ -22,8 +22,10 @@ function ReportDoc({ ot }: { ot: OvertimeRequest }) {
   const entries = state.entries
     .filter((e) => e.userId === ot.userId && e.date >= from && e.date <= to)
     .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
-  const loaded = entries.reduce((a, e) => a + (e.end - e.start), 0);
-  const computable = entries.reduce((a, e) => a + computableMinutes(state, e), 0);
+  const bd = u ? overtimeBreakdown(state, u, from, to) : null;
+  const loaded = bd?.loadedMin ?? 0;
+  const computable = bd?.computableMin ?? 0;
+  const extra = bd?.extraMin ?? 0;
   const expected = u ? expectedMinutesInRange(state, u, from, to) : 0;
   const abs = findAbsenceFor(state, ot);
   const period = from.endsWith("-01") && to > from
@@ -86,7 +88,7 @@ function ReportDoc({ ot }: { ot: OvertimeRequest }) {
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}>
         <thead>
           <tr>
-            <th style={th}>Cargadas</th><th style={th}>No computables</th><th style={th}>Computables</th><th style={th}>Esperadas</th><th style={th}>Diferencia</th>
+            <th style={th}>Cargadas</th><th style={th}>No computables</th><th style={th}>Computables</th><th style={th}>Esperadas</th><th style={th}>Horas extra</th>
           </tr>
         </thead>
         <tbody>
@@ -95,13 +97,31 @@ function ReportDoc({ ot }: { ot: OvertimeRequest }) {
             <td style={td}>{fmtDur(loaded - computable)}</td>
             <td style={td}>{fmtDur(computable)}</td>
             <td style={td}>{fmtDur(expected)}</td>
-            <td style={{ ...td, fontWeight: 700 }}>{fmtDur(Math.max(0, computable - expected))}</td>
+            <td style={{ ...td, fontWeight: 700 }}>{fmtDur(extra)}</td>
           </tr>
         </tbody>
       </table>
       <div style={{ fontSize: 11, color: MUTED, marginBottom: 14 }}>
-        No computan para horas extra las horas cargadas en los proyectos No laborable y Vacaciones. Las esperadas descuentan feriados y ausencias de día completo.
+        Cada día se cuentan las horas desde el inicio hasta completar la jornada; lo cargado después es extra y se atribuye al proyecto del registro. No computan los proyectos No laborable y Vacaciones. Las esperadas descuentan feriados y ausencias de día completo.
       </div>
+
+      <div style={{ fontWeight: 700, fontSize: 13, margin: "6px 0" }}>Distribución de las horas extra por proyecto</div>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16 }}>
+        <thead>
+          <tr><th style={th}>Proyecto</th><th style={th}>Horas extra</th><th style={th}>% de las extra</th><th style={th}>% de las horas del mes</th></tr>
+        </thead>
+        <tbody>
+          {(bd?.byProject.length ?? 0) === 0 && <tr><td style={td} colSpan={4}>Sin horas extra en el período.</td></tr>}
+          {bd?.byProject.map((p) => (
+            <tr key={p.projectId ?? "none"}>
+              <td style={td}>{projectName(p.projectId)}</td>
+              <td style={td}>{fmtDur(p.minutes)}</td>
+              <td style={td}>{extra ? ((p.minutes / extra) * 100).toFixed(1) : "0"} %</td>
+              <td style={td}>{computable ? ((p.minutes / computable) * 100).toFixed(1) : "0"} %</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
       <div style={{ fontWeight: 700, fontSize: 13, margin: "6px 0" }}>Trazabilidad de la aprobación</div>
       <div style={{ marginBottom: 16 }}>
@@ -122,7 +142,7 @@ function ReportDoc({ ot }: { ot: OvertimeRequest }) {
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
-            <th style={th}>Fecha</th><th style={th}>Proyecto</th><th style={th}>Descripción</th><th style={th}>Horario</th><th style={th}>Duración</th><th style={th}>Computa</th>
+            <th style={th}>Fecha</th><th style={th}>Proyecto</th><th style={th}>Descripción</th><th style={th}>Horario</th><th style={th}>Duración</th><th style={th}>Extra</th>
           </tr>
         </thead>
         <tbody>
@@ -134,7 +154,7 @@ function ReportDoc({ ot }: { ot: OvertimeRequest }) {
               <td style={td}>{e.description || "—"}</td>
               <td style={td}>{minToHM(e.start)}–{minToHM(e.end)}</td>
               <td style={td}>{fmtDur(e.end - e.start)}</td>
-              <td style={td}>{computableMinutes(state, e) > 0 ? "Sí" : "No"}</td>
+              <td style={td}>{computableMinutes(state, e) === 0 ? "No computa" : bd?.perEntry.get(e.id) ? fmtDur(bd.perEntry.get(e.id)!) : "—"}</td>
             </tr>
           ))}
         </tbody>

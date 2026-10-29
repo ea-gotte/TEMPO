@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { overtimeClaimDeadline, expectedMinutesInRange, overlaps, overtimeOverlapIssues, computableMinutes, overtimeRange, useStore } from "../store";
+import { overtimeClaimDeadline, expectedMinutesInRange, overlaps, overtimeOverlapIssues, overtimeBreakdown, overtimeRange, useStore } from "../store";
+import { downloadOvertimeXlsx } from "../overtimeReport";
 import { addDays, addMonths, dayLabel, fmtDur, minToHM, monthEnd, monthStart, today, uid, weekStart } from "../utils";
 import { Avatar, Empty, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
@@ -15,15 +16,18 @@ export function HoursControl() {
   const me = state.users.find((u) => u.id === state.currentUserId)!;
   const [anchor, setAnchor] = useState(today());
   const [tab, setTab] = useState<"semana" | "cadena">("semana");
+  const [period, setPeriod] = useState<"mes" | "semana">("mes");
 
   const ws = weekStart(anchor);
   // Las horas extra se calculan por mes: cada mes se solicita aparte
   const ms = monthStart(anchor);
   const me2 = monthEnd(ms);
+  const from = period === "mes" ? ms : ws;
+  const to = period === "mes" ? me2 : addDays(ws, 6);
   const monthDays = useMemo(() => {
-    const n = Number(me2.slice(8));
-    return Array.from({ length: n }, (_, i) => addDays(ms, i));
-  }, [ms, me2]);
+    const n = period === "mes" ? Number(me2.slice(8)) : 7;
+    return Array.from({ length: n }, (_, i) => addDays(from, i));
+  }, [from, me2, period]);
   const monthLabel = new Date(ms + "T00:00:00").toLocaleDateString("es", { month: "long", year: "numeric" });
   // Las horas extra de un mes solo se pueden reclamar hasta 3 meses después de que termina.
   const claimExpired = today() > overtimeClaimDeadline(me2);
@@ -44,15 +48,13 @@ export function HoursControl() {
           state.entries.filter((e) => e.userId === u.id && e.date === d).reduce((a, e) => a + (e.end - e.start), 0),
         );
         const loaded = perDay.reduce((a, b) => a + b, 0);
-        // No laborable y Vacaciones no cuentan para horas extra
-        const computable = state.entries
-          .filter((e) => e.userId === u.id && e.date >= ms && e.date <= me2)
-          .reduce((a, e) => a + computableMinutes(state, e), 0);
+        // Horas extra: lo que se carga después de completar la jornada de cada día
+        const bd = overtimeBreakdown(state, u, from, to);
         // Descuenta feriados y ausencias de día completo ya aprobadas de esa
         // semana (mismo cálculo que Reportes) — un feriado no exige carga.
-        const expected = expectedMinutesInRange(state, u, ms, me2);
-        const overtimeMin = Math.max(0, computable - expected);
-        const excluded = loaded - computable;
+        const expected = expectedMinutesInRange(state, u, from, to);
+        const overtimeMin = bd.extraMin;
+        const excluded = loaded - bd.computableMin;
         const overlapIssues = overtimeOverlapIssues(state, u.id, ms);
         const supervisor = state.users.find((x) => x.id === u.supervisorId);
         const otRequest = state.overtime.find((o) => {
@@ -64,7 +66,7 @@ export function HoursControl() {
           loaded === 0 ? "sin-carga" : overtimeMin > 0 ? "extra" : loaded >= expected * 0.95 ? "ok" : "incompleto";
         return { u, perDay, loaded, expected, overtimeMin, excluded, overlapIssues, supervisor, otRequest, status };
       });
-  }, [state, monthDays, ms, me2, me.id, me.role, myDownline]);
+  }, [state, monthDays, from, to, ms, me2, me.id, me.role, myDownline]);
 
   // Incidencias de la cadena de mando: semanas ya cerradas donde alguien no
   // cargó correctamente, con su nivel de escalamiento actual. Ver compliance.ts.
@@ -103,6 +105,11 @@ export function HoursControl() {
     toast("Horas extra enviadas a supervisión y aprobación.");
   }
 
+  async function exportOvertime() {
+    const file = await downloadOvertimeXlsx(state, rows.map((r) => r.u), ms);
+    toast(`Reporte descargado: ${file}`);
+  }
+
   function notifyMissing(id: string, name: string) {
     dispatch({
       type: "notify",
@@ -137,14 +144,28 @@ export function HoursControl() {
           renglón intermedio compensa con más margen abajo (mismo ajuste que
           en Calendario). */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}>
-        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(tab === "semana" ? addMonths(ms, -1) : addDays(anchor, -7))} aria-label="Anterior"><Icon name="arrow-left" size={14} /></button>
+        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(tab === "semana" && period === "mes" ? addMonths(ms, -1) : addDays(anchor, -7))} aria-label="Anterior"><Icon name="arrow-left" size={14} /></button>
         <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
-        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(tab === "semana" ? addMonths(ms, 1) : addDays(anchor, 7))} aria-label="Siguiente"><Icon name="arrow-right" size={14} /></button>
+        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(tab === "semana" && period === "mes" ? addMonths(ms, 1) : addDays(anchor, 7))} aria-label="Siguiente"><Icon name="arrow-right" size={14} /></button>
+        {tab === "semana" && (
+          <div className="tabs" style={{ marginLeft: 6 }}>
+            <button className={period === "mes" ? "active" : ""} onClick={() => setPeriod("mes")}>Mensual</button>
+            <button className={period === "semana" ? "active" : ""} onClick={() => setPeriod("semana")}>Semanal</button>
+          </div>
+        )}
         <strong>
-          {tab === "semana"
+          {tab === "semana" && period === "mes"
             ? <span style={{ textTransform: "capitalize" }}>{monthLabel}</span>
             : <>Semana del {dayLabel(ws)} al {dayLabel(addDays(ws, 6))}</>}
         </strong>
+        {tab === "semana" && (
+          <>
+            <span style={{ flex: 1 }} />
+            <button className="btn btn-secondary btn-sm" onClick={exportOvertime} title="Excel con las horas extra del mes por persona y proyecto, con porcentajes">
+              <Icon name="download" size={13} /> Reporte de horas extra
+            </button>
+          </>
+        )}
       </div>
 
       {tab === "cadena" ? (
@@ -152,7 +173,7 @@ export function HoursControl() {
       ) : (
         <>
           <p className="page-sub">
-            La carga esperada se controla según el tipo de jornada de cada persona (completa o media). Las horas extra se calculan por mes y no cuentan las horas cargadas en los proyectos <strong>No laborable</strong> y <strong>Vacaciones</strong>.
+            La carga esperada se controla según el tipo de jornada de cada persona (completa o media). Horas extra: se cuentan las horas de cada día desde el inicio hasta completar la jornada (8 h) y el resto es extra, atribuido al proyecto donde se cargó. No cuentan los proyectos <strong>No laborable</strong> y <strong>Vacaciones</strong>. Se solicitan por mes.
           </p>
 
           <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))" }}>
@@ -279,9 +300,13 @@ export function HoursControl() {
                             </div>
                           )}
                           <div>
-                            <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} disabled={overlapIssues.length > 0} onClick={() => sendOvertime(u.id, overtimeMin)}>
-                              <Icon name="arrow-right" size={12} /> A supervisión
-                            </button>
+                            {period === "mes" ? (
+                              <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} disabled={overlapIssues.length > 0} onClick={() => sendOvertime(u.id, overtimeMin)}>
+                                <Icon name="arrow-right" size={12} /> A supervisión
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: 11, color: "var(--text-3)" }}>Se solicita por mes</span>
+                            )}
                           </div>
                         </div>
                       )

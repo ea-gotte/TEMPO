@@ -1598,6 +1598,63 @@ export function computableMinutes(state: AppState, e: TimeEntry): number {
   return isNonComputableProject(p) ? 0 : e.end - e.start;
 }
 
+export interface OvertimeBreakdown {
+  loadedMin: number;
+  /** Cargadas fuera de No laborable y Vacaciones */
+  computableMin: number;
+  extraMin: number;
+  /** Horas extra por proyecto, de mayor a menor */
+  byProject: { projectId: ID | null; minutes: number }[];
+  /** Horas extra de cada registro (id del registro → minutos) */
+  perEntry: Map<string, number>;
+}
+
+/**
+ * Horas extra de una persona en [from, to], día por día: se cuentan las horas cargadas desde el
+ * inicio del día hasta completar la jornada diaria (8 h en jornada completa); lo que se carga
+ * después de ese corte es extra y se le atribuye al proyecto del registro. Un día no laborable
+ * (fin de semana, feriado o ausencia de día completo) no tiene jornada: todo lo cargado es extra.
+ * No computan los registros de No laborable y Vacaciones.
+ */
+export function overtimeBreakdown(state: AppState, u: User, from: string, to: string): OvertimeBreakdown {
+  const holidays = holidayDateSet(state);
+  const offDays = fullDayOffDatesInRange(state, u.id, from, to);
+  const dailyMin = Math.round(u.jornada === "media" ? 4 * 60 : (u.weeklyHours * 60) / Math.max(1, u.workDays.length));
+  const mine = state.entries
+    .filter((e) => e.userId === u.id && e.date >= from && e.date <= to)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+  const perEntry = new Map<string, number>();
+  const proj = new Map<ID | null, number>();
+  let loadedMin = 0;
+  let computableMin = 0;
+  let extraMin = 0;
+  let day = "";
+  let cap = 0;
+  let used = 0;
+  for (const e of mine) {
+    loadedMin += e.end - e.start;
+    if (e.date !== day) {
+      day = e.date;
+      const dow = ((parseISO(day).getDay() + 6) % 7) + 1;
+      cap = u.workDays.includes(dow) && !holidays.has(day) && !offDays.has(day) ? dailyMin : 0;
+      used = 0;
+    }
+    const m = computableMinutes(state, e);
+    if (m <= 0) continue;
+    computableMin += m;
+    const within = Math.max(0, Math.min(m, cap - used));
+    used += within;
+    const extra = m - within;
+    if (extra > 0) {
+      extraMin += extra;
+      perEntry.set(e.id, extra);
+      proj.set(e.projectId, (proj.get(e.projectId) ?? 0) + extra);
+    }
+  }
+  const byProject = [...proj.entries()].map(([projectId, minutes]) => ({ projectId, minutes })).sort((a, b) => b.minutes - a.minutes);
+  return { loadedMin, computableMin, extraMin, byProject, perEntry };
+}
+
 /**
  * Período que cubre una solicitud de horas extra: el mes completo cuando weekStart es el
  * día 1 (solicitudes mensuales), o la semana para las anteriores, que eran semanales.

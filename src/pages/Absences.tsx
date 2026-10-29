@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useStore, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings, overtimeOverlapIssues, overtimeClaimDeadline, overtimeRange, computableMinutes, expectedMinutesInRange, findOvertimeFor, findAbsenceFor } from "../store";
+import { useStore, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings, overtimeOverlapIssues, overtimeClaimDeadline, overtimeRange, overtimeBreakdown, expectedMinutesInRange, findOvertimeFor, findAbsenceFor } from "../store";
 import { OvertimeReportModal } from "../components/OvertimeReport";
 import type { AbsenceRequest, AbsenceType, Attachment, OvertimeRequest } from "../types";
 import { ATTACHMENT_ACCEPT, addMonths, attachmentMime, fmtDate, fmtDur, monthEnd, monthStart, today, uid } from "../utils";
@@ -553,11 +553,11 @@ function MonthRequest({ onReport }: { onReport: (o: OvertimeRequest) => void }) 
   const me2 = monthEnd(ms);
   const label = new Date(ms + "T00:00:00").toLocaleDateString("es", { month: "long", year: "numeric" });
 
-  const mine = state.entries.filter((e) => e.userId === me.id && e.date >= ms && e.date <= me2);
-  const loaded = mine.reduce((a, e) => a + (e.end - e.start), 0);
-  const computable = mine.reduce((a, e) => a + computableMinutes(state, e), 0);
+  const bd = overtimeBreakdown(state, me, ms, me2);
+  const loaded = bd.loadedMin;
+  const computable = bd.computableMin;
   const expected = expectedMinutesInRange(state, me, ms, me2);
-  const overtimeMin = Math.max(0, computable - expected);
+  const overtimeMin = bd.extraMin;
   const issues = overtimeOverlapIssues(state, me.id, ms);
   const existing = state.overtime.find((o) => {
     if (o.userId !== me.id) return false;
