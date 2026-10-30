@@ -1,7 +1,7 @@
 import { computableMinutes, expectedMinutesInRange, findAbsenceFor, overtimeBreakdown, overtimeRange } from "./store";
 import { pdfDataUrl, PDF_H, type PdfOp } from "./simplePdf";
 import type { AppState, ID, OvertimeRequest } from "./types";
-import { addDays, fmtDate, fmtDur, today } from "./utils";
+import { addDays, fmtDate, fmtDateTime, fmtDur, today } from "./utils";
 
 export interface OvertimeStep { title: string; who: string; at: string; note?: string; done: boolean; bad?: boolean; /** devuelta con observaciones */ warn?: boolean }
 
@@ -49,6 +49,47 @@ export function buildOvertimeSummary(state: AppState, ot: OvertimeRequest): Over
     : `${fmtDate(from)} al ${fmtDate(to)}`;
   const abs = findAbsenceFor(state, ot);
 
+  // Etapas: la solicitud, cada vuelta de observaciones y respuestas (historial), la decisión y el cómputo
+  const events = ot.history ?? [];
+  const TITLES = {
+    Devuelta: "Devuelta con observaciones",
+    Reenviada: "Respuesta y reenvío de la persona",
+    Aprobada: "Aprobada por Recursos Humanos",
+    Rechazada: "Rechazada por Recursos Humanos",
+  } as const;
+  const decision: OvertimeStep = {
+    title: "Revisión de Recursos Humanos",
+    who: ot.status === "Pendiente" ? "Pendiente de revisión" : name(ot.resolvedBy),
+    at: ot.resolvedAt ? fmtDate(ot.resolvedAt) : "",
+    note: ot.status === "Pendiente" ? undefined : ot.supervisorComment,
+    done: ot.status !== "Pendiente",
+    bad: ot.status === "Rechazado",
+    warn: ot.status === "Devuelto",
+  };
+  const lastEvent = events[events.length - 1];
+  const review: OvertimeStep[] = events.length === 0
+    ? [decision]
+    : [
+        ...events.map((e): OvertimeStep => ({
+          title: TITLES[e.action], who: name(e.by), at: fmtDateTime(e.at), note: e.comment,
+          done: true, bad: e.action === "Rechazada", warn: e.action === "Devuelta",
+        })),
+        ...(ot.status === "Pendiente" ? [{ title: "Revisión de Recursos Humanos", who: "Pendiente de revisión", at: "", done: false }] : []),
+        ...(ot.status === "Devuelto" ? [{ title: "Corrección de la persona", who: "Esperando que corrija y reenvíe", at: "", done: false }] : []),
+        ...((ot.status === "Aprobado" || ot.status === "Rechazado") && lastEvent.action !== "Aprobada" && lastEvent.action !== "Rechazada" ? [decision] : []),
+      ];
+  const steps: OvertimeStep[] = [
+    { title: "Solicitud generada por el usuario", who: name(ot.userId), at: fmtDate(ot.createdAt), done: true },
+    ...review,
+    {
+      title: "Cómputo en el saldo del usuario",
+      who: ot.status === "Aprobado" ? `${fmtDur(ot.minutes)} acreditadas` : ot.status === "Rechazado" ? "No se acreditan horas" : ot.status === "Devuelto" ? "Esperando que la persona corrija y reenvíe" : "Pendiente",
+      at: ot.status === "Aprobado" ? `Vencen el ${fmtDate(addDays(ot.weekStart, 365))}` : "",
+      done: ot.status === "Aprobado",
+      bad: ot.status === "Rechazado",
+    },
+  ];
+
   return {
     issued: fmtDate(today()),
     company: state.company.name,
@@ -63,29 +104,7 @@ export function buildOvertimeSummary(state: AppState, ot: OvertimeRequest): Over
     expectedMin: u ? expectedMinutesInRange(state, u, from, to) : 0,
     nonComputableMin: (bd?.loadedMin ?? 0) - (bd?.computableMin ?? 0),
     absence: abs ? `${abs.type}, ${fmtDate(abs.dateFrom)} al ${fmtDate(abs.dateTo)}` : undefined,
-    steps: [
-      { title: "Solicitud generada por el usuario", who: name(ot.userId), at: fmtDate(ot.createdAt), done: true },
-      {
-        title: "Revisión de Recursos Humanos",
-        who: ot.status === "Devuelto"
-          ? `Devuelta con observaciones por ${name(ot.resolvedBy)}`
-          : ot.status === "Pendiente"
-            ? ot.resolvedBy ? `Reenviada tras las observaciones de ${name(ot.resolvedBy)}` : "Pendiente de revisión"
-            : name(ot.resolvedBy),
-        at: ot.resolvedAt ? fmtDate(ot.resolvedAt) : "",
-        note: ot.supervisorComment,
-        done: ot.status === "Aprobado" || ot.status === "Rechazado" || ot.status === "Devuelto",
-        bad: ot.status === "Rechazado",
-        warn: ot.status === "Devuelto" || (ot.status === "Pendiente" && !!ot.resolvedBy),
-      },
-      {
-        title: "Cómputo en el saldo del usuario",
-        who: ot.status === "Aprobado" ? `${fmtDur(ot.minutes)} acreditadas` : ot.status === "Rechazado" ? "No se acreditan horas" : ot.status === "Devuelto" ? "Esperando que la persona corrija y reenvíe" : "Pendiente",
-        at: ot.status === "Aprobado" ? `Vencen el ${fmtDate(addDays(ot.weekStart, 365))}` : "",
-        done: ot.status === "Aprobado",
-        bad: ot.status === "Rechazado",
-      },
-    ],
+    steps,
   };
 }
 

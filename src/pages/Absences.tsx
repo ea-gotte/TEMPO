@@ -2,8 +2,8 @@ import React, { useState } from "react";
 import { useStore, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings, overtimeOverlapIssues, overtimeClaimDeadline, overtimeRange, overtimeBreakdown, expectedMinutesInRange, findOvertimeFor, findAbsenceFor } from "../store";
 import { OvertimeReportModal, OvertimeTraceModal } from "../components/OvertimeReport";
 import { buildOvertimeSummary, overtimePdfDataUrl } from "../overtimeSummary";
-import type { AbsenceRequest, AbsenceType, Attachment, OvertimeRequest } from "../types";
-import { ATTACHMENT_ACCEPT, addMonths, attachmentMime, fmtDate, fmtDur, monthEnd, monthStart, today, uid } from "../utils";
+import type { AbsenceRequest, AbsenceType, Attachment, OvertimeRequest, RequestEvent } from "../types";
+import { ATTACHMENT_ACCEPT, addMonths, attachmentMime, fmtDate, fmtDateTime, fmtDur, monthEnd, monthStart, today, uid } from "../utils";
 import { Avatar, Empty, Modal, useToast } from "../components/ui";
 import { Icon, type IconName } from "../components/Icon";
 
@@ -117,7 +117,6 @@ export function Absences() {
   const [comment, setComment] = useState("");
   const [editAbsence, setEditAbsence] = useState<AbsenceRequest | null>(null);
   const [deleteAbsenceReq, setDeleteAbsenceReq] = useState<AbsenceRequest | null>(null);
-  const [editOt, setEditOt] = useState<OvertimeRequest | null>(null);
   const [deleteOtReq, setDeleteOtReq] = useState<OvertimeRequest | null>(null);
   const [reportOt, setReportOt] = useState<OvertimeRequest | null>(null);
   const [resubmitOt, setResubmitOt] = useState<OvertimeRequest | null>(null);
@@ -325,14 +324,9 @@ export function Absences() {
                     <button className="btn btn-primary btn-sm" onClick={() => setResubmitOt(o)}>Corregir y reenviar</button>
                   )}
                   {canManage && (
-                    <>
-                      <button className="btn btn-ghost btn-sm" onClick={() => setEditOt(o)} aria-label="Editar" title="Editar">
-                        <Icon name="pencil" size={13} />
-                      </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => setDeleteOtReq(o)} aria-label="Eliminar" title="Eliminar">
-                        <Icon name="trash" size={13} />
-                      </button>
-                    </>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setDeleteOtReq(o)} aria-label="Eliminar" title="Eliminar">
+                      <Icon name="trash" size={13} />
+                    </button>
                   )}
                 </div>
               );
@@ -425,7 +419,6 @@ export function Absences() {
               })
             : undefined}
           onReport={detail.type === "Horas extra" ? (() => { const o = findOvertimeFor(state, detail); if (o) { setReportOt(o); setDetail(null); } }) : undefined}
-          onEdit={() => { setEditAbsence(detail); setDetail(null); }}
           onDelete={() => { setDeleteAbsenceReq(detail); setDetail(null); }}
           onClose={() => setDetail(null)}
         />
@@ -490,8 +483,6 @@ export function Absences() {
 
       {reportOt && <OvertimeTraceModal ot={reportOt} onClose={() => setReportOt(null)} />}
 
-      {editOt && <EditOvertimeModal ot={editOt} onClose={() => setEditOt(null)} />}
-
       {deleteOtReq && (
         <Modal
           title="Eliminar horas extra"
@@ -509,43 +500,6 @@ export function Absences() {
         </Modal>
       )}
     </>
-  );
-}
-
-function EditOvertimeModal({ ot, onClose }: { ot: OvertimeRequest; onClose: () => void }) {
-  const { dispatch } = useStore();
-  const toast = useToast();
-  const [weekStart, setWeekStart] = useState(ot.weekStart);
-  const [minutes, setMinutes] = useState(ot.minutes);
-
-  function save() {
-    dispatch({ type: "updateOvertime", o: { ...ot, weekStart, minutes } });
-    toast("Horas extra actualizadas.");
-    onClose();
-  }
-
-  return (
-    <Modal
-      title="Editar horas extra"
-      onClose={onClose}
-      footer={
-        <>
-          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={minutes <= 0}>Guardar</button>
-        </>
-      }
-    >
-      <div className="form-grid">
-        <div className="field">
-          <label>Semana (lunes)</label>
-          <input type="date" className="input" value={weekStart} onChange={(e) => setWeekStart(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Minutos</label>
-          <input type="number" className="input" value={minutes} min={1} onChange={(e) => setMinutes(Number(e.target.value))} />
-        </div>
-      </div>
-    </Modal>
   );
 }
 
@@ -670,6 +624,7 @@ function ResubmitOvertime({ ot, onClose }: { ot: OvertimeRequest; onClose: () =>
   const issues = overtimeOverlapIssues(state, me.id, monthStart(from));
   const expired = today() > overtimeClaimDeadline(to);
   const [preview, setPreview] = useState(false);
+  const [reply, setReply] = useState("");
   const draft: OvertimeRequest = { ...ot, minutes: bd.extraMin, status: "Pendiente" };
   const blocked = bd.extraMin === 0 || issues.length > 0 || expired || from !== monthStart(from);
 
@@ -677,10 +632,11 @@ function ResubmitOvertime({ ot, onClose }: { ot: OvertimeRequest; onClose: () =>
     const abs = findAbsenceFor(state, ot);
     const pdf = overtimePdfDataUrl(buildOvertimeSummary(state, draft));
     const file = `informe-horas-extra_${from.slice(0, 7)}.pdf`;
-    dispatch({ type: "updateOvertime", o: draft });
+    const event: RequestEvent = { at: new Date().toISOString(), by: me.id, action: "Reenviada", comment: reply.trim() || undefined };
+    dispatch({ type: "updateOvertime", o: { ...draft, history: [...(ot.history ?? []), event] } });
     if (abs) {
       const kept = abs.attachments.filter((f) => !f.name.startsWith("informe-horas-extra_"));
-      dispatch({ type: "updateAbsence", absence: { ...abs, status: "Pendiente", attachments: [...kept, { name: file, url: pdf, size: Math.round(pdf.length * 0.75) }] } });
+      dispatch({ type: "updateAbsence", absence: { ...abs, status: "Pendiente", history: [...(abs.history ?? []), event], attachments: [...kept, { name: file, url: pdf, size: Math.round(pdf.length * 0.75) }] } });
     }
     toast("Solicitud reenviada a Recursos Humanos con el informe actualizado.");
     onClose();
@@ -711,6 +667,10 @@ function ResubmitOvertime({ ot, onClose }: { ot: OvertimeRequest; onClose: () =>
           <span>Ahora <strong>{fmtDur(bd.extraMin)}</strong></span>
         </div>
         {issues.length > 0 && <OverlapBlock issues={issues} />}
+        <div className="field" style={{ margin: "8px 0 0" }}>
+          <label>Tu respuesta a Recursos Humanos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional)</span></label>
+          <textarea className="textarea" rows={2} value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Qué corregiste o por qué las horas están bien…" />
+        </div>
         {expired && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>Pasaron más de 3 meses: ya no se puede reclamar.</div>}
         {bd.extraMin === 0 && !expired && <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>Con los registros actuales ya no hay horas extra en el mes.</div>}
       </Modal>
@@ -740,7 +700,6 @@ function RequestDetail({
   onResolve,
   onReport,
   onResubmit,
-  onEdit,
   onDelete,
   onClose,
 }: {
@@ -752,7 +711,6 @@ function RequestDetail({
   onResolve: (s: "Aprobado" | "Rechazado" | "Devuelto") => void;
   onReport?: () => void;
   onResubmit?: () => void;
-  onEdit: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
@@ -785,7 +743,6 @@ function RequestDetail({
             {onReport && <button className="btn btn-ghost btn-sm" onClick={onReport} title="Trazabilidad de la solicitud"><Icon name="scale" size={14} /> Trazabilidad</button>}
             {canManage && (
               <>
-                <button className="btn btn-ghost btn-sm" onClick={onEdit} title="Editar" aria-label="Editar"><Icon name="pencil" size={14} /></button>
                 <button className="btn btn-ghost btn-sm" onClick={onDelete} title="Eliminar" aria-label="Eliminar"><Icon name="trash" size={14} /></button>
               </>
             )}
@@ -876,7 +833,9 @@ function RequestDetail({
         )}
       </Field>
 
-      {(a.status === "Aprobado" || a.status === "Rechazado" || a.status === "Devuelto") && (
+      {a.history && a.history.length > 0 && <HistoryThread events={a.history} />}
+
+      {!a.history?.length && (a.status === "Aprobado" || a.status === "Rechazado" || a.status === "Devuelto") && (
         <div style={{ borderLeft: `3px solid ${a.status === "Aprobado" ? "var(--success)" : a.status === "Rechazado" ? "var(--danger)" : "var(--accent)"}`, paddingLeft: 12 }}>
           <div style={{ fontSize: 13 }}><strong>{verb}</strong> por {resolver?.name ?? "—"}{a.resolvedAt && ` · ${fmtDate(a.resolvedAt)}`}</div>
           {a.supervisorComment && <div style={{ fontSize: 13, color: "var(--text-2)", marginTop: 3 }}>“{a.supervisorComment}”</div>}
@@ -890,6 +849,27 @@ function RequestDetail({
         </div>
       )}
     </Modal>
+  );
+}
+
+/** Ida y vuelta de la solicitud: devoluciones con observaciones, respuestas y decisiones, con quién y cuándo */
+function HistoryThread({ events }: { events: RequestEvent[] }) {
+  const { state } = useStore();
+  const LABEL = { Devuelta: "devolvió con observaciones", Reenviada: "respondió y reenvió", Aprobada: "aprobó", Rechazada: "rechazó" } as const;
+  const COLOR = { Devuelta: "var(--accent)", Reenviada: "var(--text-3)", Aprobada: "var(--success)", Rechazada: "var(--danger)" } as const;
+  return (
+    <div>
+      <div style={{ color: "var(--text-3)", fontSize: 11.5, fontWeight: 650, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 6 }}>Historial</div>
+      {events.map((e, i) => (
+        <div key={i} style={{ borderLeft: `3px solid ${COLOR[e.action]}`, paddingLeft: 12, marginBottom: 8 }}>
+          <div style={{ fontSize: 13 }}>
+            <strong>{state.users.find((x) => x.id === e.by)?.name ?? "—"}</strong> {LABEL[e.action]}
+            <span style={{ color: "var(--text-3)" }}> · {fmtDateTime(e.at)}</span>
+          </div>
+          {e.comment && <div style={{ fontSize: 13, color: "var(--text-2)", marginTop: 2 }}>“{e.comment}”</div>}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -984,6 +964,7 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
   const [timeFrom, setTimeFrom] = useState(edit?.timeFrom ?? "");
   const [timeTo, setTimeTo] = useState(edit?.timeTo ?? "");
   const [reason, setReason] = useState(edit?.reason ?? "");
+  const [reply, setReply] = useState("");
   const [files, setFiles] = useState<Attachment[]>(edit?.attachments ?? []);
   // Admin/gerente pueden cargar o corregir una solicitud a nombre de otra persona y dejarla ya resuelta
   const staff = ["admin", "gerente"].includes(state.users.find((u) => u.id === state.currentUserId)?.role ?? "");
@@ -1074,9 +1055,12 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
           timeTo: partial ? timeTo || undefined : undefined,
           reason: reason.trim(),
           attachments: files,
+          history: edit.status === "Devuelto"
+            ? [...(edit.history ?? []), { at: new Date().toISOString(), by: state.currentUserId, action: "Reenviada", comment: reply.trim() || undefined }]
+            : edit.history,
         },
       });
-      toast("Solicitud actualizada.");
+      toast(edit.status === "Devuelto" ? "Solicitud reenviada a Recursos Humanos." : "Solicitud actualizada.");
       onClose();
       return;
     }
@@ -1206,6 +1190,12 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
         <label>Motivo <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional)</span></label>
         <textarea className="textarea" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Contanos brevemente el motivo…" />
       </div>
+      {edit?.status === "Devuelto" && (
+        <div className="field">
+          <label>Tu respuesta a Recursos Humanos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional)</span></label>
+          <textarea className="textarea" rows={2} value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Qué corregiste o por qué está bien…" />
+        </div>
+      )}
       <div className="field">
         <label>Adjuntos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional — certificados, comprobantes · PDF, PNG o JPG · máx. 10 MB por archivo)</span></label>
         <input type="file" className="input" multiple accept={ATTACHMENT_ACCEPT} onChange={(e) => onFiles(e.target.files)} />

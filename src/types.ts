@@ -237,6 +237,14 @@ export interface Attachment {
   size?: number;
 }
 
+/** Paso del ida y vuelta de una solicitud: devoluciones con observaciones, respuestas y decisiones */
+export interface RequestEvent {
+  at: string; // ISO con hora
+  by: ID;
+  action: "Devuelta" | "Reenviada" | "Aprobada" | "Rechazada";
+  comment?: string;
+}
+
 export interface AbsenceRequest {
   id: ID;
   userId: ID;
@@ -249,6 +257,8 @@ export interface AbsenceRequest {
   attachments: Attachment[];
   status: AbsenceStatus;
   supervisorComment?: string;
+  /** Historial de devoluciones, respuestas y decisiones (el último estado sigue en status/supervisorComment) */
+  history?: RequestEvent[];
   createdAt: string;
   resolvedBy?: ID;
   resolvedAt?: string;
@@ -323,6 +333,7 @@ export interface OvertimeRequest {
   resolvedBy?: ID;
   resolvedAt?: string;
   supervisorComment?: string;
+  history?: RequestEvent[];
 }
 
 /** Copia por correo de una notificación (bandeja de salida) */

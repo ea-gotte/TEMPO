@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
-import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, AbsenceType, ID, Notification, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role, FlightCategory, FlightActivity, ProfessionalProfile, Survey, SurveyResponse, FeedbackItem } from "./types";
+import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, AbsenceType, ID, Notification, OvertimeRequest, RequestEvent, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role, FlightCategory, FlightActivity, ProfessionalProfile, Survey, SurveyResponse, FeedbackItem } from "./types";
 import { seedState } from "./data";
 import { isoDate, uid, hashPassword, addDays, addMonths, parseISO, today, monthStart, monthEnd, minToHM } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
@@ -132,6 +132,22 @@ function absenceSubmittedNotification(absence: AbsenceRequest): NotificationCont
     body: `${absence.type} del ${absence.dateFrom} al ${absence.dateTo}.`,
   };
 }
+const RESOLVE_ACTION = { Aprobado: "Aprobada", Rechazado: "Rechazada", Devuelto: "Devuelta" } as const;
+
+/**
+ * Suma una decisión al historial de la solicitud. Toda devolución queda registrada; las demás
+ * decisiones solo cuando la solicitud ya tiene ida y vuelta (así una aprobación directa no cambia nada).
+ */
+function withResolutionEvent(
+  history: RequestEvent[] | undefined,
+  status: "Aprobado" | "Rechazado" | "Devuelto",
+  by: string,
+  comment: string,
+): RequestEvent[] | undefined {
+  if (status !== "Devuelto" && !history?.length) return history;
+  return [...(history ?? []), { at: new Date().toISOString(), by, action: RESOLVE_ACTION[status], comment: comment.trim() || undefined }];
+}
+
 function absenceResolvedNotification(absence: AbsenceRequest, status: "Aprobado" | "Rechazado" | "Devuelto", comment = ""): NotificationContent {
   if (status === "Devuelto") {
     return {
@@ -255,7 +271,7 @@ function baseReducer(s: AppState, a: Action): AppState {
       const withResolved = {
         ...s,
         absences: s.absences.map((x) =>
-          x.id === a.id ? { ...x, status: a.status, supervisorComment: a.comment, resolvedBy: a.by, resolvedAt: isoDate(new Date()) } : x,
+          x.id === a.id ? { ...x, status: a.status, supervisorComment: a.comment, resolvedBy: a.by, resolvedAt: isoDate(new Date()), history: withResolutionEvent(x.history, a.status, a.by, a.comment) } : x,
         ),
       };
       const notified = withNotification(withResolved, ab.userId, absenceResolvedNotification(ab, a.status, a.comment));
@@ -294,7 +310,7 @@ function baseReducer(s: AppState, a: Action): AppState {
       const withResolved = {
         ...s,
         overtime: s.overtime.map((x) =>
-          x.id === a.id ? { ...x, status: a.status, supervisorComment: a.comment, resolvedBy: a.by, resolvedAt: isoDate(new Date()) } : x,
+          x.id === a.id ? { ...x, status: a.status, supervisorComment: a.comment, resolvedBy: a.by, resolvedAt: isoDate(new Date()), history: withResolutionEvent(x.history, a.status, a.by, a.comment) } : x,
         ),
       };
       const notified = withNotification(withResolved, o.userId, overtimeResolvedNotification(o, a.status, a.comment));
@@ -495,6 +511,8 @@ function toAbsenceRow(a: AbsenceRequest) {
     created_at: a.createdAt,
     resolved_by: a.resolvedBy ?? null,
     resolved_at: a.resolvedAt ?? null,
+    // Solo si hay ida y vuelta: así nada se rompe en bases sin la columna history (fase 33)
+    ...(a.history?.length ? { history: a.history } : {}),
   };
 }
 
@@ -514,6 +532,7 @@ function fromAbsenceRow(r: any): AbsenceRequest {
     createdAt: r.created_at,
     resolvedBy: r.resolved_by ?? undefined,
     resolvedAt: r.resolved_at ?? undefined,
+    history: r.history?.length ? r.history : undefined,
   };
 }
 
@@ -678,6 +697,7 @@ function toOvertimeRow(o: OvertimeRequest) {
     resolved_by: o.resolvedBy ?? null,
     resolved_at: o.resolvedAt ?? null,
     supervisor_comment: o.supervisorComment ?? null,
+    ...(o.history?.length ? { history: o.history } : {}),
   };
 }
 function fromOvertimeRow(r: any): OvertimeRequest {
@@ -691,6 +711,7 @@ function fromOvertimeRow(r: any): OvertimeRequest {
     resolvedBy: r.resolved_by ?? undefined,
     resolvedAt: r.resolved_at ?? undefined,
     supervisorComment: r.supervisor_comment ?? undefined,
+    history: r.history?.length ? r.history : undefined,
   };
 }
 
@@ -1023,6 +1044,8 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
       return error?.message ?? notifErr;
     }
     case "resolveAbsence": {
+      const ab = prevState.absences.find((x) => x.id === a.id);
+      const hist = ab ? withResolutionEvent(ab.history, a.status, a.by, a.comment) : undefined;
       const { error } = await supabase
         .from("absence_requests")
         .update({
@@ -1030,9 +1053,9 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
           supervisor_comment: a.comment || null,
           resolved_by: a.by,
           resolved_at: isoDate(new Date()),
+          ...(hist?.length ? { history: hist } : {}),
         })
         .eq("id", a.id);
-      const ab = prevState.absences.find((x) => x.id === a.id);
       const notifErr = ab ? await insertNotification(ab.userId, absenceResolvedNotification(ab, a.status, a.comment)) : null;
       return error?.message ?? notifErr;
     }
@@ -1058,6 +1081,8 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
       return error?.message ?? notifErr;
     }
     case "resolveOvertime": {
+      const o = prevState.overtime.find((x) => x.id === a.id);
+      const hist = o ? withResolutionEvent(o.history, a.status, a.by, a.comment) : undefined;
       const { error } = await supabase
         .from("overtime_requests")
         .update({
@@ -1065,9 +1090,9 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
           supervisor_comment: a.comment || null,
           resolved_by: a.by,
           resolved_at: isoDate(new Date()),
+          ...(hist?.length ? { history: hist } : {}),
         })
         .eq("id", a.id);
-      const o = prevState.overtime.find((x) => x.id === a.id);
       const notifErr = o ? await insertNotification(o.userId, overtimeResolvedNotification(o, a.status, a.comment)) : null;
       return error?.message ?? notifErr;
     }
