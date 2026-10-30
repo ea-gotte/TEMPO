@@ -1,7 +1,7 @@
 import { computableMinutes, expectedMinutesInRange, findAbsenceFor, overtimeBreakdown, overtimeRange } from "./store";
 import { pdfDataUrl, PDF_H, type PdfOp } from "./simplePdf";
-import type { AppState, Attachment, ID, OvertimeRequest } from "./types";
-import { addDays, fmtDate, fmtDateTime, fmtDur, today } from "./utils";
+import type { AbsenceRequest, AppState, Attachment, ID, OvertimeRequest } from "./types";
+import { addDays, fmtDate, fmtDateTime, fmtDur, monthEnd, today, uid } from "./utils";
 
 /** Prefijo de los informes PDF adjuntos: cada envío (y cada reenvío) deja el suyo: _v1, _v2… */
 export const REPORT_PREFIX = "informe-horas-extra_";
@@ -156,4 +156,18 @@ export function overtimePdfDataUrl(sum: OvertimeSummary): string {
   }
   text(L, "Cada día se cuentan las horas hasta completar la jornada; el resto es extra del proyecto en que se cargó.", 8, false, 0.4);
   return pdfDataUrl(pages);
+}
+
+/**
+ * Solicitud de Gestión que acompaña a unas horas extra mensuales nuevas, con el informe v1 adjunto.
+ * Se crea junto con la OvertimeRequest (misma persona y fecha de carga: así se vinculan).
+ */
+export function overtimeAbsenceFor(state: AppState, o: OvertimeRequest): AbsenceRequest {
+  const pdf = overtimePdfDataUrl(buildOvertimeSummary(state, o));
+  const label = new Date(o.weekStart + "T00:00:00").toLocaleDateString("es", { month: "long", year: "numeric" });
+  return {
+    id: uid(), userId: o.userId, type: "Horas extra", dateFrom: o.weekStart, dateTo: monthEnd(o.weekStart),
+    reason: `Horas extra de ${label}`, status: "Pendiente", createdAt: o.createdAt,
+    attachments: [{ name: `${REPORT_PREFIX}${o.weekStart.slice(0, 7)}_v1.pdf`, url: pdf, size: Math.round(pdf.length * 0.75) }],
+  };
 }

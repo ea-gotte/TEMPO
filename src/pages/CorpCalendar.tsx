@@ -69,7 +69,7 @@ export function CorpCalendar() {
     }
     // Vacaciones, licencias y toda ausencia aprobada se unifican en "Ausencia"
     for (const a of state.absences) {
-      if (a.status !== "Aprobado") continue;
+      if (a.status !== "Aprobado" || a.type === "Horas extra") continue;
       const u = state.users.find((x) => x.id === a.userId);
       for (const d of rangeDates(a.dateFrom, a.dateTo)) {
         push(d, { key: `${a.id}-${d}`, label: `${u?.name.split(" ")[0] ?? "?"}: ${a.type}`, type: "Ausencia" });

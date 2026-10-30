@@ -1,12 +1,13 @@
 import React, { useMemo, useState } from "react";
 import { overtimeClaimDeadline, expectedMinutesInRange, overlaps, overtimeOverlapIssues, overtimeBreakdown, overtimeRange, useStore } from "../store";
 import { downloadOvertimeXlsx } from "../overtimeReport";
+import { overtimeAbsenceFor } from "../overtimeSummary";
 import { addDays, addMonths, dayLabel, fmtDur, minToHM, monthEnd, monthStart, today, uid, weekStart } from "../utils";
 import { Avatar, Empty, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { computeHoursIncidents, getDownlineIds, visibleIncidents, type HoursIncident } from "../compliance";
 import { buildForest, buildLayout, teamIds, CARD_W, CARD_H } from "../orgTree";
-import type { TimeEntry, User } from "../types";
+import type { OvertimeRequest, TimeEntry, User } from "../types";
 
 const DAY_SHORT = ["L", "M", "X", "J", "V", "S", "D"];
 
@@ -98,12 +99,12 @@ export function HoursControl() {
   }
 
   function sendOvertime(userId: string, minutes: number) {
-    dispatch({
-      type: "addOvertime",
-      o: { id: uid(), userId, weekStart: ms, minutes, status: "Pendiente", createdAt: today() },
-    });
-    toast("Horas extra enviadas a supervisión y aprobación.");
+    const o: OvertimeRequest = { id: uid(), userId, weekStart: ms, minutes, status: "Pendiente", createdAt: today() };
+    dispatch({ type: "addOvertime", o });
+    dispatch({ type: "addAbsence", absence: overtimeAbsenceFor(state, o) });
+    toast("Horas extra enviadas a Recursos Humanos con su informe.");
   }
+  const monthOpen = ms >= monthStart(today());
 
   async function exportOvertime() {
     const file = await downloadOvertimeXlsx(state, rows.map((r) => r.u), ms);
@@ -300,8 +301,10 @@ export function HoursControl() {
                             </div>
                           )}
                           <div>
-                            {period === "mes" ? (
-                              <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} disabled={overlapIssues.length > 0} onClick={() => sendOvertime(u.id, overtimeMin)}>
+                            {period === "mes" && monthOpen ? (
+                              <span style={{ fontSize: 11, color: "var(--text-3)" }}>Se solicita al cerrar el mes</span>
+                            ) : period === "mes" ? (
+                              <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} disabled={overlapIssues.length > 0 || claimExpired} onClick={() => sendOvertime(u.id, overtimeMin)}>
                                 <Icon name="arrow-right" size={12} /> A supervisión
                               </button>
                             ) : (

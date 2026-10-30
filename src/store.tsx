@@ -160,22 +160,29 @@ function absenceResolvedNotification(absence: AbsenceRequest, status: "Aprobado"
     body: `${absence.type} (${absence.dateFrom}) fue ${status.toLowerCase()}.`,
   };
 }
+/** "septiembre de 2026" para las solicitudes mensuales, "semana del 2026-08-10" para las viejas */
+export function overtimePeriodLabel(weekStart: string): string {
+  return weekStart.endsWith("-01")
+    ? new Date(weekStart + "T00:00:00").toLocaleDateString("es", { month: "long", year: "numeric" })
+    : `semana del ${weekStart}`;
+}
+
 function overtimeSubmittedNotification(s: AppState, o: OvertimeRequest): NotificationContent {
   return {
     kind: "exceso", title: "Horas extra informadas",
-    body: `${s.users.find((u) => u.id === o.userId)?.name ?? "?"}: ${Math.round(o.minutes / 60 * 10) / 10} h extra (semana ${o.weekStart}) enviadas a supervisión.`,
+    body: `${s.users.find((u) => u.id === o.userId)?.name ?? "?"}: ${Math.round(o.minutes / 60 * 10) / 10} h extra (${overtimePeriodLabel(o.weekStart)}) enviadas a Recursos Humanos.`,
   };
 }
 function overtimeResolvedNotification(o: OvertimeRequest, status: "Aprobado" | "Rechazado" | "Devuelto", comment = ""): NotificationContent {
   if (status === "Devuelto") {
     return {
       kind: "aprobacion", title: "Horas extra devueltas",
-      body: `Tus horas extra (${o.weekStart}) volvieron con observaciones${comment ? `: ${comment}` : ""}. Corregí lo indicado y reenviá la solicitud.`,
+      body: `Tus horas extra (${overtimePeriodLabel(o.weekStart)}) volvieron con observaciones${comment ? `: ${comment}` : ""}. Corregí lo indicado y reenviá la solicitud.`,
     };
   }
   return {
     kind: "aprobacion", title: `Horas extra ${status.toLowerCase()}s`,
-    body: `${Math.round(o.minutes / 60 * 10) / 10} h extra de la semana ${o.weekStart} fueron ${status.toLowerCase()}s${status === "Aprobado" ? " y ya se pueden recuperar como compensación" : ""}.`,
+    body: `${Math.round(o.minutes / 60 * 10) / 10} h extra de ${overtimePeriodLabel(o.weekStart)} fueron ${status.toLowerCase()}s${status === "Aprobado" ? " y ya se pueden recuperar como compensación" : ""}.`,
   };
 }
 
@@ -1386,8 +1393,8 @@ export function useStore() {
 
 /** Después de 3 meses de la semana trabajada, esas horas extra ya no se pueden
  * reclamar/informar a supervisión. */
-export function overtimeClaimDeadline(weekStartISO: string): string {
-  return addMonths(weekStartISO, 3);
+export function overtimeClaimDeadline(monthISO: string): string {
+  return addDays(addMonths(monthStart(monthISO), 4), -1);
 }
 
 /** Minutos de una ausencia de "Compensación de horas" (por horario si está
@@ -1576,6 +1583,7 @@ export function absenceWarnings(state: AppState, absence: AbsenceRequest): strin
       o.id !== absence.id &&
       o.userId === absence.userId &&
       o.status === "Aprobado" &&
+      o.type !== "Horas extra" &&
       o.dateFrom <= absence.dateTo &&
       absence.dateFrom <= o.dateTo,
   );
@@ -1619,13 +1627,16 @@ export function overtimeWarnings(state: AppState, ot: OvertimeRequest): string[]
 /** Horas extra que acompañan a una solicitud de "Horas extra" de Gestión (misma persona, fecha de carga y mes) */
 export function findOvertimeFor(state: AppState, a: AbsenceRequest): OvertimeRequest | undefined {
   const c = state.overtime.filter((o) => o.userId === a.userId && o.createdAt === a.createdAt);
-  return c.find((o) => monthStart(o.weekStart) === monthStart(a.dateFrom)) ?? c[0];
+  // Las mensuales se vinculan solo por mes; el "único del día" queda para las semanales viejas
+  return c.find((o) => monthStart(o.weekStart) === monthStart(a.dateFrom))
+    ?? (c.length === 1 && !c[0].weekStart.endsWith("-01") ? c[0] : undefined);
 }
 
 /** Solicitud de Gestión que acompaña a unas horas extra */
 export function findAbsenceFor(state: AppState, o: OvertimeRequest): AbsenceRequest | undefined {
   const c = state.absences.filter((a) => a.userId === o.userId && a.type === "Horas extra" && a.createdAt === o.createdAt);
-  return c.find((a) => monthStart(a.dateFrom) === monthStart(o.weekStart)) ?? c[0];
+  return c.find((a) => monthStart(a.dateFrom) === monthStart(o.weekStart))
+    ?? (c.length === 1 && !o.weekStart.endsWith("-01") ? c[0] : undefined);
 }
 
 /** Proyectos que no cuentan para horas extra: se cargan solo para que el calendario no quede vacío. */

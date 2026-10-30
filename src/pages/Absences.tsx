@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { useStore, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings, overtimeOverlapIssues, overtimeClaimDeadline, overtimeRange, overtimeBreakdown, expectedMinutesInRange, findOvertimeFor, findAbsenceFor } from "../store";
+import { useStore, overtimePeriodLabel, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings, overtimeOverlapIssues, overtimeClaimDeadline, overtimeRange, overtimeBreakdown, expectedMinutesInRange, findOvertimeFor, findAbsenceFor } from "../store";
 import { OvertimeReportModal, OvertimeTraceModal } from "../components/OvertimeReport";
-import { buildOvertimeSummary, overtimePdfDataUrl, REPORT_PREFIX } from "../overtimeSummary";
+import { buildOvertimeSummary, overtimeAbsenceFor, overtimePdfDataUrl, REPORT_PREFIX } from "../overtimeSummary";
 import type { AbsenceRequest, AbsenceType, Attachment, OvertimeRequest, RequestEvent } from "../types";
 import { ATTACHMENT_ACCEPT, addMonths, attachmentMime, fmtDate, fmtDateTime, fmtDur, monthEnd, monthStart, today, uid } from "../utils";
 import { Avatar, Empty, Modal, useToast } from "../components/ui";
@@ -143,6 +143,8 @@ export function Absences() {
 
   function confirmDeleteOt() {
     if (!deleteOtReq) return;
+    const abs = findAbsenceFor(state, deleteOtReq);
+    if (abs) dispatch({ type: "deleteAbsence", id: abs.id });
     dispatch({ type: "deleteOvertime", id: deleteOtReq.id });
     toast("Horas extra eliminadas.");
     setDeleteOtReq(null);
@@ -249,7 +251,7 @@ export function Absences() {
                       )}
                     </div>
                     <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 3 }}>
-                      Semana del {fmtDate(o.weekStart)} · informado el {fmtDate(o.createdAt)}
+                      <span style={{ textTransform: "capitalize" }}>{overtimePeriodLabel(o.weekStart)}</span> · informado el {fmtDate(o.createdAt)}
                       {o.status !== "Pendiente" && o.resolvedBy && (
                         <> · {o.status.toLowerCase()} por <strong>{state.users.find((x) => x.id === o.resolvedBy)?.name ?? "?"}</strong>
                           {o.resolvedAt && ` el ${fmtDate(o.resolvedAt)}`}</>
@@ -265,7 +267,7 @@ export function Absences() {
                     <Icon name="scale" size={13} /> Trazabilidad
                   </button>
                   {canApprove && !isMineOt && o.status === "Pendiente" && (
-                    <button className="btn btn-secondary btn-sm" onClick={() => setResolveOtId(o.id)}>Revisar</button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => { setComment(""); setResolveOtId(o.id); }}>Revisar</button>
                   )}
                   {isMineOt && o.status === "Devuelto" && (
                     <button className="btn btn-primary btn-sm" onClick={() => setResubmitOt(o)}>Corregir y reenviar</button>
@@ -297,6 +299,7 @@ export function Absences() {
             <option value="Pendiente">Pendiente</option>
             <option value="Aprobado">Aprobado</option>
             <option value="Rechazado">Rechazado</option>
+            <option value="Devuelto">Devuelto</option>
           </select>
           <span style={{ fontSize: 12.5, color: "var(--text-3)", alignSelf: "center" }}>{all.length} solicitudes</span>
         </div>
@@ -409,6 +412,12 @@ export function Absences() {
               Al aprobar, las horas quedan disponibles para que la persona las recupere mediante una solicitud de <strong>Compensación de horas</strong>.
             </p>
             {blockers.length > 0 && <OverlapBlock issues={blockers} />}
+            {ot && (() => {
+              const u = state.users.find((x) => x.id === ot.userId);
+              const [from, to] = overtimeRange(ot.weekStart);
+              const current = u ? overtimeBreakdown(state, u, from, to).extraMin : ot.minutes;
+              return current !== ot.minutes ? <MinutesDrift requested={ot.minutes} current={current} /> : null;
+            })()}
             {warnings.length > 0 && (
               <div style={{ background: "var(--warning-soft)", color: "var(--warning)", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, marginBottom: 10 }}>
                 {warnings.map((w, i) => (
@@ -496,18 +505,9 @@ function MonthRequest({ onReport, onResubmit, recoverMin, onRecover }: { onRepor
   }
 
   function request(o: OvertimeRequest) {
-    const created = o.createdAt;
-    const pdf = overtimePdfDataUrl(buildOvertimeSummary(state, o));
-    const file = `${REPORT_PREFIX}${ms.slice(0, 7)}_v1.pdf`;
     setDraft(null);
     dispatch({ type: "addOvertime", o });
-    dispatch({
-      type: "addAbsence",
-      absence: {
-        id: uid(), userId: me.id, type: "Horas extra", dateFrom: ms, dateTo: me2,
-        reason: `Horas extra de ${label}`, attachments: [{ name: file, url: pdf, size: Math.round(pdf.length * 0.75) }], status: "Pendiente", createdAt: created,
-      },
-    });
+    dispatch({ type: "addAbsence", absence: overtimeAbsenceFor(state, o) });
     toast("Solicitud enviada a Recursos Humanos con el informe adjunto.");
   }
 
@@ -626,6 +626,18 @@ function ResubmitOvertime({ ot, onClose }: { ot: OvertimeRequest; onClose: () =>
   );
 }
 
+/** Aviso para quien aprueba: los registros cambiaron después de enviar la solicitud */
+function MinutesDrift({ requested, current }: { requested: number; current: number }) {
+  return (
+    <div style={{ background: "var(--warning-soft)", color: "var(--warning)", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, display: "flex", gap: 6, alignItems: "flex-start" }}>
+      <Icon name="alert" size={13} style={{ marginTop: 2, flexShrink: 0 }} />
+      <span>
+        Se solicitaron <strong>{fmtDur(requested)}</strong> (es lo que se acredita al aprobar), pero los registros actuales dan <strong>{fmtDur(current)}</strong>: cambiaron después del envío. Si no coincide, devolvela para que la persona la reenvíe.
+      </span>
+    </div>
+  );
+}
+
 /** Horas superpuestas en el calendario: impiden solicitar o aprobar horas extra hasta corregirlas */
 function OverlapBlock({ issues }: { issues: string[] }) {
   return (
@@ -736,7 +748,7 @@ function RequestDetail({
         {isOt && sum ? (
           <>
             <Field label="Período">{sum.period}</Field>
-            <Field label="Horas extra"><strong>{fmtDur(sum.extraMin)}</strong></Field>
+            <Field label="Horas extra solicitadas"><strong>{fmtDur(ot!.minutes)}</strong></Field>
           </>
         ) : (
           <>
@@ -749,8 +761,10 @@ function RequestDetail({
         )}
       </div>
 
+      {isOt && ot && sum && sum.extraMin !== ot.minutes && <MinutesDrift requested={ot.minutes} current={sum.extraMin} />}
+
       {isOt && sum && sum.rows.length > 0 && (
-        <table className="table table-compact" style={{ fontSize: 12.5 }}>
+        <table title="Según los registros actuales" className="table table-compact" style={{ fontSize: 12.5 }}>
           <thead>
             <tr><th>Proyecto</th><th style={{ textAlign: "right" }}>Horas totales</th><th style={{ textAlign: "right" }}>Horas extra</th></tr>
           </thead>
@@ -918,6 +932,10 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
   const [personId, setPersonId] = useState(edit?.userId ?? state.currentUserId);
   const [status, setStatus] = useState<AbsenceRequest["status"]>(edit?.status ?? "Pendiente");
   const target = staff ? personId : state.currentUserId;
+  // Reenvío de una devuelta: no cambia persona, tipo ni resolución anterior; los adjuntos solo se suman
+  const resubmit = edit?.status === "Devuelto";
+  // Solo admin/gerente cargan una solicitud ya resuelta, y nunca una propia
+  const canSetStatus = staff && !resubmit && target !== state.currentUserId;
 
   const partial = ["Salida médica", "Medio día", "Horario reducido", "Compensación de horas", "Horas extra"].includes(type);
   // Cambio 6: solo el tipo y la fecha son obligatorios; el resto es opcional
@@ -927,7 +945,8 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
 
   // Solo se listan los tipos habilitados en Administración (el tipo inicial forzado siempre se incluye)
   const enabledTypes = state.leaveTypeConfig.filter((t) => t.enabled).map((t) => t.type);
-  const availableTypes = TYPES.filter((t) => enabledTypes.includes(t) || t === initialType || t === edit?.type);
+  // Las horas extra se piden por mes desde Gestión → Horas extra (con su informe), no desde acá
+  const availableTypes = TYPES.filter((t) => (enabledTypes.includes(t) || t === initialType || t === edit?.type) && (t !== "Horas extra" || t === edit?.type));
 
   const MAX_BYTES = 10 * 1024 * 1024; // 10 MB por archivo
 
@@ -960,8 +979,10 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
   function submit() {
     if (!valid) return;
 
-    const finalStatus = staff ? status : "Pendiente";
-    const resolution = finalStatus === "Pendiente"
+    const finalStatus = canSetStatus ? status : "Pendiente";
+    const resolution = resubmit
+      ? { resolvedBy: edit.resolvedBy, resolvedAt: edit.resolvedAt }
+      : finalStatus === "Pendiente"
       ? { resolvedBy: undefined, resolvedAt: undefined }
       : finalStatus === edit?.status
         ? { resolvedBy: edit.resolvedBy, resolvedAt: edit.resolvedAt }
@@ -1001,7 +1022,7 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
           timeFrom: partial ? timeFrom || undefined : undefined,
           timeTo: partial ? timeTo || undefined : undefined,
           reason: reason.trim(),
-          attachments: files,
+          attachments: resubmit ? [...edit.attachments, ...files.filter((f) => !edit.attachments.some((x) => x.name === f.name && x.url === f.url))] : files,
           history: edit.status === "Devuelto"
             ? [...(edit.history ?? []), { at: new Date().toISOString(), by: state.currentUserId, action: "Reenviada", comment: reply.trim() || undefined }]
             : edit.history,
@@ -1076,7 +1097,7 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
         </>
       }
     >
-      {staff && (
+      {staff && !resubmit && (
         <div className="form-grid">
           <div className="field">
             <label>Persona</label>
@@ -1084,19 +1105,21 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
               {state.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>
-          <div className="field">
-            <label>Estado</label>
-            <select className="select" value={status} onChange={(e) => setStatus(e.target.value as AbsenceRequest["status"])}>
-              <option value="Pendiente">Pendiente</option>
-              <option value="Aprobado">Aprobado</option>
-              <option value="Rechazado">Rechazado</option>
-            </select>
-          </div>
+          {canSetStatus && (
+            <div className="field">
+              <label>Estado</label>
+              <select className="select" value={status} onChange={(e) => setStatus(e.target.value as AbsenceRequest["status"])}>
+                <option value="Pendiente">Pendiente</option>
+                <option value="Aprobado">Aprobado</option>
+                <option value="Rechazado">Rechazado</option>
+              </select>
+            </div>
+          )}
         </div>
       )}
       <div className="field">
         <label>Tipo de ausencia <span style={{ color: "var(--danger)" }}>*</span></label>
-        <select className="select" value={type} onChange={(e) => setType(e.target.value as AbsenceType)}>
+        <select className="select" value={type} disabled={resubmit} onChange={(e) => setType(e.target.value as AbsenceType)}>
           {availableTypes.map((t) => (
             <option key={t} value={t}>{t}</option>
           ))}
