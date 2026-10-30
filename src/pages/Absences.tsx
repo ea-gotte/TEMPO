@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import { useStore, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings, overtimeOverlapIssues, overtimeClaimDeadline, overtimeRange, overtimeBreakdown, expectedMinutesInRange, findOvertimeFor, findAbsenceFor } from "../store";
 import { OvertimeReportModal, OvertimeTraceModal } from "../components/OvertimeReport";
-import { buildOvertimeSummary, overtimePdfDataUrl } from "../overtimeSummary";
+import { buildOvertimeSummary, overtimePdfDataUrl, REPORT_PREFIX } from "../overtimeSummary";
 import type { AbsenceRequest, AbsenceType, Attachment, OvertimeRequest, RequestEvent } from "../types";
 import { ATTACHMENT_ACCEPT, addMonths, attachmentMime, fmtDate, fmtDateTime, fmtDur, monthEnd, monthStart, today, uid } from "../utils";
 import { Avatar, Empty, Modal, useToast } from "../components/ui";
 import { Icon, type IconName } from "../components/Icon";
+import { AttachmentChip } from "../components/AttachmentChip";
 
 const TYPES: AbsenceType[] = [
   "Vacaciones",
@@ -40,60 +41,6 @@ const TYPE_ICON: Record<AbsenceType, IconName> = {
 function StatusBadge({ s }: { s: AbsenceRequest["status"] }) {
   const cls = s === "Aprobado" ? "ok" : s === "Rechazado" ? "bad" : s === "Devuelto" ? "acc" : "warn";
   return <span className={`badge ${cls}`}>{s}</span>;
-}
-
-/** Convierte un data URL en Blob con el tipo indicado. El tipo lo decide la app
- * (attachmentMime), nunca el que declara el propio archivo. */
-function dataUrlToBlob(dataUrl: string, mime: string): Blob {
-  const b64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
-}
-
-function AttachmentChip({ f }: { f: Attachment }) {
-  // null = tipo no permitido (HTML, SVG...): se puede descargar, pero no abrir.
-  const viewMime = f.url ? attachmentMime(f.name, f.url) : null;
-
-  const withBlobUrl = (mime: string, fn: (url: string) => void) => {
-    if (!f.url) return;
-    const url = URL.createObjectURL(dataUrlToBlob(f.url, mime));
-    fn(url);
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  };
-
-  const view = () => {
-    if (viewMime) withBlobUrl(viewMime, (url) => window.open(url, "_blank", "noopener"));
-  };
-  const download = () =>
-    withBlobUrl("application/octet-stream", (url) => {
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = f.name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    });
-
-  return (
-    <span className="badge" style={{ gap: 6 }} title={f.url ? f.name : "Archivo de demostración (sin contenido cargado)"}>
-      <Icon name="paperclip" size={12} /> {f.name}
-      {f.size != null && <span style={{ color: "var(--text-3)" }}>({f.size < 1024 * 1024 ? `${Math.max(1, Math.round(f.size / 1024))} KB` : `${(f.size / 1024 / 1024).toFixed(1)} MB`})</span>}
-      {f.url && (
-        <>
-          {viewMime && (
-            <button className="btn btn-ghost btn-sm" style={{ padding: "0 4px" }} onClick={view} aria-label="Ver" title="Ver">
-              <Icon name="eye" size={12} />
-            </button>
-          )}
-          <button className="btn btn-ghost btn-sm" style={{ padding: "0 4px" }} onClick={download} aria-label="Descargar" title="Descargar">
-            <Icon name="download" size={12} />
-          </button>
-        </>
-      )}
-    </span>
-  );
 }
 
 export function Absences() {
@@ -551,7 +498,7 @@ function MonthRequest({ onReport, onResubmit, recoverMin, onRecover }: { onRepor
   function request(o: OvertimeRequest) {
     const created = o.createdAt;
     const pdf = overtimePdfDataUrl(buildOvertimeSummary(state, o));
-    const file = `informe-horas-extra_${ms.slice(0, 7)}.pdf`;
+    const file = `${REPORT_PREFIX}${ms.slice(0, 7)}_v1.pdf`;
     setDraft(null);
     dispatch({ type: "addOvertime", o });
     dispatch({
@@ -631,12 +578,12 @@ function ResubmitOvertime({ ot, onClose }: { ot: OvertimeRequest; onClose: () =>
   function send() {
     const abs = findAbsenceFor(state, ot);
     const pdf = overtimePdfDataUrl(buildOvertimeSummary(state, draft));
-    const file = `informe-horas-extra_${from.slice(0, 7)}.pdf`;
+    const sent = (abs?.attachments ?? []).filter((f) => f.name.startsWith(REPORT_PREFIX)).length;
+    const file = `${REPORT_PREFIX}${from.slice(0, 7)}_v${sent + 1}.pdf`;
     const event: RequestEvent = { at: new Date().toISOString(), by: me.id, action: "Reenviada", comment: reply.trim() || undefined };
     dispatch({ type: "updateOvertime", o: { ...draft, history: [...(ot.history ?? []), event] } });
     if (abs) {
-      const kept = abs.attachments.filter((f) => !f.name.startsWith("informe-horas-extra_"));
-      dispatch({ type: "updateAbsence", absence: { ...abs, status: "Pendiente", history: [...(abs.history ?? []), event], attachments: [...kept, { name: file, url: pdf, size: Math.round(pdf.length * 0.75) }] } });
+      dispatch({ type: "updateAbsence", absence: { ...abs, status: "Pendiente", history: [...(abs.history ?? []), event], attachments: [...abs.attachments, { name: file, url: pdf, size: Math.round(pdf.length * 0.75) }] } });
     }
     toast("Solicitud reenviada a Recursos Humanos con el informe actualizado.");
     onClose();

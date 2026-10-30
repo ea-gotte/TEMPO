@@ -1,9 +1,12 @@
 import { computableMinutes, expectedMinutesInRange, findAbsenceFor, overtimeBreakdown, overtimeRange } from "./store";
 import { pdfDataUrl, PDF_H, type PdfOp } from "./simplePdf";
-import type { AppState, ID, OvertimeRequest } from "./types";
+import type { AppState, Attachment, ID, OvertimeRequest } from "./types";
 import { addDays, fmtDate, fmtDateTime, fmtDur, today } from "./utils";
 
-export interface OvertimeStep { title: string; who: string; at: string; note?: string; done: boolean; bad?: boolean; /** devuelta con observaciones */ warn?: boolean }
+/** Prefijo de los informes PDF adjuntos: cada envío (y cada reenvío) deja el suyo: _v1, _v2… */
+export const REPORT_PREFIX = "informe-horas-extra_";
+
+export interface OvertimeStep { title: string; who: string; at: string; note?: string; done: boolean; bad?: boolean; /** devuelta con observaciones */ warn?: boolean; /** informe PDF que se envió en esta etapa */ files?: Attachment[] }
 
 export interface OvertimeSummary {
   issued: string;
@@ -51,6 +54,9 @@ export function buildOvertimeSummary(state: AppState, ot: OvertimeRequest): Over
 
   // Etapas: la solicitud, cada vuelta de observaciones y respuestas (historial), la decisión y el cómputo
   const events = ot.history ?? [];
+  // Los informes se guardan en orden: el primero va con la solicitud y cada reenvío suma el suyo
+  const reports = (abs?.attachments ?? []).filter((f) => f.name.startsWith(REPORT_PREFIX));
+  let resent = 0;
   const TITLES = {
     Devuelta: "Devuelta con observaciones",
     Reenviada: "Respuesta y reenvío de la persona",
@@ -73,13 +79,14 @@ export function buildOvertimeSummary(state: AppState, ot: OvertimeRequest): Over
         ...events.map((e): OvertimeStep => ({
           title: TITLES[e.action], who: name(e.by), at: fmtDateTime(e.at), note: e.comment,
           done: true, bad: e.action === "Rechazada", warn: e.action === "Devuelta",
+          files: e.action === "Reenviada" && reports[++resent] ? [reports[resent]] : undefined,
         })),
         ...(ot.status === "Pendiente" ? [{ title: "Revisión de Recursos Humanos", who: "Pendiente de revisión", at: "", done: false }] : []),
         ...(ot.status === "Devuelto" ? [{ title: "Corrección de la persona", who: "Esperando que corrija y reenvíe", at: "", done: false }] : []),
         ...((ot.status === "Aprobado" || ot.status === "Rechazado") && lastEvent.action !== "Aprobada" && lastEvent.action !== "Rechazada" ? [decision] : []),
       ];
   const steps: OvertimeStep[] = [
-    { title: "Solicitud generada por el usuario", who: name(ot.userId), at: fmtDate(ot.createdAt), done: true },
+    { title: "Solicitud generada por el usuario", who: name(ot.userId), at: fmtDate(ot.createdAt), done: true, files: reports[0] ? [reports[0]] : undefined },
     ...review,
     {
       title: "Cómputo en el saldo del usuario",

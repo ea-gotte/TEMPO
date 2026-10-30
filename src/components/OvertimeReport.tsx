@@ -5,6 +5,7 @@ import { buildOvertimeSummary } from "../overtimeSummary";
 import { fmtDur } from "../utils";
 import { Modal } from "./ui";
 import { Icon } from "./Icon";
+import { AttachmentChip } from "./AttachmentChip";
 import type { OvertimeRequest } from "../types";
 
 const INK = "#111827";
@@ -169,6 +170,11 @@ function TraceDoc({ ot }: { ot: OvertimeRequest }) {
                 <div style={{ fontWeight: 700, fontSize: 13.5 }}>{st.title}</div>
                 <div style={{ fontSize: 12.5, color: st.done || i === current ? INK : MUTED }}>{st.who}</div>
                 {st.at && <div style={{ fontSize: 12, color: MUTED }}>{st.at}</div>}
+                {st.files?.map((f, k) => (
+                  <div key={k} style={{ marginTop: 4, fontSize: 12 }}>
+                    <span style={{ color: MUTED }}>Informe de esta etapa: </span><AttachmentChip f={f} />
+                  </div>
+                ))}
                 {st.note && <div style={{ fontSize: 12.5, fontStyle: "italic", marginTop: 2 }}>“{st.note}”</div>}
                 {!st.done && !st.bad && i === current && <div style={{ fontSize: 11.5, color: "#b45309", marginTop: 2 }}>Etapa en curso</div>}
                 {st.warn && st.done && <div style={{ fontSize: 11.5, color: "#b45309", marginTop: 2 }}>La persona debe corregir y reenviar</div>}
