@@ -161,6 +161,19 @@ function absenceResolvedNotification(absence: AbsenceRequest, status: "Aprobado"
   };
 }
 /** "septiembre de 2026" para las solicitudes mensuales, "semana del 2026-08-10" para las viejas */
+/**
+ * Solicitud de horas extra que ya cubre el mes (para no pedirlo dos veces): la mensual de ese mes
+ * o una semanal vieja que lo toque. El saldo cargado a mano no cuenta: no es una solicitud.
+ */
+export function overtimeRequestForMonth(state: AppState, userId: string, ms: string): OvertimeRequest | undefined {
+  const me = monthEnd(ms);
+  return state.overtime.find((o) => {
+    if (o.userId !== userId || o.kind === "saldo") return false;
+    const [from, to] = overtimeRange(o.weekStart);
+    return from <= me && ms <= to;
+  });
+}
+
 export function overtimePeriodLabel(weekStart: string): string {
   return weekStart.endsWith("-01")
     ? new Date(weekStart + "T00:00:00").toLocaleDateString("es", { month: "long", year: "numeric" })
@@ -705,6 +718,7 @@ function toOvertimeRow(o: OvertimeRequest) {
     resolved_at: o.resolvedAt ?? null,
     supervisor_comment: o.supervisorComment ?? null,
     ...(o.history?.length ? { history: o.history } : {}),
+    ...(o.kind ? { kind: o.kind } : {}),
   };
 }
 function fromOvertimeRow(r: any): OvertimeRequest {
@@ -719,6 +733,7 @@ function fromOvertimeRow(r: any): OvertimeRequest {
     resolvedAt: r.resolved_at ?? undefined,
     supervisorComment: r.supervisor_comment ?? undefined,
     history: r.history?.length ? r.history : undefined,
+    kind: r.kind === "saldo" ? "saldo" : undefined,
   };
 }
 

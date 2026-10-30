@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { overtimeClaimDeadline, expectedMinutesInRange, overlaps, overtimeOverlapIssues, overtimeBreakdown, overtimeRange, useStore } from "../store";
+import { overtimeClaimDeadline, overtimeRequestForMonth, expectedMinutesInRange, overlaps, overtimeOverlapIssues, overtimeBreakdown, overtimeRange, useStore } from "../store";
 import { downloadOvertimeXlsx } from "../overtimeReport";
 import { overtimeAbsenceFor } from "../overtimeSummary";
 import { addDays, addMonths, dayLabel, fmtDur, minToHM, monthEnd, monthStart, today, uid, weekStart } from "../utils";
@@ -58,11 +58,7 @@ export function HoursControl() {
         const excluded = loaded - bd.computableMin;
         const overlapIssues = overtimeOverlapIssues(state, u.id, ms);
         const supervisor = state.users.find((x) => x.id === u.supervisorId);
-        const otRequest = state.overtime.find((o) => {
-          if (o.userId !== u.id) return false;
-          const [from, to] = overtimeRange(o.weekStart);
-          return from <= me2 && ms <= to;
-        });
+        const otRequest = overtimeRequestForMonth(state, u.id, ms);
         const status: "sin-carga" | "incompleto" | "ok" | "extra" =
           loaded === 0 ? "sin-carga" : overtimeMin > 0 ? "extra" : loaded >= expected * 0.95 ? "ok" : "incompleto";
         return { u, perDay, loaded, expected, overtimeMin, excluded, overlapIssues, supervisor, otRequest, status };

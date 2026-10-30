@@ -578,8 +578,8 @@ function CargarSaldoModal({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useStore();
   const toast = useToast();
   const activeUsers = useMemo(
-    () => state.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name)),
-    [state.users],
+    () => state.users.filter((u) => u.active && u.id !== state.currentUserId).sort((a, b) => a.name.localeCompare(b.name)),
+    [state.users, state.currentUserId],
   );
   const [tipo, setTipo] = useState<SaldoTipo>("festivo");
   const [userId, setUserId] = useState(activeUsers[0]?.id ?? "");
@@ -616,6 +616,7 @@ function CargarSaldoModal({ onClose }: { onClose: () => void }) {
         resolvedBy: state.currentUserId,
         resolvedAt: today(),
         supervisorComment: note.trim() || `Saldo cargado a mano: ${daysNum} día(s) de festivo/FDS trabajado.`,
+        kind: "saldo",
       };
       dispatch({ type: "addOvertime", o });
       dispatch({

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useStore, overtimePeriodLabel, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings, overtimeOverlapIssues, overtimeClaimDeadline, overtimeRange, overtimeBreakdown, expectedMinutesInRange, findOvertimeFor, findAbsenceFor } from "../store";
+import { useStore, overtimePeriodLabel, overtimeRequestForMonth, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings, overtimeOverlapIssues, overtimeClaimDeadline, overtimeRange, overtimeBreakdown, expectedMinutesInRange, findOvertimeFor, findAbsenceFor } from "../store";
 import { OvertimeReportModal, OvertimeTraceModal } from "../components/OvertimeReport";
 import { buildOvertimeSummary, overtimeAbsenceFor, overtimePdfDataUrl, REPORT_PREFIX } from "../overtimeSummary";
 import type { AbsenceRequest, AbsenceType, Attachment, OvertimeRequest, RequestEvent } from "../types";
@@ -232,7 +232,7 @@ export function Absences() {
           <MonthRequest onReport={setReportOt} onResubmit={setResubmitOt} recoverMin={myOtApproved} onRecover={() => setShowNew(true)} />
           <div className="card">
             {[...(canApprove ? otPending : []), ...myOvertime].length === 0 && (
-              <Empty icon="flame" text="Sin horas extra registradas" sub="Cuando un mes supere la jornada, el administrador las enviará a supervisión desde Control de horas." />
+              <Empty icon="flame" text="Sin horas extra registradas" sub="Cuando cierre un mes con horas por encima de la jornada, solicitalas desde la tarjeta de arriba." />
             )}
             {[...(canApprove ? otPending : []), ...myOvertime].map((o) => {
               const u = state.users.find((x) => x.id === o.userId);
@@ -451,7 +451,7 @@ export function Absences() {
           }
         >
           <p style={{ fontSize: 13.5 }}>
-            ¿Eliminar las horas extra de la semana del <strong>{fmtDate(deleteOtReq.weekStart)}</strong> ({fmtDur(deleteOtReq.minutes)})?
+            ¿Eliminar las horas extra de <strong>{overtimePeriodLabel(deleteOtReq.weekStart)}</strong> ({fmtDur(deleteOtReq.minutes)})? También se elimina su solicitud de Gestión.
           </p>
         </Modal>
       )}
@@ -478,11 +478,7 @@ function MonthRequest({ onReport, onResubmit, recoverMin, onRecover }: { onRepor
   const expected = expectedMinutesInRange(state, me, ms, me2);
   const overtimeMin = bd.extraMin;
   const issues = overtimeOverlapIssues(state, me.id, ms);
-  const existing = state.overtime.find((o) => {
-    if (o.userId !== me.id) return false;
-    const [from, to] = overtimeRange(o.weekStart);
-    return from <= me2 && ms <= to;
-  });
+  const existing = overtimeRequestForMonth(state, me.id, ms);
   const expired = today() > overtimeClaimDeadline(me2);
   const open = ms >= monthStart(today());
   const reason = existing
@@ -853,8 +849,8 @@ function RequestLog() {
     });
     if (a.status !== "Pendiente" && a.resolvedBy) {
       events.push({
-        at: a.resolvedAt ?? a.createdAt, icon: a.status === "Aprobado" ? "check-circle" : "x-circle",
-        color: a.status === "Aprobado" ? "var(--success)" : "var(--danger)",
+        at: a.resolvedAt ?? a.createdAt, icon: a.status === "Aprobado" ? "check-circle" : a.status === "Devuelto" ? "message" : "x-circle",
+        color: a.status === "Aprobado" ? "var(--success)" : a.status === "Devuelto" ? "var(--accent)" : "var(--danger)",
         what: `${a.type} de ${name(a.userId)}${a.supervisorComment ? ` — "${a.supervisorComment}"` : ""}`,
         who: name(a.resolvedBy), status: a.status,
       });
@@ -869,8 +865,8 @@ function RequestLog() {
     });
     if (o.status !== "Pendiente" && o.resolvedBy) {
       events.push({
-        at: o.resolvedAt ?? o.createdAt, icon: o.status === "Aprobado" ? "check-circle" : "x-circle",
-        color: o.status === "Aprobado" ? "var(--success)" : "var(--danger)",
+        at: o.resolvedAt ?? o.createdAt, icon: o.status === "Aprobado" ? "check-circle" : o.status === "Devuelto" ? "message" : "x-circle",
+        color: o.status === "Aprobado" ? "var(--success)" : o.status === "Devuelto" ? "var(--accent)" : "var(--danger)",
         what: `Horas extra de ${name(o.userId)} (${fmtDur(o.minutes)})${o.supervisorComment ? ` — "${o.supervisorComment}"` : ""}`,
         who: name(o.resolvedBy), status: o.status,
       });

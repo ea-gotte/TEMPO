@@ -334,6 +334,8 @@ export interface OvertimeRequest {
   resolvedAt?: string;
   supervisorComment?: string;
   history?: RequestEvent[];
+  /** "saldo": cargado a mano por Recursos Humanos (festivo/FDS), no es una solicitud del mes */
+  kind?: "saldo";
 }
 
 /** Copia por correo de una notificación (bandeja de salida) */
