@@ -187,7 +187,7 @@ export interface ScopeStats {
   baselineHours: number | null;
   currentHours: number | null;
   growthPct: number | null;
-  /** Horas de cambios aprobados que no se facturan aparte (precio cerrado) */
+  /** Horas de cambios aprobados que se absorben en el proyecto */
   absorbedHours: number;
   originalEnd: string | null;
   currentEnd: string | null;

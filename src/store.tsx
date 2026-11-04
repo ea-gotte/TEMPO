@@ -544,6 +544,7 @@ function fromProjectRow(r: any): Project {
     memberIds: r.member_ids ?? [],
     notionUrl: r.notion_url ?? undefined,
     flightActivityId: r.flight_activity_id ?? null,
+    managementMode: r.management_mode ?? null,
   };
 }
 

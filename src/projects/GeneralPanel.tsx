@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Dot, Empty } from "../components/ui";
 import { fmtDate, today } from "../utils";
 import type { Project } from "../types";
@@ -9,7 +9,9 @@ import { diffDays } from "./schedule";
 import type { Deliverable, Milestone, ProjectMeta, Task, WorkEnv } from "./types";
 import { useWork, workActions } from "./workStore";
 import { DemoBanner } from "./ProjectWorkspace";
+import { canSeePortfolioAnalytics } from "./visibility";
 import { IndicatorsPanel } from "./IndicatorsPanel";
+import { AllocationPanel } from "./AllocationPanel";
 import { PortfolioGantt, TeamWorkload } from "./PortfolioViews";
 import "./projects.css";
 
@@ -95,18 +97,19 @@ export function projectHealth(
   return { level: "verde", reason: null };
 }
 
-export function GeneralPanel({ env, onOpen }: { env: WorkEnv; onOpen: (projectId: string) => void }) {
+export function GeneralPanel({ env, onOpen, view, onViewChange }: { env: WorkEnv; onOpen: (projectId: string) => void; view?: string; onViewChange?: (view: string) => void }) {
   return (
     <EnvProvider value={env}>
-      <GeneralPanelInner onOpen={onOpen} />
+      <GeneralPanelInner onOpen={onOpen} viewParam={view} onViewChange={onViewChange} />
     </EnvProvider>
   );
 }
 
-type View = "estado" | "cronograma" | "equipo" | "indicadores";
+type View = "estado" | "cronograma" | "equipo" | "asignacion" | "indicadores";
 const VIEWS: { key: View; label: string }[] = [
   { key: "cronograma", label: "Cronograma" },
   { key: "equipo", label: "Ocupación del equipo" },
+  { key: "asignacion", label: "Asignación" },
   { key: "estado", label: "Estado" },
   { key: "indicadores", label: "Indicadores" },
 ];
@@ -118,13 +121,22 @@ const LEVEL_RANK: Record<HealthLevel, number> = {
   gris: 3,
 };
 
-function GeneralPanelInner({ onOpen }: { onOpen: (projectId: string) => void }) {
+function GeneralPanelInner({ onOpen, viewParam, onViewChange }: { onOpen: (projectId: string) => void; viewParam?: string; onViewChange?: (view: string) => void }) {
   const env = useEnv();
   const work = useWork();
   const now = today();
   const [fHealth, setFHealth] = useState<"todos" | "rojo" | "ambar" | "verde">("todos");
   const [q, setQ] = useState("");
-  const [view, setView] = useState<View>("cronograma");
+  const [viewState, setViewState] = useState<string>("cronograma");
+  const view = viewParam ?? viewState;
+  const setView = (v: string) => {
+    setViewState(v);
+    onViewChange?.(v);
+  };
+  const canSeeAnalytics = canSeePortfolioAnalytics(env.me.role);
+  const allowedViews = canSeeAnalytics ? VIEWS : VIEWS.filter((v) => v.key === "cronograma");
+  // Una vista oculta para este rol, o que no existe en la URL, cae en el cronograma
+  const effectiveView: View = allowedViews.find((v) => v.key === view)?.key ?? "cronograma";
 
   // Datos de ejemplo para los primeros proyectos (solo en la demo)
   useEffect(() => {
@@ -196,14 +208,15 @@ function GeneralPanelInner({ onOpen }: { onOpen: (projectId: string) => void }) 
     <>
       <DemoBanner />
       <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>
-        {VIEWS.map((v) => (
-          <button key={v.key} role="tab" aria-selected={view === v.key} className={view === v.key ? "active" : ""} onClick={() => setView(v.key)}>{v.label}</button>
+        {allowedViews.map((v) => (
+          <button key={v.key} role="tab" aria-selected={effectiveView === v.key} className={effectiveView === v.key ? "active" : ""} onClick={() => setView(v.key)}>{v.label}</button>
         ))}
       </div>
-      {view === "cronograma" && <PortfolioGantt onOpen={onOpen} />}
-      {view === "equipo" && <TeamWorkload projectIds={ids} />}
-      {view === "indicadores" && <IndicatorsPanel onOpen={onOpen} />}
-      {view === "estado" && (<>
+      {effectiveView === "cronograma" && <PortfolioGantt onOpen={onOpen} />}
+      {effectiveView === "equipo" && <TeamWorkload projectIds={ids} />}
+      {effectiveView === "asignacion" && <AllocationPanel projectIds={ids} />}
+      {effectiveView === "indicadores" && <IndicatorsPanel onOpen={onOpen} />}
+      {effectiveView === "estado" && (<>
       <div className="kpi-grid">
         <KpiCard
           icon="alert"

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Avatar } from "../components/ui";
+import { Avatar, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { fmtDate, fmtDur, safeHttpUrl, today } from "../utils";
 import { useEnv } from "./env";
@@ -23,6 +23,7 @@ type Section = "tareas" | "reuniones" | "cambios";
 export function OverviewTab({ projectId, perms, go }: { projectId: string; perms: Perms; go: (t: Tab) => void }) {
   const env = useEnv();
   const work = useWork();
+  const toast = useToast();
   const [section, setSection] = useState<Section>("tareas");
   const [draft, setDraft] = useState<TaskDraft | null>(null);
   const workRef = useRef<HTMLDivElement>(null);
@@ -139,7 +140,7 @@ export function OverviewTab({ projectId, perms, go }: { projectId: string; perms
           <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
             <div className="card-title" style={{ margin: 0 }}>Roles del proyecto</div>
             <span style={{ flex: 1 }} />
-            {perms.canManage && <button className="btn btn-ghost btn-sm" onClick={() => setShowNewRole((v) => !v)}><Icon name="plus" size={12} /> Tipo de rol</button>}
+            {perms.canApprove && <button className="btn btn-ghost btn-sm" onClick={() => setShowNewRole((v) => !v)}><Icon name="plus" size={12} /> Tipo de rol</button>}
           </div>
           {showNewRole && (
             <div style={{ margin: "6px 0 8px" }}>
@@ -174,11 +175,11 @@ export function OverviewTab({ projectId, perms, go }: { projectId: string; perms
                     return (
                       <span className="pw-chip-user" key={a.id}>
                         <Avatar name={u.name} size={20} /> {u.name}
-                        {perms.canManage && <button title="Quitar" onClick={() => workActions.unassignRole(a.id)}><Icon name="x" size={11} /></button>}
+                        {perms.canApprove && <button title="Quitar" onClick={async () => { const err = await workActions.unassignRole(a.id); if (err) toast(err); }}><Icon name="x" size={11} /></button>}
                       </span>
                     );
                   })}
-                  {perms.canManage && !open && (
+                  {perms.canApprove && !open && (
                     <button className="btn btn-ghost btn-sm" onClick={() => setAdding({ roleKey: r.key, userId: "" })}><Icon name="plus" size={12} /></button>
                   )}
                   {open && (
@@ -187,7 +188,7 @@ export function OverviewTab({ projectId, perms, go }: { projectId: string; perms
                         <option value="">Elegir persona…</option>
                         {activeUsers.filter((u) => !list.some((a) => a.userId === u.id)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </select>
-                      <button className="btn btn-primary btn-sm" disabled={!adding!.userId} onClick={() => { workActions.assignRole(projectId, adding!.userId, r.key); setAdding(null); }}>Asignar</button>
+                      <button className="btn btn-primary btn-sm" disabled={!adding!.userId} onClick={async () => { const err = await workActions.assignRole(projectId, adding!.userId, r.key); if (err) toast(err); setAdding(null); }}>Asignar</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => setAdding(null)}><Icon name="x" size={12} /></button>
                     </span>
                   )}
@@ -293,7 +294,7 @@ export function OverviewTab({ projectId, perms, go }: { projectId: string; perms
         <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 8 }}>La membresía se administra desde “Miembros” en la lista de proyectos.</div>
       </div>
 
-      {editMeta && <MetaModal projectId={projectId} meta={meta} onClose={() => setEditMeta(false)} />}
+      {editMeta && <MetaModal projectId={projectId} meta={meta} canChangeMode={perms.canApprove} onClose={() => setEditMeta(false)} />}
       {editDocs && <DocsModal projectId={projectId} meta={meta} onClose={() => setEditDocs(false)} />}
     </>
   );

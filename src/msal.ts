@@ -11,6 +11,7 @@
  * .env.example para las dos variables necesarias.
  */
 import { PublicClientApplication, type AccountInfo } from "@azure/msal-browser";
+import { appBaseUrl } from "./routes";
 
 const clientId = import.meta.env.VITE_MSAL_CLIENT_ID || "";
 const tenantId = import.meta.env.VITE_MSAL_TENANT_ID || "";
@@ -25,9 +26,9 @@ const msalInstance = msalConfigured
       auth: {
         clientId,
         authority: `https://login.microsoftonline.com/${tenantId}`,
-        // Origen + ruta exactos de la app, sin query ni hash — tiene que
+        // La raíz de la app, sin importar qué pestaña esté abierta — tiene que
         // coincidir con el URI de redirección tipo "SPA" cargado en Azure AD.
-        redirectUri: window.location.href.split(/[?#]/)[0],
+        redirectUri: appBaseUrl(),
       },
       cache: { cacheLocation: "localStorage" },
     })

@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Dot, Empty } from "../components/ui";
 import type { Project, User } from "../types";
 import { addDays, fmtDate, monthLabel, parseISO, today } from "../utils";
@@ -162,6 +162,135 @@ export function useWheelZoom(
 }
 
 /* ====================================================================
+ * Barra horizontal sincronizada (sticky) para diagramas de Gantt
+ * ==================================================================== */
+export interface GanttHScrollbarProps {
+  scroller: React.RefObject<HTMLDivElement | null>;
+  zoomKey?: unknown;
+}
+
+export function GanttHScrollbar({ scroller, zoomKey }: GanttHScrollbarProps) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const [scrollWidth, setScrollWidth] = useState(0);
+  const [needed, setNeeded] = useState(false);
+  const activeSource = useRef<"scroller" | "bar" | null>(null);
+
+  const updateWidth = useCallback(() => {
+    const s = scroller.current;
+    if (!s) return;
+    const sw = s.scrollWidth;
+    const cw = s.clientWidth;
+    setScrollWidth(sw);
+    const isNeeded = sw > cw + 1;
+    setNeeded(isNeeded);
+    const b = barRef.current;
+    if (b && Math.abs(b.scrollLeft - s.scrollLeft) >= 1) {
+      b.scrollLeft = s.scrollLeft;
+    }
+  }, [scroller]);
+
+  useEffect(() => {
+    updateWidth();
+  }, [updateWidth, zoomKey]);
+
+  useEffect(() => {
+    const s = scroller.current;
+    if (!s) return;
+    updateWidth();
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => {
+        updateWidth();
+      });
+      ro.observe(s);
+      if (s.firstElementChild) {
+        ro.observe(s.firstElementChild);
+      }
+    }
+
+    const mo =
+      typeof MutationObserver !== "undefined"
+        ? new MutationObserver(() => {
+            if (s.firstElementChild && ro) {
+              ro.observe(s.firstElementChild);
+            }
+            updateWidth();
+          })
+        : null;
+    mo?.observe(s, { childList: true });
+
+    window.addEventListener("resize", updateWidth);
+
+    return () => {
+      ro?.disconnect();
+      mo?.disconnect();
+      window.removeEventListener("resize", updateWidth);
+    };
+  }, [scroller, updateWidth]);
+
+  useLayoutEffect(() => {
+    const s = scroller.current;
+    const b = barRef.current;
+    if (needed && s && b && Math.abs(b.scrollLeft - s.scrollLeft) >= 1) {
+      b.scrollLeft = s.scrollLeft;
+    }
+  }, [needed, scroller]);
+
+  useEffect(() => {
+    const s = scroller.current;
+    const b = barRef.current;
+    if (!s || !b) return;
+
+    let rafId: number | null = null;
+
+    const onScrollerScroll = () => {
+      if (activeSource.current === "bar") return;
+      activeSource.current = "scroller";
+      if (Math.abs(b.scrollLeft - s.scrollLeft) >= 1) {
+        b.scrollLeft = s.scrollLeft;
+      }
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        if (activeSource.current === "scroller") activeSource.current = null;
+      });
+    };
+
+    const onBarScroll = () => {
+      if (activeSource.current === "scroller") return;
+      activeSource.current = "bar";
+      if (Math.abs(s.scrollLeft - b.scrollLeft) >= 1) {
+        s.scrollLeft = b.scrollLeft;
+      }
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        if (activeSource.current === "bar") activeSource.current = null;
+      });
+    };
+
+    s.addEventListener("scroll", onScrollerScroll, { passive: true });
+    b.addEventListener("scroll", onBarScroll, { passive: true });
+
+    return () => {
+      s.removeEventListener("scroll", onScrollerScroll);
+      b.removeEventListener("scroll", onBarScroll);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [scroller, needed]);
+
+  return (
+    <div
+      ref={barRef}
+      className={`pw-gantt-hscroll ${needed ? "" : "is-hidden"}`.trim()}
+      aria-label="Desplazamiento horizontal del cronograma"
+      style={{ display: needed ? undefined : "none" }}
+    >
+      <div style={{ width: scrollWidth, height: 1, minHeight: 1 }} />
+    </div>
+  );
+}
+
+/* ====================================================================
  * Cronograma de la cartera: una fila por proyecto
  * ==================================================================== */
 export function PortfolioGantt({ onOpen }: { onOpen: (projectId: string) => void }) {
@@ -234,9 +363,10 @@ export function PortfolioGantt({ onOpen }: { onOpen: (projectId: string) => void
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: 12, color: "var(--text-3)" }}>Barra = plazo del proyecto (relleno = avance de tareas) · ◆ = hito · arrastrá para desplazarte · Shift + rueda para acercar o alejar</span>
       </div>
-      <div className="pw-gantt" ref={scroller} onPointerDown={onPointerDown} style={{ cursor: "grab" }}>
-        <div className="pw-gantt-inner" style={{ width: NAME_W + width }}>
-          <div className="pw-g-head">
+      <div className="pw-gantt-wrap">
+        <div className="pw-gantt" ref={scroller} onPointerDown={onPointerDown} style={{ cursor: "grab" }}>
+          <div className="pw-gantt-inner" style={{ width: NAME_W + width }}>
+            <div className="pw-g-head">
             <div className="pw-g-name">Proyecto</div>
             <div className="pw-g-days" style={{ width }}>
               {months.map((m) => <span key={m.x} className="pw-g-month" style={{ left: m.x + 4 }}>{cap(m.label)}</span>)}
@@ -289,8 +419,10 @@ export function PortfolioGantt({ onOpen }: { onOpen: (projectId: string) => void
                 </div>
               );
             })}
+            </div>
           </div>
         </div>
+        <GanttHScrollbar scroller={scroller} zoomKey={dayW} />
       </div>
       <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>
         Rombo rojo = hito vencido sin cumplir · verde = cumplido · borde rojo = proyecto con el fin previsto vencido · pausados y finalizados se ven atenuados. Clic en un proyecto para abrirlo.

@@ -4,7 +4,7 @@ import { addDays, fmtDate, monthLabel, parseISO, today } from "../utils";
 import { planInfo } from "./constants";
 import { useEnv } from "./env";
 import { isPlanOverdue, taskProgress } from "./logic";
-import { useDragPan, useWheelZoom } from "./PortfolioViews";
+import { GanttHScrollbar, useDragPan, useWheelZoom } from "./PortfolioViews";
 import { forecastSchedule, planItems } from "./schedule";
 import type { Deliverable, Milestone, Task } from "./types";
 import { workActions } from "./workStore";
@@ -184,8 +184,9 @@ export function PlanGantt({ milestones, deliverables, tasks, onOpenMs, onOpenDel
           </span>
         )}
       </div>
-      <div className="pw-gantt" ref={scroller} onPointerDown={onPointerDown} style={{ cursor: "grab" }}>
-        <div className="pw-gantt-inner" style={{ width: NAME_W + width }}>
+      <div className="pw-gantt-wrap">
+        <div className="pw-gantt" ref={scroller} onPointerDown={onPointerDown} style={{ cursor: "grab" }}>
+          <div className="pw-gantt-inner" style={{ width: NAME_W + width }}>
           <div className="pw-g-head">
             <div className="pw-g-name">Hito</div>
             <div className="pw-g-days" style={{ width }}>
@@ -276,8 +277,10 @@ export function PlanGantt({ milestones, deliverables, tasks, onOpenMs, onOpenDel
                 </div>
               );
             })}
+            </div>
           </div>
         </div>
+        <GanttHScrollbar scroller={scroller} zoomKey={dayW} />
       </div>
       <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 6 }}>
         Barra azul con borde = plazo planificado (con sus fechas) · barra de abajo = real (cerrado) o previsto (rayada) · ▣ = un entregable, al final de su hito · la línea azul es hoy · arrastrá el fondo para desplazarte · Shift + rueda para acercar o alejar

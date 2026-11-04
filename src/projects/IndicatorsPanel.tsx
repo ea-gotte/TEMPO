@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Dot, Empty } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { fmtDate, today } from "../utils";
-import { TASK_PRIORITY, TASK_STATUS } from "./constants";
+import { MODE_LABEL, TASK_PRIORITY, TASK_STATUS } from "./constants";
 import { useEnv } from "./env";
 import { globalFields, matchesFilter, selectedOptionIds, hasOptions, NO_VALUE, type FieldFilter } from "./fields";
 import { bucketize, indicatorsCsv, portfolio, type Bucket, type Health, type ProjectIndicators } from "./indicators";
@@ -10,7 +10,6 @@ import { KpiCard, Person } from "./parts";
 import { useWork } from "./workStore";
 import "./projects.css";
 
-export const MODE_LABEL = { planificado: "Planificado", agil: "Ágil", hibrido: "Híbrido" } as const;
 
 export const HEALTH: Record<Health, { label: string; color: string }> = {
   ok: { label: "Bien", color: "var(--success)" },

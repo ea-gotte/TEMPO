@@ -2,7 +2,7 @@ import type { Project } from "../types";
 import { addDays, uid, weekStart } from "../utils";
 import { sumHours } from "./agile";
 import { defaultMilestone } from "./logic";
-import type { Baseline, ChangeRequest, Confidence, Milestone, ProjectMeta, ProjectMode, Risk, Sprint, Task } from "./types";
+import type { Baseline, ChangeRequest, Confidence, Deliverable, DeliverableReview, Milestone, ProjectMeta, ProjectMode, Risk, Sprint, Task } from "./types";
 
 /**
  * Datos de ejemplo de la metodología (modo del proyecto, sprints, cambios del
@@ -16,6 +16,7 @@ interface Args {
   allDone: boolean;
   tasks: Task[];
   milestones: Milestone[];
+  deliverables?: Deliverable[];
   meta: ProjectMeta;
   pick: (i: number) => string | null;
 }
@@ -28,9 +29,10 @@ export interface Seeded {
   changes: ChangeRequest[];
   risks: Risk[];
   baselines: Baseline[];
+  reviews: DeliverableReview[];
 }
 
-const MODES: ProjectMode[] = ["planificado", "agil", "hibrido", "agil", "planificado", "planificado"];
+const MODES: ProjectMode[] = ["planificado", "agil", "hibrido", "agil", "plan_correcciones", "planificado"];
 
 const GOALS = [
   "Cerrar el relevamiento y dejar lista la base del modelo",
@@ -44,7 +46,7 @@ export function seedMethod(a: Args): Seeded {
   const mode: ProjectMode = allDone ? "planificado" : MODES[index % MODES.length];
   const weeks: 1 | 2 = index % 3 === 0 ? 1 : 2;
   const meta: ProjectMeta = {
-    ...a.meta, mode, sprintWeeks: mode === "planificado" ? 2 : weeks, contingencyPct: mode === "hibrido" ? 25 : mode === "agil" ? 15 : 10,
+    ...a.meta, mode, sprintWeeks: mode === "planificado" ? 2 : weeks, contingencyPct: mode === "hibrido" ? 25 : mode === "agil" || mode === "plan_correcciones" ? 15 : 10,
     discoveryHours: mode === "hibrido" ? 40 : null, discoveryEnd: mode === "hibrido" ? addDays(now, 5) : null,
   };
   let tasks: Task[] = a.tasks.map((t, i): Task => {
@@ -89,7 +91,7 @@ export function seedMethod(a: Args): Seeded {
   /* ---------- Sprints ---------- */
   const sprints: Sprint[] = [];
   // En un proyecto híbrido los sprints empiezan recién cuando la puerta de decisión dice “seguir”
-  const agileLike = mode === "agil" && !allDone;
+  const agileLike = (mode === "agil" || mode === "plan_correcciones") && !allDone;
   if (agileLike) {
     const len = meta.sprintWeeks * 7;
     // El sprint en marcha arranca el lunes de esta semana: casi siempre estamos a mitad de camino
@@ -142,7 +144,7 @@ export function seedMethod(a: Args): Seeded {
     tasks.filter((t) => !t.sprintId && t.status !== "hecha" && t.kind !== "spike").forEach((t, i) => { t.rank = i * 10; });
   }
 
-  /* ---------- Cambios del cliente (precio cerrado: se absorben) ---------- */
+  /* ---------- Cambios del cliente (se absorben) ---------- */
   const changes: ChangeRequest[] = [];
   const active = sprints.find((s) => s.status === "activo");
   type Spec = [string, string, string, number, number, ChangeRequest["status"], number, boolean, number | null];
@@ -223,5 +225,215 @@ export function seedMethod(a: Args): Seeded {
     reviewDate: r[6] === null ? null : addDays(now, r[6]), status: allDone ? "cerrado" : r[7],
   }));
 
-  return { tasks, milestones, meta, sprints, changes, risks, baselines };
+  const reviews: DeliverableReview[] = [];
+  const deliverables = a.deliverables ?? [];
+
+  if (mode === "plan_correcciones" && !allDone) {
+    const d0 = deliverables[0];
+    const d1 = deliverables[1];
+
+    if (d0) {
+      d0.status = "cumplido";
+      d0.firstDeliveredAt = d0.actualEnd ?? addDays(now, -35);
+    }
+
+    if (d1) {
+      d1.status = "en_curso";
+      d1.firstDeliveredAt = addDays(now, -20);
+      d1.actualEnd = null;
+
+      const rev1Id = uid();
+      const rev2Id = uid();
+
+      const rev1: DeliverableReview = {
+        id: rev1Id,
+        projectId: project.id,
+        deliverableId: d1.id,
+        round: 1,
+        date: addDays(now, -18),
+        source: "cliente",
+        note: "Ajustar interferencias en subsuelo y reubicar pases de losa.",
+        createdBy: pick(0) ?? "",
+        createdAt: addDays(now, -18) + "T10:00:00Z",
+      };
+
+      const rev2: DeliverableReview = {
+        id: rev2Id,
+        projectId: project.id,
+        deliverableId: d1.id,
+        round: 2,
+        date: addDays(now, -6),
+        source: "cliente",
+        note: "Pendiente corregir bajadas pluviales y numeración de láminas.",
+        createdBy: pick(0) ?? "",
+        createdAt: addDays(now, -6) + "T15:30:00Z",
+      };
+
+      reviews.push(rev1, rev2);
+
+      const activeSprintItem = sprints.find((s) => s.status === "activo");
+      const closedSprintItem = sprints.find((s) => s.status === "cerrado");
+
+      const corrTasks: Task[] = [
+        {
+          id: uid(),
+          projectId: project.id,
+          milestoneId: d1.milestoneId,
+          deliverableId: d1.id,
+          reviewId: rev1Id,
+          name: "Corrección: Resolver interferencias en subsuelo",
+          description: "Desplazar cañerías para evitar colisión con vigas principales.",
+          assigneeId: pick(1),
+          status: "hecha",
+          priority: "alta",
+          startDate: null,
+          dueDate: d1.dueDate,
+          kind: "correccion",
+          estimateHours: 8,
+          estimateMin: null,
+          estimateMax: null,
+          confidence: "alta",
+          sprintId: closedSprintItem?.id ?? null,
+          sprintAddedAt: closedSprintItem?.startDate ?? null,
+          rank: -70,
+          changeRequestId: null,
+          completedAt: addDays(now, -12),
+          archived: false,
+          archivedAt: null,
+          custom: {},
+          sortOrder: 10,
+          createdBy: pick(0),
+          createdAt: addDays(now, -18) + "T11:00:00Z",
+        },
+        {
+          id: uid(),
+          projectId: project.id,
+          milestoneId: d1.milestoneId,
+          deliverableId: d1.id,
+          reviewId: rev1Id,
+          name: "Corrección: Reubicar pases de losa en sector B",
+          description: "Coordinar con estructuras la nueva ubicación de pases.",
+          assigneeId: pick(2),
+          status: "hecha",
+          priority: "media",
+          startDate: null,
+          dueDate: d1.dueDate,
+          kind: "correccion",
+          estimateHours: 6,
+          estimateMin: null,
+          estimateMax: null,
+          confidence: "alta",
+          sprintId: closedSprintItem?.id ?? null,
+          sprintAddedAt: closedSprintItem?.startDate ?? null,
+          rank: -60,
+          changeRequestId: null,
+          completedAt: addDays(now, -10),
+          archived: false,
+          archivedAt: null,
+          custom: {},
+          sortOrder: 20,
+          createdBy: pick(0),
+          createdAt: addDays(now, -18) + "T11:30:00Z",
+        },
+        {
+          id: uid(),
+          projectId: project.id,
+          milestoneId: d1.milestoneId,
+          deliverableId: d1.id,
+          reviewId: rev2Id,
+          name: "Corrección: Ajustar bajadas pluviales en estacionamiento",
+          description: "Revisar pendientes y empalme a colectora.",
+          assigneeId: pick(2),
+          status: "en_curso",
+          priority: "alta",
+          startDate: null,
+          dueDate: d1.dueDate,
+          kind: "correccion",
+          estimateHours: 10,
+          estimateMin: null,
+          estimateMax: null,
+          confidence: "media",
+          sprintId: activeSprintItem?.id ?? null,
+          sprintAddedAt: activeSprintItem?.startDate ?? null,
+          rank: -50,
+          changeRequestId: null,
+          completedAt: null,
+          archived: false,
+          archivedAt: null,
+          custom: {},
+          sortOrder: 30,
+          createdBy: pick(0),
+          createdAt: addDays(now, -6) + "T16:00:00Z",
+        },
+        {
+          id: uid(),
+          projectId: project.id,
+          milestoneId: d1.milestoneId,
+          deliverableId: d1.id,
+          reviewId: rev2Id,
+          name: "Corrección: Actualizar numeración y rótulos de planos",
+          description: "Corregir índice de láminas según la devolución del cliente.",
+          assigneeId: pick(1),
+          status: "pendiente",
+          priority: "media",
+          startDate: null,
+          dueDate: d1.dueDate,
+          kind: "correccion",
+          estimateHours: 4,
+          estimateMin: null,
+          estimateMax: null,
+          confidence: "media",
+          sprintId: activeSprintItem?.id ?? null,
+          sprintAddedAt: activeSprintItem?.startDate ?? null,
+          rank: -40,
+          changeRequestId: null,
+          completedAt: null,
+          archived: false,
+          archivedAt: null,
+          custom: {},
+          sortOrder: 40,
+          createdBy: pick(0),
+          createdAt: addDays(now, -6) + "T16:15:00Z",
+        },
+        {
+          id: uid(),
+          projectId: project.id,
+          milestoneId: d1.milestoneId,
+          deliverableId: d1.id,
+          reviewId: rev2Id,
+          name: "Corrección: Revisión de pendientes de coordinación",
+          description: "Validación interna previa a la reentrega.",
+          assigneeId: null,
+          status: "pendiente",
+          priority: "media",
+          startDate: null,
+          dueDate: d1.dueDate,
+          kind: "correccion",
+          estimateHours: 6,
+          estimateMin: null,
+          estimateMax: null,
+          confidence: "media",
+          sprintId: null,
+          sprintAddedAt: null,
+          rank: -30,
+          changeRequestId: null,
+          completedAt: null,
+          archived: false,
+          archivedAt: null,
+          custom: {},
+          sortOrder: 50,
+          createdBy: pick(0),
+          createdAt: addDays(now, -6) + "T16:30:00Z",
+        },
+      ];
+
+      tasks.push(...corrTasks);
+
+      if (activeSprintItem) {
+        activeSprintItem.committedHours = (activeSprintItem.committedHours ?? 0) + 14;
+      }
+    }
+  }
+
+  return { tasks, milestones, meta, sprints, changes, risks, baselines, reviews };
 }

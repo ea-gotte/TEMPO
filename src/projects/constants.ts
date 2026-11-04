@@ -1,4 +1,11 @@
-import type { PlanStatus, RoleDef, TaskPriority, TaskStatus } from "./types";
+import type { PlanStatus, ProjectMode, RoleDef, TaskPriority, TaskStatus } from "./types";
+
+export const MODE_LABEL: Record<ProjectMode, string> = {
+  planificado: "Planificado",
+  plan_correcciones: "Plan + correcciones",
+  agil: "Ágil",
+  hibrido: "Híbrido",
+};
 
 export const TASK_STATUS: { key: TaskStatus; label: string; color: string }[] = [
   { key: "pendiente", label: "Pendiente", color: "var(--text-3)" },
@@ -22,11 +29,10 @@ export const PLAN_STATUS: { key: PlanStatus; label: string; color: string }[] = 
 
 /**
  * Roles de un proyecto. Los tres imprescindibles: Project Manager (cliente y
- * gestión; es quien aprueba), Líder técnico (soporte técnico) y Coordinador
- * (día a día con los modeladores). El Modelador ejecuta las tareas. El Referente
- * queda como rol opcional de consulta. Cada rol lleva sus responsabilidades. El
- * Project Manager también lleva la relación comercial con el cliente (ya no hay
- * un Líder comercial aparte ni un Líder funcional de área).
+ * gestión; es quien aprueba), Líder Funcional y Coordinador (día a día con
+ * los modeladores). El Modelador ejecuta las tareas. El Referente queda como rol
+ * opcional de consulta. Cada rol lleva sus responsabilidades. El Project Manager
+ * también lleva la relación comercial con el cliente (ya no hay un Líder comercial aparte).
  */
 export const DEFAULT_ROLES: RoleDef[] = [
   {
@@ -37,12 +43,12 @@ export const DEFAULT_ROLES: RoleDef[] = [
       "Decide los cambios del cliente en un máximo de 48 horas (aprueba, difiere o rechaza).",
       "Aprueba las puertas de decisión en los proyectos híbridos.",
       "Controla las horas contra lo proyectado y avisa a gerencia ante desvíos.",
-      "Mantiene la relación comercial con el cliente y el contrato (precio cerrado, sin adicionales).",
+      "Mantiene la relación comercial con el cliente y el contrato.",
       "Conoce el alcance contratado para detectar los pedidos que lo exceden y llevarlos a Cambios del cliente.",
     ],
   },
   {
-    key: "lider_tecnico", label: "Líder técnico", active: true, manage: true, approve: false, required: true,
+    key: "lider_tecnico", label: "Líder Funcional", active: true, manage: true, approve: false, required: true,
     responsibilities: [
       "Da el soporte técnico al equipo y define los criterios y estándares de modelado.",
       "Revisa la calidad técnica de los entregables antes de emitirlos.",
@@ -57,8 +63,8 @@ export const DEFAULT_ROLES: RoleDef[] = [
       "Conduce el día a día del proyecto con los modeladores.",
       "Reparte las tareas y cuida que nadie quede sobrecargado.",
       "Mantiene actualizado el estado de las tareas, los hitos y los entregables.",
-      "Detecta bloqueos y desvíos a tiempo y los escala al Project Manager o al líder técnico.",
-      "Prepara cada emisión junto al líder técnico.",
+      "Detecta bloqueos y desvíos a tiempo y los escala al Project Manager o al líder funcional.",
+      "Prepara cada emisión junto al líder funcional.",
     ],
   },
   {

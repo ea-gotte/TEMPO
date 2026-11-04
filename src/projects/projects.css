@@ -91,7 +91,44 @@
 .pw-cal-chip.late { outline: 2px solid var(--danger); outline-offset: -1px; }
 
 /* ---------- Gantt ---------- */
+.pw-gantt-wrap { position: relative; }
+.pw-gantt-wrap:has(.pw-gantt-hscroll:not(.is-hidden)) .pw-gantt { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .pw-gantt { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); overflow: auto; max-height: 620px; }
+.pw-gantt-wrap .pw-gantt::-webkit-scrollbar:horizontal { height: 0; display: none; }
+
+.pw-gantt-hscroll {
+  position: sticky;
+  bottom: 0;
+  width: 100%;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  z-index: 10;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  line-height: 0;
+  scrollbar-width: auto;
+  scrollbar-color: var(--border-strong) var(--surface-2);
+}
+.pw-gantt-hscroll.is-hidden {
+  display: none !important;
+}
+.pw-gantt-hscroll::-webkit-scrollbar {
+  height: 12px;
+}
+.pw-gantt-hscroll::-webkit-scrollbar-track {
+  background: var(--surface-2);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+}
+.pw-gantt-hscroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+  border: 2px solid var(--surface-2);
+}
+.pw-gantt-hscroll::-webkit-scrollbar-thumb:hover {
+  background: var(--text-3);
+}
 .pw-gantt-inner { position: relative; min-width: 100%; }
 .pw-g-head { display: flex; position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--border); }
 .pw-g-name { width: 260px; flex-shrink: 0; position: sticky; left: 0; z-index: 4; background: var(--surface); border-right: 1px solid var(--border); padding: 0 12px; display: flex; align-items: center; }

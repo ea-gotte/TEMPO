@@ -7,7 +7,7 @@ import { backlogOf, nextSprintDates, sumHours } from "./agile";
 import { OPTION_COLORS, hasOptions } from "./fields";
 import { seedMethod } from "./seedMode";
 import { seedMeetings } from "./meetings";
-import type { Baseline, ChangeRequest, Deliverable, Meeting, FieldDef, FieldType, Milestone, PlanStatus, ProjectMeta, Risk, Sprint, Task, TaskPriority, TaskStatus, WorkData } from "./types";
+import type { ProjectMode, Baseline, ChangeRequest, Deliverable, DeliverableReview, Meeting, FieldDef, FieldType, Milestone, PlanStatus, ProjectMeta, Risk, RoleAssignment, RoleDef, Sprint, Task, TaskPriority, TaskStatus, WorkData } from "./types";
 
 /**
  * Almacén de la DEMO de gestión de proyectos: vive en este navegador
@@ -35,13 +35,13 @@ const DEFAULT_FIELDS: FieldDef[] = [
 ];
 
 function empty(): WorkData {
-  return { meetings: [], sprints: [], changes: [], risks: [], baselines: [], fields: DEFAULT_FIELDS, roles: DEFAULT_ROLES, assignments: [], meta: {}, milestones: [], deliverables: [], tasks: [], seeded: {} };
+  return { meetings: [], sprints: [], changes: [], risks: [], baselines: [], fields: DEFAULT_FIELDS, roles: DEFAULT_ROLES, assignments: [], meta: {}, milestones: [], deliverables: [], tasks: [], reviews: [], seeded: {} };
 }
 
 /** Campos nuevos de una tarea con su valor por defecto. */
 const TASK_DEFAULTS = {
   kind: "tarea" as const, estimateHours: null as number | null, estimateMin: null as number | null, estimateMax: null as number | null,
-  confidence: null as Task["confidence"], sprintId: null as string | null, sprintAddedAt: null as string | null, rank: 0, changeRequestId: null as string | null,
+  confidence: null as Task["confidence"], sprintId: null as string | null, sprintAddedAt: null as string | null, rank: 0, changeRequestId: null as string | null, reviewId: null as string | null,
   archived: false, archivedAt: null as string | null, custom: {} as Task["custom"],
 };
 type DefaultKeys = keyof typeof TASK_DEFAULTS;
@@ -60,7 +60,13 @@ function withCompletion(prev: Task | null, next: Task): Task {
 function load(): WorkData {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...empty(), ...(JSON.parse(raw) as Partial<WorkData>) };
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<WorkData>;
+      const roles = (parsed.roles ?? DEFAULT_ROLES).map((r) =>
+        r.key === "lider_tecnico" ? { ...r, label: "Líder Funcional" } : r,
+      );
+      return { ...empty(), ...parsed, roles };
+    }
   } catch {
     /* se usa el estado vacío */
   }
@@ -85,6 +91,27 @@ function subscribe(l: () => void) {
   return () => listeners.delete(l);
 }
 
+export interface RoleBackend {
+  insert(a: RoleAssignment): Promise<string | null>;
+  remove(id: string): Promise<string | null>;
+}
+
+let roleBackend: RoleBackend | null = null;
+
+export function setRoleBackend(b: RoleBackend) {
+  roleBackend = b;
+  commit({ ...data, assignments: [] });
+}
+
+/** Dónde se guarda la metodología de cada proyecto; sin esto (la demo), en este navegador. */
+export type ModeBackend = (projectId: string, mode: ProjectMode) => Promise<string | null>;
+
+let modeBackend: ModeBackend | null = null;
+
+export function setModeBackend(b: ModeBackend) {
+  modeBackend = b;
+}
+
 export function useWork(): WorkData {
   return useSyncExternalStore(subscribe, () => data, () => data);
 }
@@ -96,12 +123,15 @@ const bySort = (a: Task, b: Task) => a.sortOrder - b.sortOrder;
  * real y al pasar a Cumplido el fin real (hoy), salvo que se hayan cargado a mano;
  * si se reabre, se borra el fin real.
  */
-function withActuals<T extends { status: PlanStatus; actualStart?: string | null; actualEnd?: string | null }>(prev: T, patch: Partial<T>): T {
+function withActuals<T extends { status: PlanStatus; actualStart?: string | null; actualEnd?: string | null; firstDeliveredAt?: string | null }>(prev: T, patch: Partial<T>): T {
   const next = { ...prev, ...patch };
   if (patch.status === undefined || patch.status === prev.status) return next;
   const now = today();
   if (next.status !== "pendiente" && !("actualStart" in patch) && !next.actualStart) next.actualStart = now;
   if (next.status === "cumplido" && !("actualEnd" in patch) && !next.actualEnd) next.actualEnd = now;
+  if (next.status === "cumplido" && "milestoneId" in next && !next.firstDeliveredAt) {
+    next.firstDeliveredAt = next.actualEnd ?? now;
+  }
   if (next.status !== "cumplido" && !("actualEnd" in patch)) next.actualEnd = null;
   if (next.status === "pendiente" && !("actualStart" in patch)) next.actualStart = null;
   return next;
@@ -186,12 +216,116 @@ export const workActions = {
   },
   deleteDeliverable(id: string) {
     const rest = data.deliverables.filter((d) => d.id !== id).map((d) => ({ ...d, dependsOn: d.dependsOn?.filter((x) => x !== id) }));
+    const reviews = (data.reviews ?? []).filter((r) => r.deliverableId !== id);
+    const deletedReviewIds = new Set((data.reviews ?? []).filter((r) => r.deliverableId === id).map((r) => r.id));
     commit({
       ...data,
       deliverables: rest,
+      reviews,
       milestones: data.milestones.map((m) => ({ ...m, dependsOn: m.dependsOn?.filter((x) => x !== id) })),
-      tasks: data.tasks.map((t) => normalizeTask(t.deliverableId === id ? { ...t, deliverableId: null } : t, rest, data.milestones)),
+      tasks: data.tasks.map((t) => {
+        let cur = t;
+        if (cur.deliverableId === id) cur = { ...cur, deliverableId: null };
+        if (cur.reviewId && deletedReviewIds.has(cur.reviewId)) cur = { ...cur, reviewId: null };
+        return normalizeTask(cur, rest, data.milestones);
+      }),
     });
+  },
+
+  /* ---------- Revisiones de entregables ---------- */
+  addReview(input: {
+    projectId: string;
+    deliverableId: string;
+    date: string;
+    source: "cliente" | "interna";
+    note?: string;
+    createdBy: string;
+    corrections: { name: string; estimateHours: number | null; priority: TaskPriority; assigneeId: string | null }[];
+  }): DeliverableReview {
+    const existingReviews = (data.reviews ?? []).filter((r) => r.deliverableId === input.deliverableId);
+    const round = existingReviews.length ? Math.max(...existingReviews.map((r) => r.round)) + 1 : 1;
+    const review: DeliverableReview = {
+      id: uid(),
+      projectId: input.projectId,
+      deliverableId: input.deliverableId,
+      round,
+      date: input.date,
+      source: input.source,
+      note: input.note?.trim() || "",
+      createdBy: input.createdBy,
+      createdAt: new Date().toISOString(),
+    };
+
+    const deliverables = data.deliverables.map((d) => {
+      if (d.id !== input.deliverableId) return d;
+      if (d.status === "cumplido") {
+        return {
+          ...d,
+          status: "en_curso" as PlanStatus,
+          firstDeliveredAt: d.firstDeliveredAt || d.actualEnd || today(),
+          actualEnd: null,
+        };
+      }
+      return d;
+    });
+
+    const currentRanks = data.tasks.filter((t) => t.projectId === input.projectId).map((t) => t.rank);
+    const minRank = currentRanks.length ? Math.min(...currentRanks) : 0;
+    const col = data.tasks.filter((t) => t.projectId === input.projectId && t.status === "pendiente");
+    const maxSort = col.length ? Math.max(...col.map((t) => t.sortOrder)) : 0;
+
+    const newTasks: Task[] = input.corrections.map((c, i) =>
+      normalizeTask(
+        {
+          ...TASK_DEFAULTS,
+          id: uid(),
+          projectId: input.projectId,
+          deliverableId: input.deliverableId,
+          milestoneId: null,
+          reviewId: review.id,
+          kind: "correccion",
+          name: c.name.trim(),
+          description: "",
+          assigneeId: c.assigneeId,
+          status: "pendiente",
+          priority: c.priority,
+          startDate: null,
+          dueDate: null,
+          estimateHours: c.estimateHours,
+          estimateMin: null,
+          estimateMax: null,
+          confidence: "media",
+          sprintId: null,
+          sprintAddedAt: null,
+          rank: minRank - (input.corrections.length - i) * 10,
+          changeRequestId: null,
+          completedAt: null,
+          archived: false,
+          archivedAt: null,
+          custom: {},
+          sortOrder: maxSort + (i + 1) * 10,
+          createdBy: input.createdBy,
+          createdAt: new Date().toISOString(),
+        },
+        deliverables,
+        data.milestones
+      )
+    );
+
+    commit({
+      ...data,
+      reviews: [...(data.reviews ?? []), review],
+      deliverables,
+      tasks: [...data.tasks, ...newTasks],
+    });
+    return review;
+  },
+  deleteReview(id: string) {
+    const reviews = (data.reviews ?? []).filter((r) => r.id !== id);
+    const tasks = data.tasks
+      .filter((t) => !(t.reviewId === id && t.status === "pendiente" && !t.sprintId))
+      .map((t) => (t.reviewId === id ? { ...t, reviewId: null } : t));
+    commit({ ...data, reviews, tasks });
   },
 
   /* ---------- Ficha y roles ---------- */
@@ -199,12 +333,64 @@ export const workActions = {
     const cur = data.meta[projectId] ?? { projectId, code: "", startDate: null, endDate: null, description: "", notes: "", sharepointUrl: "", accUrl: "", mode: "planificado" as const, sprintWeeks: 2 as const, contingencyPct: 10, discoveryHours: null, discoveryEnd: null };
     commit({ ...data, meta: { ...data.meta, [projectId]: { ...cur, ...patch } } });
   },
-  assignRole(projectId: string, userId: string, roleKey: string) {
-    if (data.assignments.some((a) => a.projectId === projectId && a.userId === userId && a.roleKey === roleKey)) return;
-    commit({ ...data, assignments: [...data.assignments, { id: uid(), projectId, userId, roleKey }] });
+  async setProjectMode(projectId: string, mode: ProjectMode): Promise<string | null> {
+    const prev = data.meta[projectId];
+    if (prev) commit({ ...data, meta: { ...data.meta, [projectId]: { ...prev, mode } } });
+    const err = modeBackend ? await modeBackend(projectId, mode) : null;
+    if (err && prev) commit({ ...data, meta: { ...data.meta, [projectId]: { ...data.meta[projectId], mode: prev.mode } } });
+    return err;
   },
-  unassignRole(id: string) {
+  /** Con la base conectada manda lo que dice la base, para todas las personas por igual. */
+  applyProjectModes(projects: Project[]) {
+    if (!modeBackend) return;
+    const stale = projects.filter((p) => data.meta[p.id] && data.meta[p.id].mode !== (p.managementMode ?? "planificado"));
+    if (stale.length === 0) return;
+    const meta = { ...data.meta };
+    for (const p of stale) meta[p.id] = { ...meta[p.id], mode: p.managementMode ?? "planificado" };
+    commit({ ...data, meta });
+  },
+  async assignRole(projectId: string, userId: string, roleKey: string): Promise<string | null> {
+    if (data.assignments.some((a) => a.projectId === projectId && a.userId === userId && a.roleKey === roleKey)) return null;
+    const role = data.roles.find((r) => r.key === roleKey);
+    const item: RoleAssignment = { id: uid(), projectId, userId, roleKey, ...(role?.label ? { roleLabel: role.label } : {}) };
+    commit({ ...data, assignments: [...data.assignments, item] });
+    if (!roleBackend) return null;
+    const err = await roleBackend.insert(item);
+    if (err) {
+      commit({ ...data, assignments: data.assignments.filter((a) => a.id !== item.id) });
+      return err;
+    }
+    return null;
+  },
+  async unassignRole(id: string): Promise<string | null> {
+    const prev = data.assignments.find((a) => a.id === id);
+    if (!prev) return null;
     commit({ ...data, assignments: data.assignments.filter((a) => a.id !== id) });
+
+    if (!roleBackend) return null;
+    const err = await roleBackend.remove(id);
+    if (err) {
+      commit({ ...data, assignments: [...data.assignments, prev] });
+      return err;
+    }
+    return null;
+  },
+  hydrateAssignments(rows: RoleAssignment[]) {
+    const rolesMap = new Map(data.roles.map((r) => [r.key, r]));
+    for (const row of rows) {
+      if (!rolesMap.has(row.roleKey)) {
+        rolesMap.set(row.roleKey, {
+          key: row.roleKey,
+          label: row.roleLabel || row.roleKey,
+          active: true,
+          manage: false,
+          approve: false,
+          required: false,
+          responsibilities: [],
+        });
+      }
+    }
+    commit({ ...data, roles: Array.from(rolesMap.values()), assignments: rows });
   },
   addRole(label: string, opts: { manage: boolean; approve: boolean; responsibilities?: string[] } = { manage: false, approve: false }) {
     const key = label.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -290,7 +476,7 @@ export const workActions = {
     return ch;
   },
   /**
-   * Decide una solicitud. Al aprobar (precio cerrado: no se factura aparte):
+   * Decide una solicitud. Al aprobar:
    * crea el ítem en el backlog o en un sprint, y registra una nueva línea base
    * con el alcance y la fecha de fin actualizados.
    */
@@ -400,7 +586,8 @@ export const workActions = {
 
   /* ---------- Demo ---------- */
   resetDemo() {
-    commit(empty());
+    // Los roles no son de ejemplo si vienen de la base: se conservan
+    commit(roleBackend ? { ...empty(), roles: data.roles, assignments: data.assignments } : empty());
   },
 
   /** Carga datos de ejemplo para un proyecto (una sola vez por proyecto). */
@@ -546,6 +733,9 @@ function seedProject(cur: WorkData, project: Project, index: number): WorkData {
       const ends = ts.map((t) => t.completedAt).filter(Boolean) as string[];
       const last = ends.length ? ends.reduce((a, b) => (a > b ? a : b)) : x.dueDate;
       x.actualEnd = last && last > now ? now : last;
+      if ("milestoneId" in x && !x.firstDeliveredAt) {
+        x.firstDeliveredAt = x.actualEnd;
+      }
     }
   }
 
@@ -560,7 +750,7 @@ function seedProject(cur: WorkData, project: Project, index: number): WorkData {
     accUrl: index % 2 === 0 ? "https://acc.autodesk.com/docs/files/projects/" + code.toLowerCase() : "",
     mode: "planificado", sprintWeeks: 2, contingencyPct: 10, discoveryHours: null, discoveryEnd: null,
   };
-  const seeded = seedMethod({ project, index, now, allDone, tasks, milestones, meta, pick });
+  const seeded = seedMethod({ project, index, now, allDone, tasks, milestones, deliverables, meta, pick });
 
   // Los tres roles imprescindibles; el líder funcional de área solo en algunos proyectos (es opcional)
   const lead = pick(0), tech = pick(2) ?? pick(0), coord = pick(1) ?? pick(0);
@@ -573,7 +763,9 @@ function seedProject(cur: WorkData, project: Project, index: number): WorkData {
     ["coordinador", coord],
     ...modelers.map((id) => ["modelador", id] as [string, string | null]),
   ];
-  const assignments = roleUsers.flatMap(([roleKey, userId]) => (userId ? [{ id: uid(), projectId: project.id, userId, roleKey }] : []));
+  const assignments = roleBackend
+    ? []
+    : roleUsers.flatMap(([roleKey, userId]) => (userId ? [{ id: uid(), projectId: project.id, userId, roleKey }] : []));
 
   // La tarea no tiene fechas propias: hereda las de su entregable u hito. Y las ya cerradas hace tiempo se archivan.
   const finalTasks = seeded.tasks.map((t) => {
@@ -584,7 +776,7 @@ function seedProject(cur: WorkData, project: Project, index: number): WorkData {
   return {
     ...cur,
     fields: planField ? [...cur.fields, planField] : cur.fields,
-    meta: { ...cur.meta, [project.id]: seeded.meta },
+    meta: { ...cur.meta, [project.id]: modeBackend ? { ...seeded.meta, mode: project.managementMode ?? "planificado" } : seeded.meta },
     milestones: [...cur.milestones, ...seeded.milestones],
     deliverables: [...cur.deliverables, ...deliverables],
     tasks: [...cur.tasks, ...finalTasks],
@@ -592,6 +784,7 @@ function seedProject(cur: WorkData, project: Project, index: number): WorkData {
     changes: [...cur.changes, ...seeded.changes],
     risks: [...cur.risks, ...seeded.risks],
     baselines: [...cur.baselines, ...seeded.baselines],
+    reviews: [...(cur.reviews ?? []), ...(seeded.reviews ?? [])],
     assignments: [...cur.assignments, ...assignments],
     meetings: [...(cur.meetings ?? []), ...seedMeetings(project, pick, now, allDone, seeded.meta.startDate)],
     seeded: { ...cur.seeded, [project.id]: true },

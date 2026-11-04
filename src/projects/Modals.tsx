@@ -7,8 +7,8 @@ import { assignableUsers, defaultMilestone, type Access } from "./logic";
 import { OptDate, UserSelect } from "./parts";
 import { FieldInput } from "./FieldControls";
 import { fieldsForProject } from "./fields";
-import type { Confidence, Deliverable, FieldValue, Milestone, PlanStatus, ProjectMeta, ProjectMode, Task, TaskKind, TaskPriority, TaskStatus } from "./types";
-import { fmtDate, safeHttpUrl, today } from "../utils";
+import type { Confidence, Deliverable, DeliverableReview, FieldValue, Milestone, PlanStatus, ProjectMeta, ProjectMode, Task, TaskKind, TaskPriority, TaskStatus } from "./types";
+import { fmtDate, safeHttpUrl, today, uid } from "../utils";
 import { useWork, workActions } from "./workStore";
 
 /* ================= Tarea ================= */
@@ -420,7 +420,8 @@ export function DeliverableModal({
 
 /* ================= Ficha del proyecto ================= */
 
-export function MetaModal({ projectId, meta, onClose }: { projectId: string; meta: ProjectMeta | undefined; onClose: () => void }) {
+export function MetaModal({ projectId, meta, canChangeMode, onClose }: { projectId: string; meta: ProjectMeta | undefined; canChangeMode: boolean; onClose: () => void }) {
+  const env = useEnv();
   const toast = useToast();
   const [code, setCode] = useState(meta?.code ?? "");
   const [startDate, setStartDate] = useState<string | null>(meta?.startDate ?? null);
@@ -434,11 +435,15 @@ export function MetaModal({ projectId, meta, onClose }: { projectId: string; met
   const [discEnd, setDiscEnd] = useState<string | null>(meta?.discoveryEnd ?? null);
   const [error, setError] = useState("");
 
-  function save() {
+  async function save() {
     if (startDate && endDate && endDate < startDate) return setError("La fecha prevista de fin no puede ser anterior al inicio.");
+    if (canChangeMode && mode !== (meta?.mode ?? "planificado")) {
+      const err = await (env.changeProjectMode ?? workActions.setProjectMode)(projectId, mode);
+      if (err) return setError(err);
+    }
     workActions.setMeta(projectId, {
       code: code.trim(), startDate, endDate, description: description.trim(), notes: notes.trim(),
-      mode, sprintWeeks, contingencyPct: Math.max(0, Number(contingency) || 0),
+      sprintWeeks, contingencyPct: Math.max(0, Number(contingency) || 0),
       discoveryHours: mode === "hibrido" && discHours.trim() !== "" ? Math.max(0, Number(discHours)) : null, discoveryEnd: mode === "hibrido" ? discEnd : null,
     });
     toast("Ficha del proyecto actualizada.");
@@ -457,14 +462,16 @@ export function MetaModal({ projectId, meta, onClose }: { projectId: string; met
       }
     >
       <div className="field">
-        <label>Modo de gestión</label>
+        <label>Metodología del proyecto</label>
+        {!canChangeMode && <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>La cambian el Project Manager, un gerente o un administrador.</span>}
         <div className="pw-modes">
           {([
             ["planificado", "Planificado", "Alcance conocido: cronograma, hitos y entregables."],
+            ["plan_correcciones", "Plan + correcciones", "Plan de hitos y entregables; las correcciones de cada entrega se organizan en backlog y sprints."],
             ["agil", "Ágil", "Alcance que cambia: backlog y sprints de 1–2 semanas."],
             ["hibrido", "Híbrido", "Alcance incierto: descubrimiento acotado, puerta de decisión y después sprints."],
           ] as const).map(([k, l, d]) => (
-            <button key={k} type="button" className={`pw-mode ${mode === k ? "on" : ""}`} onClick={() => setMode(k)}>
+            <button key={k} type="button" disabled={!canChangeMode} className={`pw-mode ${mode === k ? "on" : ""}`} onClick={() => setMode(k)}>
               <b>{l}</b><span>{d}</span>
             </button>
           ))}
@@ -535,6 +542,218 @@ export function DocsModal({ projectId, meta, onClose }: { projectId: string; met
       </div>
       <div style={{ fontSize: 12, color: "var(--text-3)" }}>Pegá el enlace de la carpeta tal como lo da cada plataforma. Es solo un acceso directo: los archivos se quedan donde están.</div>
       {error && <div style={{ color: "var(--danger)", fontSize: 12.5 }}>{error}</div>}
+    </Modal>
+  );
+}
+
+
+/* ================= Registrar revisión de entregable ================= */
+
+export function DeliverableReviewModal({
+  projectId,
+  deliverable,
+  onClose,
+}: {
+  projectId: string;
+  deliverable: Deliverable;
+  onClose: () => void;
+}) {
+  const env = useEnv();
+  const work = useWork();
+  const toast = useToast();
+  const project = env.projects.find((p) => p.id === projectId);
+  const { team, others } = useMemo(
+    () => assignableUsers(env, project, work.assignments),
+    [env, project, work.assignments]
+  );
+
+  const existingReviews = (work.reviews ?? []).filter((r) => r.deliverableId === deliverable.id);
+  const nextRound = existingReviews.length ? Math.max(...existingReviews.map((r) => r.round)) + 1 : 1;
+
+  const [date, setDate] = useState(today());
+  const [source, setSource] = useState<"cliente" | "interna">("cliente");
+  const [note, setNote] = useState("");
+  const [rows, setRows] = useState<
+    { id: string; name: string; estimateHours: string; priority: TaskPriority; assigneeId: string | null }[]
+  >([
+    { id: uid(), name: "", estimateHours: "", priority: "media", assigneeId: null },
+  ]);
+  const [error, setError] = useState("");
+
+  const addRow = () => {
+    setRows((prev) => [
+      ...prev,
+      { id: uid(), name: "", estimateHours: "", priority: "media", assigneeId: null },
+    ]);
+  };
+
+  const removeRow = (id: string) => {
+    setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.id !== id) : prev));
+  };
+
+  const updateRow = (id: string, patch: Partial<(typeof rows)[0]>) => {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
+
+  const hasValidRow = rows.some((r) => r.name.trim().length > 0);
+
+  const save = () => {
+    if (!date) return setError("La fecha de revisión es obligatoria.");
+    const valid = rows
+      .filter((r) => r.name.trim().length > 0)
+      .map((r) => ({
+        name: r.name.trim(),
+        estimateHours: r.estimateHours.trim() === "" ? null : Math.max(0, Number(r.estimateHours)),
+        priority: r.priority,
+        assigneeId: r.assigneeId,
+      }));
+    if (valid.length === 0) {
+      return setError("Cargá al menos una corrección con nombre.");
+    }
+    workActions.addReview({
+      projectId,
+      deliverableId: deliverable.id,
+      date,
+      source,
+      note,
+      createdBy: env.me.id,
+      corrections: valid,
+    });
+    toast(`Revisión registrada (Ronda ${nextRound}).`);
+    onClose();
+  };
+
+  return (
+    <Modal
+      title={`Registrar revisión — ${deliverable.name}`}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose}>
+            Cancelar
+          </button>
+          <button className="btn btn-primary" onClick={save} disabled={!hasValidRow}>
+            Registrar revisión
+          </button>
+        </>
+      }
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <span className="pw-pill" style={{ fontWeight: 650, fontSize: 13 }}>
+          Ronda {nextRound}
+        </span>
+        <span style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+          {existingReviews.length === 0
+            ? "Primera revisión del entregable"
+            : `${existingReviews.length} revisión${existingReviews.length !== 1 ? "es" : ""} anterior${existingReviews.length !== 1 ? "es" : ""}`}
+        </span>
+      </div>
+
+      {deliverable.status === "cumplido" && (
+        <div className="pw-demo-banner" style={{ marginTop: 0, marginBottom: 14 }}>
+          <Icon name="alert" size={13} />
+          <span>
+            El entregable está <b>Cumplido</b>: al registrar esta nueva revisión volverá a estar <b>En curso</b>.
+          </span>
+        </div>
+      )}
+
+      <div className="form-grid">
+        <div className="field">
+          <label>Fecha de la revisión</label>
+          <OptDate value={date} onChange={(v) => setDate(v ?? today())} />
+        </div>
+        <div className="field">
+          <label>Origen</label>
+          <select
+            className="select"
+            value={source}
+            onChange={(e) => setSource(e.target.value as "cliente" | "interna")}
+          >
+            <option value="cliente">Cliente</option>
+            <option value="interna">Interna</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="field">
+        <label>Observaciones de la revisión (opcional)</label>
+        <textarea
+          className="textarea"
+          rows={2}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Notas de la devolución, contexto o referencias de planos..."
+        />
+      </div>
+
+      <div className="pw-group-head" style={{ marginTop: 12, marginBottom: 8 }}>
+        Correcciones requeridas
+        <span className="count">{rows.length}</span>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+        {rows.map((r, i) => (
+          <div
+            key={r.id}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 90px 110px 140px 32px",
+              gap: 8,
+              alignItems: "center",
+            }}
+          >
+            <input
+              className="input"
+              placeholder={`Corrección ${i + 1}…`}
+              value={r.name}
+              onChange={(e) => updateRow(r.id, { name: e.target.value })}
+            />
+            <input
+              className="input pw-hours"
+              type="number"
+              min={0}
+              step={0.5}
+              placeholder="Horas"
+              value={r.estimateHours}
+              onChange={(e) => updateRow(r.id, { estimateHours: e.target.value })}
+              title="Horas estimadas"
+            />
+            <select
+              className="select"
+              value={r.priority}
+              onChange={(e) => updateRow(r.id, { priority: e.target.value as TaskPriority })}
+              title="Prioridad"
+            >
+              {TASK_PRIORITY.map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <UserSelect
+              value={r.assigneeId}
+              onChange={(v) => updateRow(r.id, { assigneeId: v })}
+              team={team}
+              others={others}
+            />
+            <button
+              className="btn btn-ghost btn-sm"
+              title="Quitar fila"
+              disabled={rows.length <= 1}
+              onClick={() => removeRow(r.id)}
+            >
+              <Icon name="trash" size={13} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <button className="btn btn-secondary btn-sm" type="button" onClick={addRow}>
+        <Icon name="plus" size={13} /> Sumar corrección
+      </button>
+
+      {error && <div style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 10 }}>{error}</div>}
     </Modal>
   );
 }

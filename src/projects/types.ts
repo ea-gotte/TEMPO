@@ -7,9 +7,9 @@ import type { Client, ID, Project, User } from "../types";
  */
 
 /** Cómo se gestiona el proyecto: cronograma e hitos, sprints, o descubrimiento y después lo que corresponda. */
-export type ProjectMode = "planificado" | "agil" | "hibrido";
+export type ProjectMode = "planificado" | "agil" | "hibrido" | "plan_correcciones";
 /** Tipo de ítem del trabajo. “spike” = investigación acotada; “cambio” = nace de una solicitud del cliente. */
-export type TaskKind = "tarea" | "historia" | "bug" | "spike" | "cambio";
+export type TaskKind = "tarea" | "historia" | "bug" | "spike" | "cambio" | "correccion";
 /** Qué tan firme es una estimación */
 export type Confidence = "alta" | "media" | "baja";
 
@@ -39,6 +39,7 @@ export interface RoleAssignment {
   projectId: ID;
   userId: ID;
   roleKey: string;
+  roleLabel?: string;
 }
 
 /** Datos de ficha que hoy no existen en `projects` (en producción serían columnas nuevas). */
@@ -104,6 +105,19 @@ export interface Deliverable {
   /** Predecesores (fin → inicio): si uno se atrasa, este se corre */
   dependsOn?: ID[];
   status: PlanStatus;
+  firstDeliveredAt?: string | null;
+}
+
+export interface DeliverableReview {
+  id: ID;
+  projectId: ID;
+  deliverableId: ID;
+  round: number;
+  date: string;
+  source: "cliente" | "interna";
+  note?: string;
+  createdBy: ID;
+  createdAt: string;
 }
 
 /**
@@ -166,6 +180,7 @@ export interface Task {
   rank: number;
   /** Solicitud de cambio del cliente de la que nació */
   changeRequestId: ID | null;
+  reviewId?: ID | null;
   /** Fecha real de cierre (se completa sola al pasar a “Hecha”): permite comparar plan vs real */
   completedAt: string | null;
   /** Archivada: tarea ya finalizada que se oculta del listado (sigue contando en avance e indicadores) */
@@ -203,8 +218,8 @@ export interface Sprint {
 export type ChangeStatus = "pendiente" | "aprobado" | "diferido" | "rechazado";
 
 /**
- * Solicitud de cambio del cliente. Como el proyecto es de precio cerrado, un
- * cambio aprobado NO se factura aparte: sus horas se “absorben” y quedan
+ * Solicitud de cambio del cliente. Las horas de un
+ * cambio aprobado se “absorben” y quedan
  * medidas para ver cuánto creció el alcance.
  */
 export interface ChangeRequest {
@@ -297,6 +312,7 @@ export interface WorkData {
   milestones: Milestone[];
   deliverables: Deliverable[];
   tasks: Task[];
+  reviews: DeliverableReview[];
   /** Proyectos que ya recibieron sus datos de ejemplo */
   seeded: Record<ID, true>;
 }
@@ -309,6 +325,8 @@ export interface WorkEnv {
   me: User;
   /** Minutos ya cargados en el registro de horas, por proyecto */
   minutesByProject: Record<ID, number>;
+  /** Cambia la metodología del proyecto; sin esto (la demo) queda solo en este navegador. Devuelve el error, si hubo. */
+  changeProjectMode?: (projectId: ID, mode: ProjectMode) => Promise<string | null>;
   /** Ausencias aprobadas (descuentan capacidad del sprint) */
   absences?: { userId: ID; dateFrom: string; dateTo: string }[];
 }

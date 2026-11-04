@@ -5,18 +5,21 @@ import { fmtDate, today } from "../utils";
 import { PLAN_STATUS } from "./constants";
 import { useEnv } from "./env";
 import { isPlanOverdue, taskProgress, type Perms } from "./logic";
-import { DeliverableModal, MilestoneModal, TaskModal, type TaskDraft } from "./Modals";
+import { DeliverableModal, DeliverableReviewModal, MilestoneModal, TaskModal, type TaskDraft } from "./Modals";
+import { deliverableCorrections, correctionState } from "./corrections";
 import { Bar, DuePill, Person, StatusPill } from "./parts";
 import { PlanGantt } from "./PlanViews";
+import { PlanVsReal } from "./PlanVsReal";
 import { useTaskMenu } from "./TaskMenu";
 import { diffDays, forecastSchedule, planItems } from "./schedule";
 import type { Deliverable, Milestone, PlanStatus, Task } from "./types";
 import { useWork, workActions } from "./workStore";
 
-type PlanView = "tabla" | "gantt";
+type PlanView = "tabla" | "gantt" | "planreal";
 const PLAN_VIEWS: { key: PlanView; label: string }[] = [
   { key: "tabla", label: "Tabla" },
   { key: "gantt", label: "Gantt" },
+  { key: "planreal", label: "Plan vs real" },
 ];
 const PLAN_VIEW_KEY = "tempo-proyectos-vista-plan-v2";
 
@@ -34,13 +37,14 @@ function loadPlanView(): PlanView {
  * sus tareas, contraídos por defecto) y un Gantt con sus plazos. El avance sale de
  * las tareas; nadie lo carga a mano.
  */
-export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms }) {
+export function PlanTab({ projectId, perms, onNavigateTab }: { projectId: string; perms: Perms; onNavigateTab?: (tab: any) => void }) {
   const env = useEnv();
   const work = useWork();
   const [view, setViewState] = useState<PlanView>(loadPlanView);
   const [open, setOpen] = useState<Set<string>>(() => new Set()); // todo contraído por defecto
   const [msModal, setMsModal] = useState<Milestone | "new" | null>(null);
   const [delModal, setDelModal] = useState<{ d: Deliverable | null; milestoneId?: string | null } | null>(null);
+  const [reviewModal, setReviewModal] = useState<Deliverable | null>(null);
   const [taskModal, setTaskModal] = useState<TaskDraft | null>(null);
   const taskMenu = useTaskMenu({ perms, onEdit: (t) => setTaskModal(t) });
 
@@ -146,16 +150,44 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
       </tr>
     ));
 
+  const meta = work.meta[projectId];
+  const mode = meta?.mode ?? "planificado";
+  const isNotPlanned = mode !== "planificado";
+
   const deliverableRows = (d: Deliverable, indent: number) => {
     const ts = tasks.filter((t) => t.deliverableId === d.id);
     const k = "d:" + d.id;
+    const stats = deliverableCorrections(d.id, tasks, work.reviews ?? []);
+    const cState = correctionState(d, stats);
+    const dReviews = (work.reviews ?? []).filter((r) => r.deliverableId === d.id).sort((a, b) => a.round - b.round);
+
     return (
       <React.Fragment key={d.id}>
         <tr className="pw-tr-del" style={{ cursor: "pointer" }} onClick={() => setDelModal({ d })}>
           <td style={{ paddingLeft: 12 + indent * 24 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-              {chev(k, ts.length > 0)}
-              <span style={{ color: "var(--text-3)" }}>▣</span><span style={{ fontWeight: 600 }}>{d.name}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {chev(k, ts.length > 0 || dReviews.length > 0)}
+              <span style={{ color: "var(--text-3)" }}>▣</span>
+              <span style={{ fontWeight: 600 }}>{d.name}</span>
+              {isNotPlanned && stats.rounds > 0 && (
+                <>
+                  {cState === "en_correcciones" && (
+                    <span className="pw-pill soon" title="Correcciones en curso">
+                      Ronda {stats.rounds} · {stats.open} abierta{stats.open !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {cState === "listo_para_entregar" && (
+                    <span className="pw-pill ok" title="Correcciones cerradas: listo para entregar">
+                      Listo para entregar
+                    </span>
+                  )}
+                  {cState === "aprobado" && (
+                    <span className="pw-pill ok" title="Entregable cumplido y correcciones cerradas">
+                      Aprobado
+                    </span>
+                  )}
+                </>
+              )}
             </span>
           </td>
           <td><Person user={userOf(d.ownerId)} size={18} /></td>
@@ -165,10 +197,79 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
           <td>{planSelect(d.status, (s) => workActions.updateDeliverable(d.id, { status: s }))}</td>
           {progressCell(taskProgress(ts), false)}
           <td style={{ whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
-            {perms.canManage && <button className="btn btn-ghost btn-sm" title="Nueva tarea en este entregable" onClick={() => setTaskModal({ projectId, deliverableId: d.id, milestoneId: d.milestoneId })}><Icon name="plus" size={13} /> Tarea</button>}
+            {isNotPlanned && stats.open > 0 && (
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ color: "var(--accent)", fontWeight: 550 }}
+                onClick={() => onNavigateTab?.("backlog")}
+                title="Llevar correcciones a un sprint"
+              >
+                Planificar en sprints →
+              </button>
+            )}
+            {isNotPlanned && perms.canManage && (
+              <button
+                className="btn btn-ghost btn-sm"
+                title="Registrar devolución o revisión"
+                onClick={() => setReviewModal(d)}
+              >
+                <Icon name="clipboard" size={13} /> Registrar revisión
+              </button>
+            )}
+            {perms.canManage && (
+              <button
+                className="btn btn-ghost btn-sm"
+                title="Nueva tarea en este entregable"
+                onClick={() => setTaskModal({ projectId, deliverableId: d.id, milestoneId: d.milestoneId })}
+              >
+                <Icon name="plus" size={13} /> Tarea
+              </button>
+            )}
           </td>
         </tr>
-        {open.has(k) && taskRows(ts, indent + 1)}
+        {open.has(k) && (
+          <>
+            {dReviews.map((rev) => {
+              const revTasks = ts.filter((t) => t.reviewId === rev.id && t.kind === "correccion");
+              const revOpen = revTasks.filter((t) => t.status !== "hecha").length;
+              return (
+                <tr key={rev.id} className="pw-tr-review" style={{ background: "rgba(0,0,0,0.02)", fontSize: 12 }}>
+                  <td style={{ paddingLeft: 12 + (indent + 1) * 24 }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <span className="pw-pill" style={{ fontWeight: 650 }}>Ronda {rev.round}</span>
+                      <span className="pw-pill" style={{ fontSize: 11 }}>{rev.source === "cliente" ? "Cliente" : "Interna"}</span>
+                      {rev.note && <span style={{ color: "var(--text-2)" }}>{rev.note}</span>}
+                    </span>
+                  </td>
+                  <td />
+                  <td style={{ whiteSpace: "nowrap" }}>{fmtDate(rev.date)}</td>
+                  <td /><td /><td />
+                  <td>
+                    <span style={{ color: revOpen > 0 ? "var(--warning)" : "var(--success)", fontWeight: 500, fontSize: 11.5 }}>
+                      {revOpen} abierta{revOpen !== 1 ? "s" : ""} / {revTasks.length} total
+                    </span>
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
+                    {perms.canManage && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        title="Eliminar revisión"
+                        onClick={() => {
+                          if (confirm(`¿Eliminar la Ronda ${rev.round}? Se borrarán las correcciones pendientes que no estén en un sprint.`)) {
+                            workActions.deleteReview(rev.id);
+                          }
+                        }}
+                      >
+                        <Icon name="trash" size={12} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {taskRows(ts, indent + 1)}
+          </>
+        )}
       </React.Fragment>
     );
   };
@@ -190,7 +291,7 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
             <Icon name="chevron-right" size={13} style={{ transform: allOpen ? "rotate(90deg)" : undefined }} /> {allOpen ? "Contraer todo" : "Expandir todo"}
           </button>
         )}
-        {perms.canManage && (
+        {view !== "planreal" && perms.canManage && (
           <>
             <button className="btn btn-secondary" onClick={() => setDelModal({ d: null })}><Icon name="plus" size={15} /> Entregable</button>
             <button className="btn btn-primary" onClick={() => setMsModal("new")}><Icon name="plus" size={15} /> Hito</button>
@@ -198,7 +299,7 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
         )}
       </div>
 
-      {nothing && <div className="card card-pad"><Empty icon="calendar-days" text="Todavía no hay hitos ni entregables" sub="Empezá por el primer hito del proyecto." /></div>}
+      {nothing && view !== "planreal" && <div className="card card-pad"><Empty icon="calendar-days" text="Todavía no hay hitos ni entregables" sub="Empezá por el primer hito del proyecto." /></div>}
 
       {view === "gantt" && !nothing && (
         <PlanGantt milestones={milestones} deliverables={deliverables} tasks={tasks} onOpenMs={(m) => setMsModal(m)} onOpenDel={(d) => setDelModal({ d })} canEdit={perms.canManage} />
@@ -278,9 +379,12 @@ export function PlanTab({ projectId, perms }: { projectId: string; perms: Perms 
         </div>
       )}
 
+      {view === "planreal" && <PlanVsReal projectId={projectId} />}
+
       {taskMenu.element}
       {msModal && <MilestoneModal projectId={projectId} milestone={msModal === "new" ? null : msModal} onClose={() => setMsModal(null)} />}
       {delModal && <DeliverableModal projectId={projectId} deliverable={delModal.d} defaultMilestoneId={delModal.milestoneId} onClose={() => setDelModal(null)} />}
+      {reviewModal && <DeliverableReviewModal projectId={projectId} deliverable={reviewModal} onClose={() => setReviewModal(null)} />}
       {taskModal && (
         <TaskModal
           key={taskModal.id ?? "new"}

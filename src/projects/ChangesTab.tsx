@@ -8,6 +8,7 @@ import type { Perms } from "./logic";
 import { KpiCard, Person } from "./parts";
 import type { ChangeRequest, ChangeStatus } from "./types";
 import { useWork, workActions } from "./workStore";
+import { downloadChangeReport } from "./changeReport";
 
 const STATUS: Record<ChangeStatus, { label: string; cls: string }> = {
   pendiente: { label: "Pendiente", cls: "soon" },
@@ -17,10 +18,9 @@ const STATUS: Record<ChangeStatus, { label: string; cls: string }> = {
 };
 
 /**
- * Solicitudes de cambio del cliente. El proyecto es de precio cerrado: un
- * cambio aprobado NO se factura aparte, así que sus horas se “absorben” y
- * quedan medidas (crecimiento del alcance). Cada aprobación crea una nueva
- * línea base. Decide el Project Manager.
+ * Solicitudes de cambio del cliente. Las horas de los cambios aprobados se
+ * absorben y quedan medidas (crecimiento del alcance). Cada aprobación crea
+ * una nueva línea base. Decide el Project Manager.
  */
 export function ChangesTab({ projectId, perms }: { projectId: string; perms: Perms }) {
   const env = useEnv();
@@ -35,19 +35,29 @@ export function ChangesTab({ projectId, perms }: { projectId: string; perms: Per
   const shown = changes.filter((c) => !filter || c.status === filter);
   const userOf = (id: string | null) => env.users.find((u) => u.id === id);
 
+  const handleExport = () => {
+    const project = env.projects.find((p) => p.id === projectId);
+    const meta = work.meta[projectId];
+    const client = env.clients.find((c) => c.id === project?.clientId);
+    downloadChangeReport({
+      project: project ?? { name: "Proyecto" },
+      code: meta?.code ?? null,
+      clientName: client?.name ?? null,
+      changes,
+      baselines,
+      users: env.users,
+      tasks: work.tasks,
+    });
+  };
+
   return (
     <>
       <div className="kpi-grid">
         <KpiCard icon="clipboard" label="Solicitudes" value={st.total} hint={`${st.approved} aprobadas · ${st.rejected} rechazadas · ${st.deferred} diferidas`} />
         <KpiCard icon="hourglass" label="Pendientes de decidir" value={st.pending} tone={st.pending ? "bad" : "ok"} hint={st.oldestPendingDays ? `la más antigua, hace ${st.oldestPendingDays} d` : undefined} />
-        <KpiCard icon="flame" label="Horas absorbidas" value={`${st.absorbedHours} h`} hint="cambios aprobados sin facturar aparte" tone={st.absorbedHours ? "bad" : undefined} />
+        <KpiCard icon="flame" label="Horas absorbidas" value={`${st.absorbedHours} h`} hint="horas de cambios aprobados" tone={st.absorbedHours ? "bad" : undefined} />
         <KpiCard icon="trending-up" label="Crecimiento del alcance" value={st.growthPct === null ? "—" : `${st.growthPct > 0 ? "+" : ""}${st.growthPct}%`} hint={st.baselineHours !== null ? `${st.baselineHours} h → ${st.currentHours} h` : undefined} tone={st.growthPct !== null && st.growthPct >= 20 ? "bad" : undefined} />
         <KpiCard icon="calendar-days" label="Fin del proyecto" value={st.currentEnd ? fmtDate(st.currentEnd).slice(0, 5) : "—"} hint={st.endShiftDays ? `${st.endShiftDays > 0 ? "+" : ""}${st.endShiftDays} d contra el plan original` : "sin corrimiento"} />
-      </div>
-
-      <div className="pw-demo-banner" style={{ background: "var(--accent-soft)" }}>
-        <b style={{ color: "var(--accent)" }}>Precio cerrado</b>
-        <span>Los cambios aprobados no se cobran aparte: su esfuerzo reduce el margen. Por eso cada decisión queda registrada y mide cuánto creció el alcance. Decide el Project Manager.</span>
       </div>
 
       <div className="pw-toolbar">
@@ -57,6 +67,7 @@ export function ChangesTab({ projectId, perms }: { projectId: string; perms: Per
           ))}
         </div>
         <span className="grow" />
+        <button className="btn btn-secondary" disabled={changes.length === 0} onClick={handleExport}><Icon name="download" size={15} /> Exportar historial</button>
         <button className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" size={15} /> Nueva solicitud</button>
       </div>
 

@@ -8,12 +8,10 @@ import { Icon, type IconName } from "./Icon";
 import { supabase } from "../supabase";
 
 /** Páginas visibles para cualquier rol, incluido "usuario" (vista básica) */
-export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "profile", "absences", "corp", "feedback"];
+export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "profile", "absences", "corp", "feedback", "projects"];
 
-/** Además de las básicas, el supervisor ve Control de horas (acotado a su
- * equipo) y Proyectos — ahí solo administra la membresía de los proyectos
- * donde él mismo participa (ver Projects.tsx), nada más. */
-const SUPERVISOR_EXTRA_PAGES: PageKey[] = ["control", "projects"];
+/** Además de las básicas, el supervisor ve Control de horas (acotado a su equipo). */
+const SUPERVISOR_EXTRA_PAGES: PageKey[] = ["control"];
 
 /**
  * Admin: todo. Gerente: todo menos Administración. Supervisor: las básicas más

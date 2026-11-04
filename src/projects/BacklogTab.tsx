@@ -10,11 +10,28 @@ import { Bar, DuePill, OptDate, Person } from "./parts";
 import type { Sprint, Task } from "./types";
 import { useWork, workActions } from "./workStore";
 
-const KIND_LABEL: Record<Task["kind"], string> = { tarea: "Tarea", historia: "Historia", bug: "Bug", spike: "Spike", cambio: "Cambio" };
+const KIND_LABEL: Record<Task["kind"], string> = { tarea: "Tarea", historia: "Historia", bug: "Bug", spike: "Spike", cambio: "Cambio", correccion: "Corrección" };
 const SUMMARY: React.CSSProperties = { cursor: "pointer", fontSize: 12.5, color: "var(--text-2)", fontWeight: 600, marginTop: 10 };
 
 export function KindTag({ kind }: { kind: Task["kind"] }) {
-  return <span className="pw-tag ghost" style={kind === "cambio" ? { background: "var(--warning-soft)", color: "var(--warning)" } : kind === "bug" ? { background: "var(--danger-soft)", color: "var(--danger)" } : kind === "spike" ? { background: "var(--success-soft)", color: "var(--success)" } : undefined}>{KIND_LABEL[kind]}</span>;
+  return (
+    <span
+      className="pw-tag ghost"
+      style={
+        kind === "correccion"
+          ? { background: "var(--accent-soft)", color: "var(--accent)" }
+          : kind === "cambio"
+          ? { background: "var(--warning-soft)", color: "var(--warning)" }
+          : kind === "bug"
+          ? { background: "var(--danger-soft)", color: "var(--danger)" }
+          : kind === "spike"
+          ? { background: "var(--success-soft)", color: "var(--success)" }
+          : undefined
+      }
+    >
+      {KIND_LABEL[kind]}
+    </span>
+  );
 }
 
 /**
@@ -34,6 +51,12 @@ export function BacklogTab({ projectId, perms }: { projectId: string; perms: Per
   const [modal, setModal] = useState<TaskDraft | null>(null);
   const [closing, setClosing] = useState<Sprint | null>(null);
   const [quick, setQuick] = useState("");
+  const isCorrectionsMode = meta?.mode === "plan_correcciones";
+  const [kindFilter, setKindFilter] = useState<"todas" | "correcciones">(
+    isCorrectionsMode ? "correcciones" : "todas"
+  );
+  const projectDeliverables = work.deliverables.filter((d) => d.projectId === projectId);
+  const [quickDelId, setQuickDelId] = useState<string>("");
 
   const tasks = work.tasks.filter((t) => t.projectId === projectId);
   const sprints = work.sprints.filter((s) => s.projectId === projectId).sort((a, b) => a.number - b.number);
@@ -46,9 +69,42 @@ export function BacklogTab({ projectId, perms }: { projectId: string; perms: Per
   function addQuick() {
     const name = quick.trim();
     if (!name) return;
-    workActions.addTask({ projectId, name, description: "", assigneeId: null, status: "pendiente", priority: "media", startDate: null, dueDate: null, milestoneId: null, deliverableId: null, createdBy: env.me.id, kind: "historia" });
+    const kind = isCorrectionsMode ? "correccion" : "historia";
+    const delId = isCorrectionsMode ? (quickDelId || projectDeliverables[0]?.id || null) : null;
+    workActions.addTask({
+      projectId,
+      name,
+      description: "",
+      assigneeId: null,
+      status: "pendiente",
+      priority: "media",
+      startDate: null,
+      dueDate: null,
+      milestoneId: null,
+      deliverableId: delId,
+      createdBy: env.me.id,
+      kind,
+    });
     setQuick("");
   }
+
+  const filteredBacklog = kindFilter === "correcciones" ? backlog.filter((t) => t.kind === "correccion") : backlog;
+
+  const renderDeliverablePill = (t: Task) => {
+    if (t.kind !== "correccion" || !t.deliverableId) return null;
+    const del = projectDeliverables.find((d) => d.id === t.deliverableId);
+    const rev = t.reviewId ? (work.reviews ?? []).find((r) => r.id === t.reviewId) : null;
+    if (!del) return null;
+    return (
+      <span
+        className="pw-pill"
+        style={{ fontSize: 11, background: "var(--accent-soft)", color: "var(--accent)", whiteSpace: "nowrap" }}
+        title={rev?.note || undefined}
+      >
+        {del.name}{rev ? ` · Ronda ${rev.round}` : ""}
+      </span>
+    );
+  };
 
   return (
     <>
@@ -73,18 +129,52 @@ export function BacklogTab({ projectId, perms }: { projectId: string; perms: Per
       <div className="pw-plan-grid">
           {/* ---------------- Backlog ---------------- */}
           <div className="card">
-            <div className="pw-group-head">
-              Backlog <span className="count">{backlog.length} ítems · {sumHours(backlog)} h</span>
+            <div className="pw-group-head" style={{ gap: 10, flexWrap: "wrap" }}>
+              <span>{isCorrectionsMode ? "Correcciones y sprints" : "Backlog"}</span>
+              <span className="count">{filteredBacklog.length} ítems · {sumHours(filteredBacklog)} h</span>
+              <div className="tabs" style={{ fontSize: 11.5, margin: 0, padding: 0 }}>
+                <button className={kindFilter === "todas" ? "active" : ""} onClick={() => setKindFilter("todas")}>Todas</button>
+                <button className={kindFilter === "correcciones" ? "active" : ""} onClick={() => setKindFilter("correcciones")}>Correcciones</button>
+              </div>
               <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 500, color: "var(--text-3)" }}>Arrastrá para priorizar o para llevarlo a un sprint</span>
             </div>
             {perms.canManage && (
-              <div style={{ display: "flex", gap: 6, padding: "8px 14px", borderTop: "1px solid var(--border)" }}>
-                <input className="input" placeholder="Agregar al backlog… (Enter)" value={quick} onChange={(e) => setQuick(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addQuick()} />
+              <div style={{ display: "flex", gap: 6, padding: "8px 14px", borderTop: "1px solid var(--border)", alignItems: "center" }}>
+                {isCorrectionsMode && projectDeliverables.length > 0 && (
+                  <select
+                    className="select"
+                    style={{ width: "auto", maxWidth: 170, fontSize: 12.5 }}
+                    value={quickDelId || projectDeliverables[0]?.id || ""}
+                    onChange={(e) => setQuickDelId(e.target.value)}
+                    title="Entregable de la corrección"
+                  >
+                    {projectDeliverables.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <input
+                  className="input"
+                  placeholder={isCorrectionsMode ? "Agregar corrección… (Enter)" : "Agregar al backlog… (Enter)"}
+                  value={quick}
+                  onChange={(e) => setQuick(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addQuick()}
+                />
                 <button className="btn btn-secondary" disabled={!quick.trim()} onClick={addQuick}><Icon name="plus" size={14} /></button>
               </div>
             )}
-            {backlog.length === 0 && <div className="card-pad"><Empty icon="clipboard" text="Backlog vacío" sub="Todo está en algún sprint o terminado." /></div>}
-            {backlog.map((t) => (
+            {filteredBacklog.length === 0 && (
+              <div className="card-pad">
+                <Empty
+                  icon="clipboard"
+                  text={kindFilter === "correcciones" ? "Sin correcciones en el backlog" : "Backlog vacío"}
+                  sub={kindFilter === "correcciones" ? "No hay correcciones pendientes fuera de los sprints." : "Todo está en algún sprint o terminado."}
+                />
+              </div>
+            )}
+            {filteredBacklog.map((t) => (
               <div
                 key={t.id}
                 className={`pw-bl-row ${dragId === t.id ? "dragging" : ""}`}
@@ -97,6 +187,7 @@ export function BacklogTab({ projectId, perms }: { projectId: string; perms: Per
               >
                 {perms.canManage && <span className="pw-grip" title="Arrastrar"><Icon name="menu" size={13} /></span>}
                 <KindTag kind={t.kind} />
+                {renderDeliverablePill(t)}
                 <span className="name">{t.name}</span>
                 {perms.canManage ? (
                   <input
@@ -253,6 +344,21 @@ function SprintPanel({
       {tasks.map((t) => (
         <div key={t.id} className={`pw-task-row ${isDone(t) ? "done" : ""}`} onClick={() => onOpenTask(t)}>
           <KindTag kind={t.kind} />
+          {(() => {
+            if (t.kind !== "correccion" || !t.deliverableId) return null;
+            const del = work.deliverables.find((d) => d.id === t.deliverableId);
+            const rev = t.reviewId ? (work.reviews ?? []).find((r) => r.id === t.reviewId) : null;
+            if (!del) return null;
+            return (
+              <span
+                className="pw-pill"
+                style={{ fontSize: 11, background: "var(--accent-soft)", color: "var(--accent)", whiteSpace: "nowrap" }}
+                title={rev?.note || undefined}
+              >
+                {del.name}{rev ? ` · Ronda ${rev.round}` : ""}
+              </span>
+            );
+          })()}
           <span className="name">{t.name}</span>
           {t.sprintAddedAt && t.sprintAddedAt > sprint.startDate && <span className="pw-pill soon" title={`Entró al sprint el ${fmtDate(t.sprintAddedAt)}`}>+ agregado</span>}
           <span className="pw-pill">{t.estimateHours != null ? `${t.estimateHours} h` : "sin estimar"}</span>

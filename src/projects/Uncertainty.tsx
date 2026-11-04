@@ -71,7 +71,7 @@ export function DiscoveryTab({ projectId, perms }: { projectId: string; perms: P
                 <span>Mínimo <b>{range.min} h</b></span><span>Probable <b>{range.prob} h</b></span>
                 <span style={{ color: range.max > budget * (1 + (meta?.contingencyPct ?? 0) / 100) ? "var(--danger)" : undefined }}>Máximo <b>{range.max} h</b></span>
               </div>
-              <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>Lo cargado ({Math.round(logged * 10) / 10} h) más lo que falta, con mínimo y máximo según la confianza de cada estimación. Si el máximo pasa la reserva, el precio cerrado está en riesgo.</div>
+              <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>Lo cargado ({Math.round(logged * 10) / 10} h) más lo que falta, con mínimo y máximo según la confianza de cada estimación. Si el máximo pasa la reserva, el proyecto está en riesgo.</div>
             </>
           ) : <div style={{ color: "var(--text-3)", fontSize: 13 }}>Sin horas proyectadas o sin tareas abiertas para calcular el rango.</div>}
         </div>
