@@ -231,12 +231,20 @@ export type AbsenceType =
   | "Compensación de horas"
   | "Horas extra";
 
-export type AbsenceStatus = "Pendiente" | "Aprobado" | "Rechazado";
+export type AbsenceStatus = "Pendiente" | "Aprobado" | "Rechazado" | "Devuelto";
 
 export interface Attachment {
   name: string;
   url?: string; // data URL del archivo cargado (para previsualizar/descargar)
   size?: number;
+}
+
+/** Paso del ida y vuelta de una solicitud: devoluciones con observaciones, respuestas y decisiones */
+export interface RequestEvent {
+  at: string; // ISO con hora
+  by: ID;
+  action: "Devuelta" | "Reenviada" | "Aprobada" | "Rechazada";
+  comment?: string;
 }
 
 export interface AbsenceRequest {
@@ -251,6 +259,8 @@ export interface AbsenceRequest {
   attachments: Attachment[];
   status: AbsenceStatus;
   supervisorComment?: string;
+  /** Historial de devoluciones, respuestas y decisiones (el último estado sigue en status/supervisorComment) */
+  history?: RequestEvent[];
   createdAt: string;
   resolvedBy?: ID;
   resolvedAt?: string;
@@ -312,7 +322,7 @@ export interface Notification {
   read: boolean;
 }
 
-export type OvertimeStatus = "Pendiente" | "Aprobado" | "Rechazado";
+export type OvertimeStatus = "Pendiente" | "Aprobado" | "Rechazado" | "Devuelto";
 
 /** Horas extra de una semana, informadas y enviadas a supervisión */
 export interface OvertimeRequest {
@@ -325,6 +335,9 @@ export interface OvertimeRequest {
   resolvedBy?: ID;
   resolvedAt?: string;
   supervisorComment?: string;
+  history?: RequestEvent[];
+  /** "saldo": cargado a mano por Recursos Humanos (festivo/FDS), no es una solicitud del mes */
+  kind?: "saldo";
 }
 
 /** Copia por correo de una notificación (bandeja de salida) */

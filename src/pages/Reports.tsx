@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from "react";
-import { useStore, visibleProjects, expectedMinutesInRange } from "../store";
+import React, { useEffect, useMemo, useState } from "react";
+import { useStore, visibleProjects, expectedMinutesInRange, overtimeBreakdown, computableMinutes } from "../store";
 import { addDays, addMonths, fmtDate, downloadFile, fmtDur, toCSV, today, weekStart } from "../utils";
-import { HBarChart, useToast } from "../components/ui";
+import { HBarChart, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
+import { downloadProjectHoursXlsx } from "../projectHoursReport";
 
 type Period = "semana" | "mes" | "personalizado";
 
@@ -26,6 +27,7 @@ export function Reports() {
   const [projectFilter, setProjectFilter] = useState("");
   const [subProjectFilter, setSubProjectFilter] = useState("");
   const [clientFilter, setClientFilter] = useState("");
+  const [projectXlsx, setProjectXlsx] = useState(false);
 
   const [rFrom, rTo] = useMemo((): [string, string] => {
     if (period === "semana") return [weekStart(anchor), addDays(weekStart(anchor), 6)];
@@ -86,8 +88,12 @@ export function Reports() {
       // Si el período no tiene ningún día laboral (p. ej. se filtró solo un fin
       // de semana), no hay nada "esperado": lo cargado ahí es todo extra, no
       // un faltante — nunca debe leerse como "debajo".
-      const overtime = expected > 0 ? Math.max(0, mins - expected) : mins;
-      const util = expected > 0 ? Math.min(150, Math.round((mins / expected) * 100)) : mins > 0 ? 150 : 0;
+      // Extra: se cuenta cada día hasta completar la jornada y No laborable / Vacaciones
+      // no computan (ver overtimeBreakdown); con filtros, solo lo que cae en los registros filtrados.
+      const bd = overtimeBreakdown(state, u, rFrom, rTo);
+      const overtime = userEntries.reduce((a, e) => a + (bd.perEntry.get(e.id) ?? 0), 0);
+      const computable = userEntries.reduce((a, e) => a + computableMinutes(state, e), 0);
+      const util = expected > 0 ? Math.min(150, Math.round((computable / expected) * 100)) : computable > 0 ? 150 : 0;
       return { u, mins, days, overtime, util };
     })
     .filter((x) => x.mins > 0)
@@ -126,6 +132,7 @@ export function Reports() {
         <h1>Reportes</h1>
         <span className="spacer" />
         <button className="btn btn-secondary" onClick={exportCSV}><Icon name="download" size={14} /> CSV / Excel</button>
+        {!isEmployee && <button className="btn btn-secondary" onClick={() => setProjectXlsx(true)}><Icon name="download" size={14} /> Excel por proyecto</button>}
         <button className="btn btn-secondary" onClick={() => { window.print(); }}><Icon name="printer" size={14} /> PDF</button>
       </div>
 
@@ -167,7 +174,7 @@ export function Reports() {
               <select className="select" value={userFilterRaw} onChange={(e) => setUserFilter(e.target.value)}>
                 <option value="">Todas</option>
                 {[...state.users].sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
+                  <option key={u.id} value={u.id}>{u.name}{u.active ? "" : " (baja)"}</option>
                 ))}
               </select>
             </div>
@@ -283,6 +290,119 @@ export function Reports() {
           </tbody>
         </table>
       </div>
+      {projectXlsx && (
+        <ProjectXlsxModal
+          initialProject={projectFilter} initialFrom={rFrom} initialTo={rTo}
+          onClose={() => setProjectXlsx(false)}
+        />
+      )}
     </>
+  );
+}
+
+/** Excel de un proyecto: una hoja por mes con las horas de cada persona. */
+function ProjectXlsxModal({ initialProject, initialFrom, initialTo, onClose }: { initialProject: string; initialFrom: string; initialTo: string; onClose: () => void }) {
+  const { state } = useStore();
+  const toast = useToast();
+  const [projectId, setProjectId] = useState(initialProject);
+  const [from, setFrom] = useState(initialFrom.slice(0, 8) + "01");
+  const [to, setTo] = useState(initialTo);
+  const [busy, setBusy] = useState(false);
+  const project = state.projects.find((p) => p.id === projectId);
+  const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "es");
+  const members = useMemo(() => state.users.filter((u) => project?.memberIds.includes(u.id)).sort(byName), [state.users, project]);
+  // Quienes cargaron horas al proyecto en el plazo sin ser integrantes
+  const others = useMemo(() => {
+    const ids = new Set(state.entries.filter((e) => e.projectId === projectId && e.date >= from && e.date <= to).map((e) => e.userId));
+    return state.users.filter((u) => ids.has(u.id) && !project?.memberIds.includes(u.id)).sort(byName);
+  }, [state.entries, state.users, project, projectId, from, to]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const memberKey = members.map((u) => u.id).join(",");
+  useEffect(() => { setSelected(new Set(memberKey ? memberKey.split(",") : [])); }, [memberKey]);
+  const candidates = [...members, ...others];
+  const toggle = (id: string) => setSelected((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const chosen = candidates.filter((u) => selected.has(u.id)).map((u) => u.id);
+  const months = from && to && from <= to ? (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(to.slice(5, 7)) - Number(from.slice(5, 7)) + 1 : 0;
+  const error = !projectId ? "Elegí un proyecto." : !from || !to ? "Completá las fechas." : from > to ? "La fecha de inicio es posterior a la de fin." : months > 24 ? "El plazo puede abarcar hasta 24 meses." : chosen.length === 0 ? "Elegí al menos una persona." : "";
+
+  async function generate() {
+    if (error) return;
+    setBusy(true);
+    try {
+      const file = await downloadProjectHoursXlsx(state, projectId, from, to, chosen);
+      toast(`Excel generado: ${file}`);
+      onClose();
+    } catch {
+      toast("No se pudo generar el Excel.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      title="Excel de horas por proyecto"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" disabled={!!error || busy} onClick={generate}><Icon name="download" size={14} /> {busy ? "Generando…" : "Descargar Excel"}</button>
+        </>
+      }
+    >
+      <div className="field">
+        <label>Proyecto</label>
+        <select className="select" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+          <option value="">Elegir proyecto…</option>
+          {[...state.projects].sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
+            <option key={p.id} value={p.id}>{p.name}{p.status !== "activo" ? ` (${p.status})` : ""}</option>
+          ))}
+        </select>
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Desde</label>
+          <input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>Hasta</label>
+          <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
+        </div>
+      </div>
+      {projectId && (
+        <div className="field">
+          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            Personas ({chosen.length} de {candidates.length})
+            <span style={{ flex: 1 }} />
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set(candidates.map((u) => u.id)))}>Todas</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set())}>Ninguna</button>
+          </label>
+          <div style={{ maxHeight: 220, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px" }}>
+            {candidates.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>El proyecto no tiene integrantes ni horas cargadas en el plazo.</div>}
+            {members.length > 0 && <div style={{ fontSize: 11, fontWeight: 650, color: "var(--text-3)", textTransform: "uppercase", margin: "2px 0 4px" }}>Integrantes del proyecto</div>}
+            {members.map((u) => (
+              <label key={u.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "3px 0", cursor: "pointer" }}>
+                <input type="checkbox" checked={selected.has(u.id)} onChange={() => toggle(u.id)} /> {u.name}{!u.active ? " (inactivo)" : ""}
+              </label>
+            ))}
+            {others.length > 0 && <div style={{ fontSize: 11, fontWeight: 650, color: "var(--text-3)", textTransform: "uppercase", margin: "8px 0 4px" }}>Cargaron horas sin ser integrantes</div>}
+            {others.map((u) => (
+              <label key={u.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "3px 0", cursor: "pointer" }}>
+                <input type="checkbox" checked={selected.has(u.id)} onChange={() => toggle(u.id)} /> {u.name}{!u.active ? " (inactivo)" : ""}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+      <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+        Una hoja Resumen y una por mes{months > 0 ? ` (${months} hoja${months > 1 ? "s" : ""} de mes)` : ""}, con una fila por cada persona elegida: horas cargadas al proyecto, extra, recuperadas y netas.
+      </div>
+      <ul style={{ fontSize: 12, color: "var(--text-3)", margin: "8px 0 0", paddingLeft: 18 }}>
+        <li><b>Extra</b>: total de la persona (todos sus proyectos), cada día se cuentan las horas hasta completar la jornada y el resto es extra; No laborable y Vacaciones no computan.</li>
+        <li><b>Recuperadas</b>: total de la persona, compensaciones de horas aprobadas que empiezan en el mes.</li>
+        <li><b>Netas</b>: extra − recuperadas.</li>
+      </ul>
+      {error && <div style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 6 }}>{error}</div>}
+    </Modal>
   );
 }

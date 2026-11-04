@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { Fragment, useState } from "react";
 import { useStore, vacationInfo } from "../store";
 import type { Jornada, Role, Team as TeamType, User } from "../types";
 import { uid, fmtDate, today, hashPassword, validatePassword } from "../utils";
@@ -11,7 +11,8 @@ const DAY_NAMES = ["L", "M", "X", "J", "V", "S", "D"];
 type SortKey = "name" | "role" | "team" | "supervisor" | "jornada" | "hire";
 
 export function Team() {
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
+  const toast = useToast();
   const [edit, setEdit] = useState<User | "new" | null>(null);
   const me = state.users.find((u) => u.id === state.currentUserId)!;
   const canManage = me.role === "admin" || me.role === "gerente";
@@ -21,7 +22,10 @@ export function Team() {
   const [fTeam, setFTeam] = useState<TeamType | "">("");
   const [fSupervisor, setFSupervisor] = useState("");
   const [fJornada, setFJornada] = useState<Jornada | "">("");
-  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
+  const [deactivate, setDeactivate] = useState<User | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey | null>("name");
+  const [open, setOpen] = useState<Set<string>>(new Set());
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   function toggleSort(key: SortKey) {
@@ -38,7 +42,9 @@ export function Team() {
   }
 
   const filtersActive = Boolean(fName || fRole || fTeam || fSupervisor || fJornada);
+  const inactiveCount = state.users.filter((u) => !u.active).length;
   const filteredUsers = state.users.filter((u) => {
+    if (!u.active && !showInactive) return false;
     if (fName && !u.name.toLowerCase().includes(fName.trim().toLowerCase()) && !u.email.toLowerCase().includes(fName.trim().toLowerCase())) return false;
     if (fRole && u.role !== fRole) return false;
     if (fTeam && u.team !== fTeam) return false;
@@ -65,6 +71,18 @@ export function Team() {
         }
       })
     : filteredUsers;
+
+  /** Baja o reactivación: solo cambia `active`, no se borra nada de la persona */
+  async function setActive(u: User, active: boolean) {
+    const { error } = await supabase.from("profiles").update({ active }).eq("id", u.id);
+    if (error) {
+      toast(`No se pudo guardar en el servidor: ${error.message}`);
+      return;
+    }
+    dispatch({ type: "patch", patch: { users: state.users.map((x) => (x.id === u.id ? { ...x, active } : x)) } });
+    dispatch({ type: "audit", action: active ? "Usuario reactivado" : "Usuario dado de baja", detail: u.name });
+    toast(active ? `${u.name} fue reactivado/a.` : `${u.name} fue dado/a de baja.`);
+  }
 
   function clearFilters() {
     setFName("");
@@ -97,13 +115,19 @@ export function Team() {
         <p className="page-sub" style={{ margin: 0 }}>
           {filteredUsers.length} de {state.users.length} personas
         </p>
+        {inactiveCount > 0 && (
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer" }}>
+            <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+            Mostrar dados de baja ({inactiveCount})
+          </label>
+        )}
         {filtersActive && (
           <button className="btn btn-ghost btn-sm" onClick={clearFilters}>Limpiar filtros</button>
         )}
       </div>
 
       <div className="card" style={{ overflowX: "auto" }}>
-        <table className="table">
+        <table className="table table-compact">
           <thead>
             <tr>
               <th className="th-sort" onClick={() => toggleSort("name")}>Persona {sortArrow("name")}</th>
@@ -111,8 +135,6 @@ export function Team() {
               <th className="th-sort" onClick={() => toggleSort("team")}>Equipo {sortArrow("team")}</th>
               <th className="th-sort" onClick={() => toggleSort("supervisor")}>Supervisor {sortArrow("supervisor")}</th>
               <th className="th-sort" onClick={() => toggleSort("jornada")}>Jornada {sortArrow("jornada")}</th>
-              <th className="th-sort" onClick={() => toggleSort("hire")}>Ingreso / Vacaciones {sortArrow("hire")}</th>
-              <th>Días laborales</th>
               {canManage && <th></th>}
             </tr>
             <tr className="th-filters">
@@ -138,7 +160,7 @@ export function Team() {
               <th>
                 <select className="select" value={fSupervisor} onChange={(e) => setFSupervisor(e.target.value)} onClick={(e) => e.stopPropagation()}>
                   <option value="">Todos</option>
-                  {state.users.filter((u) => u.role !== "usuario").sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
+                  {state.users.filter((u) => u.role !== "usuario" && u.active).sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
                     <option key={u.id} value={u.id}>{u.name}</option>
                   ))}
                 </select>
@@ -150,73 +172,62 @@ export function Team() {
                   <option value="media">Media</option>
                 </select>
               </th>
-              <th></th>
               {canManage && <th></th>}
             </tr>
           </thead>
           <tbody>
             {sortedUsers.map((u) => {
               const sup = state.users.find((x) => x.id === u.supervisorId);
-              const vac = vacationInfo(state, u.id, today());
+              const isOpen = open.has(u.id);
+              const toggleOpen = () => setOpen((o) => { const n = new Set(o); if (n.has(u.id)) n.delete(u.id); else n.add(u.id); return n; });
+              const cols = canManage ? 6 : 5;
               return (
-                <tr key={u.id}>
-                  <td>
-                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                      <Avatar name={u.name} online={u.online} />
-                      <div>
-                        <div style={{ fontWeight: 650 }}>{u.name}</div>
-                        <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{u.email}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <span className={`badge ${u.role === "admin" ? "acc" : u.role === "gerente" ? "ok" : u.role === "supervisor" ? "warn" : ""}`} style={{ textTransform: "capitalize" }}>
-                      {u.role}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`badge ${u.team === "espana" ? "warn" : ""}`}>{u.team === "espana" ? "España" : "LATAM"}</span>
-                  </td>
-                  <td style={{ fontSize: 12.5 }}>{sup?.name ?? "—"}</td>
-                  <td style={{ fontSize: 12.5 }}>
-                    <span className={`badge ${u.jornada === "completa" ? "acc" : "warn"}`}>
-                      {u.jornada === "completa" ? "Completa" : "Media"}
-                    </span>{" "}
-                    {u.weeklyHours} h/sem
-                    <div style={{ color: "var(--text-3)", fontSize: 11.5 }}>{u.dayStart}–{u.dayEnd} flexible</div>
-                  </td>
-                  <td style={{ fontSize: 12 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}><Icon name="calendar" size={12} /> {fmtDate(u.hireDate)}</div>
-                    <div style={{ marginTop: 3, display: "flex", alignItems: "center", gap: 5 }}>
-                      <Icon name="sun" size={12} /> {vac.available} de {vac.entitled} días
-                    </div>
-                    <div style={{ color: vac.daysToExpire <= 90 ? "var(--warning)" : "var(--text-3)", fontSize: 11 }}>
-                      vencen {u.hireDate && fmtDate(vac.expiration)}
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", gap: 3 }}>
-                      {DAY_NAMES.map((d, i) => (
-                        <span
-                          key={i}
-                          style={{
-                            width: 20, height: 20, borderRadius: 5, display: "grid", placeItems: "center",
-                            fontSize: 10, fontWeight: 700,
-                            background: u.workDays.includes(i + 1) ? "var(--accent-soft)" : "var(--surface-2)",
-                            color: u.workDays.includes(i + 1) ? "var(--accent)" : "var(--text-3)",
-                          }}
-                        >
-                          {d}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  {canManage && (
+                <Fragment key={u.id}>
+                  <tr style={u.active ? undefined : { opacity: 0.6 }}>
                     <td>
-                      <button className="btn btn-secondary btn-sm" onClick={() => setEdit(u)}><Icon name="pencil" size={13} /> Editar</button>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <button className="btn btn-ghost btn-sm" style={{ padding: 2 }} onClick={toggleOpen} aria-label={isOpen ? "Ocultar detalle" : "Ver detalle"} title="Ingreso, vacaciones y días laborales">
+                          <Icon name="chevron-right" size={13} style={{ transform: isOpen ? "rotate(90deg)" : undefined }} />
+                        </button>
+                        <Avatar name={u.name} online={u.active && u.online} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 650, lineHeight: 1.25 }}>{u.name} {!u.active && <span className="badge" style={{ marginLeft: 4 }}>De baja</span>}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>{u.email}</div>
+                        </div>
+                      </div>
                     </td>
+                    <td>
+                      <span className={`badge ${u.role === "admin" ? "acc" : u.role === "gerente" ? "ok" : u.role === "supervisor" ? "warn" : ""}`} style={{ textTransform: "capitalize" }}>
+                        {u.role}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge ${u.team === "espana" ? "warn" : ""}`}>{u.team === "espana" ? "España" : "LATAM"}</span>
+                    </td>
+                    <td style={{ fontSize: 12.5 }}>{sup?.name ?? "—"}</td>
+                    <td style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>
+                      <span className={`badge ${u.jornada === "completa" ? "acc" : "warn"}`}>{u.jornada === "completa" ? "Completa" : "Media"}</span>{" "}
+                      {u.weeklyHours} h
+                    </td>
+                    {canManage && (
+                      <td>
+                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          <button className="btn btn-secondary btn-sm" onClick={() => setEdit(u)}><Icon name="pencil" size={13} /> Editar</button>
+                          {u.id !== me.id && (u.active
+                            ? <button className="btn btn-ghost btn-sm" onClick={() => setDeactivate(u)}>Dar de baja</button>
+                            : <button className="btn btn-ghost btn-sm" onClick={() => setActive(u, true)}>Reactivar</button>)}
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                  {isOpen && (
+                    <tr style={{ background: "var(--surface-2)" }}>
+                      <td colSpan={cols}>
+                        <UserDetail u={u} />
+                      </td>
+                    </tr>
                   )}
-                </tr>
+                </Fragment>
               );
             })}
           </tbody>
@@ -224,7 +235,71 @@ export function Team() {
       </div>
 
       {edit && <UserModal user={edit === "new" ? null : edit} onClose={() => setEdit(null)} />}
+      {deactivate && <DeactivateModal user={deactivate} onClose={() => setDeactivate(null)} onConfirm={() => { setActive(deactivate, false); setDeactivate(null); }} />}
     </>
+  );
+}
+
+/** Datos que no entran en la fila compacta: ingreso, vacaciones, horario y días laborales */
+function UserDetail({ u }: { u: User }) {
+  const { state } = useStore();
+  const vac = vacationInfo(state, u.id, today());
+  return (
+    <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "center", fontSize: 12.5, padding: "2px 0 2px 34px" }}>
+      <span><Icon name="calendar" size={12} /> Ingreso <strong>{fmtDate(u.hireDate)}</strong></span>
+      <span>
+        <Icon name="sun" size={12} /> Vacaciones <strong>{vac.available} de {vac.entitled} días</strong>
+        <span style={{ color: vac.daysToExpire <= 90 ? "var(--warning)" : "var(--text-3)" }}> · vencen {u.hireDate && fmtDate(vac.expiration)}</span>
+      </span>
+      <span>Horario <strong>{u.dayStart}–{u.dayEnd}</strong></span>
+      <span style={{ display: "flex", gap: 3, alignItems: "center" }}>
+        Días
+        {DAY_NAMES.map((d, i) => (
+          <span
+            key={i}
+            style={{
+              width: 20, height: 20, borderRadius: 5, display: "grid", placeItems: "center", fontSize: 10, fontWeight: 700,
+              background: u.workDays.includes(i + 1) ? "var(--accent-soft)" : "var(--surface)",
+              color: u.workDays.includes(i + 1) ? "var(--accent)" : "var(--text-3)",
+            }}
+          >
+            {d}
+          </span>
+        ))}
+      </span>
+    </div>
+  );
+}
+
+function DeactivateModal({ user, onClose, onConfirm }: { user: User; onClose: () => void; onConfirm: () => void }) {
+  const { state } = useStore();
+  const reports = state.users.filter((u) => u.active && u.supervisorId === user.id);
+  return (
+    <Modal
+      title={`Dar de baja — ${user.name}`}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" disabled={reports.length > 0} onClick={onConfirm}>Dar de baja</button>
+        </>
+      }
+    >
+      {reports.length > 0 ? (
+        <p style={{ margin: 0 }}>
+          No se puede dar de baja: es supervisor de {reports.map((r) => r.name).join(", ")}. Asignales otro supervisor desde Editar y volvé a intentar.
+        </p>
+      ) : (
+        <>
+          <p style={{ marginTop: 0 }}>
+            {user.name} deja de aparecer en listas, filtros, calendarios y reportes nuevos, y ya no puede ingresar a TEMPO.
+          </p>
+          <p style={{ marginBottom: 0, color: "var(--text-3)", fontSize: 12.5 }}>
+            Sus registros de horas, solicitudes y proyectos se conservan, y los reportes históricos lo siguen incluyendo. Se puede reactivar cuando haga falta.
+          </p>
+        </>
+      )}
+    </Modal>
   );
 }
 
@@ -386,7 +461,7 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
           <label>Supervisor</label>
           <select className="select" value={supervisorId} onChange={(e) => setSupervisorId(e.target.value)}>
             <option value="">— Sin supervisor —</option>
-            {state.users.filter((u) => u.role !== "usuario" && u.id !== user?.id).sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
+            {state.users.filter((u) => u.role !== "usuario" && u.id !== user?.id && (u.active || u.id === user?.supervisorId)).sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </select>

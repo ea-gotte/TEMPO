@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useStore, vacationInfo } from "../store";
+import { findAbsenceFor, useStore, vacationInfo } from "../store";
 import type { Role } from "../types";
 import { dayLabel, fmtDate, today, validatePassword } from "../utils";
 import { myComplianceAlerts } from "../compliance";
@@ -168,7 +168,10 @@ export function Shell({
   }, [complianceAlerts.map((a) => a.body).join("|")]);
 
   const unread = state.notifications.filter((n) => !n.read).length;
-  const pending = isApprover ? state.absences.filter((a) => a.status === "Pendiente").length + otPending : 0;
+  const pending = isApprover
+    ? state.absences.filter((a) => a.status === "Pendiente" && a.userId !== me.id).length
+      + state.overtime.filter((o) => o.status === "Pendiente" && o.userId !== me.id && !findAbsenceFor(state, o)).length
+    : 0;
 
   const title = useMemo(() => {
     for (const s of NAV) for (const i of s.items) if (i.key === page) return i.label;
@@ -181,7 +184,7 @@ export function Shell({
     const out: { kind: string; label: string; go: PageKey }[] = [];
     state.projects.forEach((p) => p.name.toLowerCase().includes(q) && out.push({ kind: "Proyecto", label: p.name, go: "projects" }));
     state.clients.forEach((c) => c.name.toLowerCase().includes(q) && out.push({ kind: "Cliente", label: c.name, go: "projects" }));
-    state.users.forEach((u) => u.name.toLowerCase().includes(q) && out.push({ kind: "Persona", label: u.name, go: "team" }));
+    state.users.forEach((u) => u.active && u.name.toLowerCase().includes(q) && out.push({ kind: "Persona", label: u.name, go: "team" }));
     state.entries.forEach(
       (e) => e.description.toLowerCase().includes(q) && out.push({ kind: "Registro", label: `${e.description} · ${fmtDate(e.date)}`, go: "tracker" }),
     );

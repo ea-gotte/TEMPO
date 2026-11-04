@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
-import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, AbsenceType, ID, Notification, OvertimeRequest, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role, FlightCategory, FlightActivity, ProfessionalProfile, Survey, SurveyResponse, FeedbackItem } from "./types";
+import type { AppState, User, TimeEntry, RunningTimer, AbsenceRequest, AbsenceType, ID, Notification, OvertimeRequest, RequestEvent, EmailRecord, Holiday, Client, Project, SubProject, AuditLog, CorpEvent, CompanySettings, RolePermission, LeaveTypeConfig, Tag, Role, FlightCategory, FlightActivity, ProfessionalProfile, Survey, SurveyResponse, FeedbackItem } from "./types";
 import { seedState } from "./data";
-import { isoDate, uid, hashPassword, addDays, addMonths, parseISO, today } from "./utils";
+import { isoDate, uid, hashPassword, addDays, addMonths, parseISO, today, monthStart, monthEnd, minToHM } from "./utils";
 import { supabase, isPasswordRecoveryLink } from "./supabase";
 
 const LS_KEY = "tempo-state-v1";
@@ -20,11 +20,11 @@ type Action =
   | { type: "resumeTimer"; id: string }
   | { type: "stopTimer"; id: string; discard?: boolean; entries?: TimeEntry[] }
   | { type: "addAbsence"; absence: AbsenceRequest }
-  | { type: "resolveAbsence"; id: string; status: "Aprobado" | "Rechazado"; comment: string; by: string }
+  | { type: "resolveAbsence"; id: string; status: "Aprobado" | "Rechazado" | "Devuelto"; comment: string; by: string }
   | { type: "updateAbsence"; absence: AbsenceRequest }
   | { type: "deleteAbsence"; id: string }
   | { type: "addOvertime"; o: OvertimeRequest }
-  | { type: "resolveOvertime"; id: string; status: "Aprobado" | "Rechazado"; comment: string; by: string }
+  | { type: "resolveOvertime"; id: string; status: "Aprobado" | "Rechazado" | "Devuelto"; comment: string; by: string }
   | { type: "updateOvertime"; o: OvertimeRequest }
   | { type: "deleteOvertime"; id: string }
   | { type: "notify"; n: Omit<Notification, "id" | "read" | "date"> }
@@ -132,22 +132,70 @@ function absenceSubmittedNotification(absence: AbsenceRequest): NotificationCont
     body: `${absence.type} del ${absence.dateFrom} al ${absence.dateTo}.`,
   };
 }
-function absenceResolvedNotification(absence: AbsenceRequest, status: "Aprobado" | "Rechazado"): NotificationContent {
+const RESOLVE_ACTION = { Aprobado: "Aprobada", Rechazado: "Rechazada", Devuelto: "Devuelta" } as const;
+
+/**
+ * Suma una decisión al historial de la solicitud. Toda devolución queda registrada; las demás
+ * decisiones solo cuando la solicitud ya tiene ida y vuelta (así una aprobación directa no cambia nada).
+ */
+function withResolutionEvent(
+  history: RequestEvent[] | undefined,
+  status: "Aprobado" | "Rechazado" | "Devuelto",
+  by: string,
+  comment: string,
+): RequestEvent[] | undefined {
+  if (status !== "Devuelto" && !history?.length) return history;
+  return [...(history ?? []), { at: new Date().toISOString(), by, action: RESOLVE_ACTION[status], comment: comment.trim() || undefined }];
+}
+
+function absenceResolvedNotification(absence: AbsenceRequest, status: "Aprobado" | "Rechazado" | "Devuelto", comment = ""): NotificationContent {
+  if (status === "Devuelto") {
+    return {
+      kind: "aprobacion", title: "Solicitud devuelta",
+      body: `${absence.type} (${absence.dateFrom}) volvió con observaciones${comment ? `: ${comment}` : ""}. Corregila y reenviala.`,
+    };
+  }
   return {
     kind: "aprobacion", title: `Solicitud ${status.toLowerCase()}`,
     body: `${absence.type} (${absence.dateFrom}) fue ${status.toLowerCase()}.`,
   };
 }
+/** "septiembre de 2026" para las solicitudes mensuales, "semana del 2026-08-10" para las viejas */
+/**
+ * Solicitud de horas extra que ya cubre el mes (para no pedirlo dos veces): la mensual de ese mes
+ * o una semanal vieja que lo toque. El saldo cargado a mano no cuenta: no es una solicitud.
+ */
+export function overtimeRequestForMonth(state: AppState, userId: string, ms: string): OvertimeRequest | undefined {
+  const me = monthEnd(ms);
+  return state.overtime.find((o) => {
+    if (o.userId !== userId || o.kind === "saldo") return false;
+    const [from, to] = overtimeRange(o.weekStart);
+    return from <= me && ms <= to;
+  });
+}
+
+export function overtimePeriodLabel(weekStart: string): string {
+  return weekStart.endsWith("-01")
+    ? new Date(weekStart + "T00:00:00").toLocaleDateString("es", { month: "long", year: "numeric" })
+    : `semana del ${weekStart}`;
+}
+
 function overtimeSubmittedNotification(s: AppState, o: OvertimeRequest): NotificationContent {
   return {
     kind: "exceso", title: "Horas extra informadas",
-    body: `${s.users.find((u) => u.id === o.userId)?.name ?? "?"}: ${Math.round(o.minutes / 60 * 10) / 10} h extra (semana ${o.weekStart}) enviadas a supervisión.`,
+    body: `${s.users.find((u) => u.id === o.userId)?.name ?? "?"}: ${Math.round(o.minutes / 60 * 10) / 10} h extra (${overtimePeriodLabel(o.weekStart)}) enviadas a Recursos Humanos.`,
   };
 }
-function overtimeResolvedNotification(o: OvertimeRequest, status: "Aprobado" | "Rechazado"): NotificationContent {
+function overtimeResolvedNotification(o: OvertimeRequest, status: "Aprobado" | "Rechazado" | "Devuelto", comment = ""): NotificationContent {
+  if (status === "Devuelto") {
+    return {
+      kind: "aprobacion", title: "Horas extra devueltas",
+      body: `Tus horas extra (${overtimePeriodLabel(o.weekStart)}) volvieron con observaciones${comment ? `: ${comment}` : ""}. Corregí lo indicado y reenviá la solicitud.`,
+    };
+  }
   return {
     kind: "aprobacion", title: `Horas extra ${status.toLowerCase()}s`,
-    body: `${Math.round(o.minutes / 60 * 10) / 10} h extra de la semana ${o.weekStart} fueron ${status.toLowerCase()}s${status === "Aprobado" ? " y ya se pueden recuperar como compensación" : ""}.`,
+    body: `${Math.round(o.minutes / 60 * 10) / 10} h extra de ${overtimePeriodLabel(o.weekStart)} fueron ${status.toLowerCase()}s${status === "Aprobado" ? " y ya se pueden recuperar como compensación" : ""}.`,
   };
 }
 
@@ -243,10 +291,10 @@ function baseReducer(s: AppState, a: Action): AppState {
       const withResolved = {
         ...s,
         absences: s.absences.map((x) =>
-          x.id === a.id ? { ...x, status: a.status, supervisorComment: a.comment, resolvedBy: a.by, resolvedAt: isoDate(new Date()) } : x,
+          x.id === a.id ? { ...x, status: a.status, supervisorComment: a.comment, resolvedBy: a.by, resolvedAt: isoDate(new Date()), history: withResolutionEvent(x.history, a.status, a.by, a.comment) } : x,
         ),
       };
-      const notified = withNotification(withResolved, ab.userId, absenceResolvedNotification(ab, a.status));
+      const notified = withNotification(withResolved, ab.userId, absenceResolvedNotification(ab, a.status, a.comment));
       return withAudit(
         notified,
         `Ausencia ${a.status.toLowerCase()}`,
@@ -282,10 +330,10 @@ function baseReducer(s: AppState, a: Action): AppState {
       const withResolved = {
         ...s,
         overtime: s.overtime.map((x) =>
-          x.id === a.id ? { ...x, status: a.status, supervisorComment: a.comment, resolvedBy: a.by, resolvedAt: isoDate(new Date()) } : x,
+          x.id === a.id ? { ...x, status: a.status, supervisorComment: a.comment, resolvedBy: a.by, resolvedAt: isoDate(new Date()), history: withResolutionEvent(x.history, a.status, a.by, a.comment) } : x,
         ),
       };
-      const notified = withNotification(withResolved, o.userId, overtimeResolvedNotification(o, a.status));
+      const notified = withNotification(withResolved, o.userId, overtimeResolvedNotification(o, a.status, a.comment));
       return withAudit(
         notified,
         `Horas extra ${a.status.toLowerCase()}s`,
@@ -483,6 +531,8 @@ function toAbsenceRow(a: AbsenceRequest) {
     created_at: a.createdAt,
     resolved_by: a.resolvedBy ?? null,
     resolved_at: a.resolvedAt ?? null,
+    // Solo si hay ida y vuelta: así nada se rompe en bases sin la columna history (fase 33)
+    ...(a.history?.length ? { history: a.history } : {}),
   };
 }
 
@@ -502,6 +552,7 @@ function fromAbsenceRow(r: any): AbsenceRequest {
     createdAt: r.created_at,
     resolvedBy: r.resolved_by ?? undefined,
     resolvedAt: r.resolved_at ?? undefined,
+    history: r.history?.length ? r.history : undefined,
   };
 }
 
@@ -667,6 +718,8 @@ function toOvertimeRow(o: OvertimeRequest) {
     resolved_by: o.resolvedBy ?? null,
     resolved_at: o.resolvedAt ?? null,
     supervisor_comment: o.supervisorComment ?? null,
+    ...(o.history?.length ? { history: o.history } : {}),
+    ...(o.kind ? { kind: o.kind } : {}),
   };
 }
 function fromOvertimeRow(r: any): OvertimeRequest {
@@ -680,6 +733,8 @@ function fromOvertimeRow(r: any): OvertimeRequest {
     resolvedBy: r.resolved_by ?? undefined,
     resolvedAt: r.resolved_at ?? undefined,
     supervisorComment: r.supervisor_comment ?? undefined,
+    history: r.history?.length ? r.history : undefined,
+    kind: r.kind === "saldo" ? "saldo" : undefined,
   };
 }
 
@@ -1012,6 +1067,8 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
       return error?.message ?? notifErr;
     }
     case "resolveAbsence": {
+      const ab = prevState.absences.find((x) => x.id === a.id);
+      const hist = ab ? withResolutionEvent(ab.history, a.status, a.by, a.comment) : undefined;
       const { error } = await supabase
         .from("absence_requests")
         .update({
@@ -1019,10 +1076,10 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
           supervisor_comment: a.comment || null,
           resolved_by: a.by,
           resolved_at: isoDate(new Date()),
+          ...(hist?.length ? { history: hist } : {}),
         })
         .eq("id", a.id);
-      const ab = prevState.absences.find((x) => x.id === a.id);
-      const notifErr = ab ? await insertNotification(ab.userId, absenceResolvedNotification(ab, a.status)) : null;
+      const notifErr = ab ? await insertNotification(ab.userId, absenceResolvedNotification(ab, a.status, a.comment)) : null;
       return error?.message ?? notifErr;
     }
     case "updateAbsence": {
@@ -1047,6 +1104,8 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
       return error?.message ?? notifErr;
     }
     case "resolveOvertime": {
+      const o = prevState.overtime.find((x) => x.id === a.id);
+      const hist = o ? withResolutionEvent(o.history, a.status, a.by, a.comment) : undefined;
       const { error } = await supabase
         .from("overtime_requests")
         .update({
@@ -1054,10 +1113,10 @@ async function syncActionToSupabase(a: Action, prevState: AppState): Promise<str
           supervisor_comment: a.comment || null,
           resolved_by: a.by,
           resolved_at: isoDate(new Date()),
+          ...(hist?.length ? { history: hist } : {}),
         })
         .eq("id", a.id);
-      const o = prevState.overtime.find((x) => x.id === a.id);
-      const notifErr = o ? await insertNotification(o.userId, overtimeResolvedNotification(o, a.status)) : null;
+      const notifErr = o ? await insertNotification(o.userId, overtimeResolvedNotification(o, a.status, a.comment)) : null;
       return error?.message ?? notifErr;
     }
     case "updateOvertime": {
@@ -1172,6 +1231,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               online: p.online ?? true,
               mustChangePassword: p.must_change_password ?? false
             }));
+
+            if (mappedUsers.find((u) => u.id === currentUserId)?.active === false) {
+              // Dado de baja: sin acceso, aunque conserve la sesión abierta
+              await supabase.auth.signOut();
+              return;
+            }
 
             if (!mappedUsers.some((u) => u.id === currentUserId)) {
               // Sin fila en profiles: rol mínimo. Nunca tomar el rol de user_metadata,
@@ -1344,13 +1409,13 @@ export function useStore() {
 
 /** Después de 3 meses de la semana trabajada, esas horas extra ya no se pueden
  * reclamar/informar a supervisión. */
-export function overtimeClaimDeadline(weekStartISO: string): string {
-  return addMonths(weekStartISO, 3);
+export function overtimeClaimDeadline(monthISO: string): string {
+  return addDays(addMonths(monthStart(monthISO), 4), -1);
 }
 
 /** Minutos de una ausencia de "Compensación de horas" (por horario si está
  * cargado, si no por días hábiles a jornada completa/media del usuario). */
-function compensationMinutes(state: AppState, userId: string, a: AbsenceRequest): number {
+export function compensationMinutes(state: AppState, userId: string, a: AbsenceRequest): number {
   if (a.timeFrom && a.timeTo) {
     const [h1, m1] = a.timeFrom.split(":").map(Number);
     const [h2, m2] = a.timeTo.split(":").map(Number);
@@ -1534,6 +1599,7 @@ export function absenceWarnings(state: AppState, absence: AbsenceRequest): strin
       o.id !== absence.id &&
       o.userId === absence.userId &&
       o.status === "Aprobado" &&
+      o.type !== "Horas extra" &&
       o.dateFrom <= absence.dateTo &&
       absence.dateFrom <= o.dateTo,
   );
@@ -1564,7 +1630,7 @@ export function absenceWarnings(state: AppState, absence: AbsenceRequest): strin
  */
 export function overtimeWarnings(state: AppState, ot: OvertimeRequest): string[] {
   const warnings: string[] = [];
-  const weekEnd = addDays(ot.weekStart, 6);
+  const weekEnd = overtimeRange(ot.weekStart)[1];
   const overlapping = state.absences.filter(
     (a) => a.userId === ot.userId && a.status === "Aprobado" && a.dateFrom <= weekEnd && ot.weekStart <= a.dateTo,
   );
@@ -1572,6 +1638,119 @@ export function overtimeWarnings(state: AppState, ot: OvertimeRequest): string[]
     warnings.push(`Esa semana se superpone con una ausencia aprobada: ${a.type} (${fmtDateShort(a.dateFrom)}${a.dateFrom !== a.dateTo ? ` → ${fmtDateShort(a.dateTo)}` : ""}).`);
   }
   return warnings;
+}
+
+/** Horas extra que acompañan a una solicitud de "Horas extra" de Gestión (misma persona, fecha de carga y mes) */
+export function findOvertimeFor(state: AppState, a: AbsenceRequest): OvertimeRequest | undefined {
+  const c = state.overtime.filter((o) => o.userId === a.userId && o.createdAt === a.createdAt);
+  // Las mensuales se vinculan solo por mes; el "único del día" queda para las semanales viejas
+  return c.find((o) => monthStart(o.weekStart) === monthStart(a.dateFrom))
+    ?? (c.length === 1 && !c[0].weekStart.endsWith("-01") ? c[0] : undefined);
+}
+
+/** Solicitud de Gestión que acompaña a unas horas extra */
+export function findAbsenceFor(state: AppState, o: OvertimeRequest): AbsenceRequest | undefined {
+  const c = state.absences.filter((a) => a.userId === o.userId && a.type === "Horas extra" && a.createdAt === o.createdAt);
+  return c.find((a) => monthStart(a.dateFrom) === monthStart(o.weekStart))
+    ?? (c.length === 1 && !o.weekStart.endsWith("-01") ? c[0] : undefined);
+}
+
+/** Proyectos que no cuentan para horas extra: se cargan solo para que el calendario no quede vacío. */
+const NON_COMPUTABLE_PROJECTS = ["no laborable", "vacaciones"];
+
+export function isNonComputableProject(p: Project | null | undefined): boolean {
+  return !!p && NON_COMPUTABLE_PROJECTS.includes(p.name.trim().toLowerCase());
+}
+
+/** Minutos de un registro que cuentan para horas extra (0 si es de No laborable / Vacaciones) */
+export function computableMinutes(state: AppState, e: TimeEntry): number {
+  const p = e.projectId ? state.projects.find((x) => x.id === e.projectId) : null;
+  return isNonComputableProject(p) ? 0 : e.end - e.start;
+}
+
+export interface OvertimeBreakdown {
+  loadedMin: number;
+  /** Cargadas fuera de No laborable y Vacaciones */
+  computableMin: number;
+  extraMin: number;
+  /** Horas extra por proyecto, de mayor a menor */
+  byProject: { projectId: ID | null; minutes: number }[];
+  /** Horas extra de cada registro (id del registro → minutos) */
+  perEntry: Map<string, number>;
+}
+
+/**
+ * Horas extra de una persona en [from, to], día por día: se cuentan las horas cargadas desde el
+ * inicio del día hasta completar la jornada diaria (8 h en jornada completa); lo que se carga
+ * después de ese corte es extra y se le atribuye al proyecto del registro. Un día no laborable
+ * (fin de semana, feriado o ausencia de día completo) no tiene jornada: todo lo cargado es extra.
+ * No computan los registros de No laborable y Vacaciones.
+ */
+export function overtimeBreakdown(state: AppState, u: User, from: string, to: string): OvertimeBreakdown {
+  const holidays = holidayDateSet(state);
+  const offDays = fullDayOffDatesInRange(state, u.id, from, to);
+  const dailyMin = Math.round(u.jornada === "media" ? 4 * 60 : (u.weeklyHours * 60) / Math.max(1, u.workDays.length));
+  const mine = state.entries
+    .filter((e) => e.userId === u.id && e.date >= from && e.date <= to)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+  const perEntry = new Map<string, number>();
+  const proj = new Map<ID | null, number>();
+  let loadedMin = 0;
+  let computableMin = 0;
+  let extraMin = 0;
+  let day = "";
+  let cap = 0;
+  let used = 0;
+  for (const e of mine) {
+    loadedMin += e.end - e.start;
+    if (e.date !== day) {
+      day = e.date;
+      const dow = ((parseISO(day).getDay() + 6) % 7) + 1;
+      cap = u.workDays.includes(dow) && !holidays.has(day) && !offDays.has(day) ? dailyMin : 0;
+      used = 0;
+    }
+    const m = computableMinutes(state, e);
+    if (m <= 0) continue;
+    computableMin += m;
+    const within = Math.max(0, Math.min(m, cap - used));
+    used += within;
+    const extra = m - within;
+    if (extra > 0) {
+      extraMin += extra;
+      perEntry.set(e.id, extra);
+      proj.set(e.projectId, (proj.get(e.projectId) ?? 0) + extra);
+    }
+  }
+  const byProject = [...proj.entries()].map(([projectId, minutes]) => ({ projectId, minutes })).sort((a, b) => b.minutes - a.minutes);
+  return { loadedMin, computableMin, extraMin, byProject, perEntry };
+}
+
+/**
+ * Período que cubre una solicitud de horas extra: el mes completo cuando weekStart es el
+ * día 1 (solicitudes mensuales), o la semana para las anteriores, que eran semanales.
+ */
+export function overtimeRange(weekStartISO: string): [string, string] {
+  return weekStartISO.endsWith("-01") ? [weekStartISO, monthEnd(weekStartISO)] : [weekStartISO, addDays(weekStartISO, 6)];
+}
+
+/**
+ * Registros de tiempo que se pisan entre sí en el calendario de la persona dentro del período
+ * de la solicitud. Mientras haya alguno, las horas extra no se pueden solicitar ni aprobar.
+ */
+export function overtimeOverlapIssues(state: AppState, userId: string, weekStartISO: string): string[] {
+  const [from, to] = overtimeRange(weekStartISO);
+  const mine = state.entries.filter((e) => e.userId === userId && e.date >= from && e.date <= to);
+  const issues: string[] = [];
+  const seen = new Set<string>();
+  for (const e of mine.slice().sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start)) {
+    for (const o of overlaps(mine, e)) {
+      const key = [e.id, o.id].sort().join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      issues.push(`${fmtDateShort(e.date)}: ${minToHM(e.start)}–${minToHM(e.end)} se superpone con ${minToHM(o.start)}–${minToHM(o.end)}.`);
+    }
+  }
+  return issues;
 }
 
 function fmtDateShort(iso: string): string {

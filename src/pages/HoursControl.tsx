@@ -1,11 +1,14 @@
 import React, { useMemo, useState } from "react";
-import { overtimeClaimDeadline, expectedMinutesInRange, overlaps, useStore } from "../store";
-import { addDays, dayLabel, fmtDur, minToHM, today, uid, weekStart } from "../utils";
+import { overtimeClaimDeadline, overtimeRequestForMonth, expectedMinutesInRange, overlaps, overtimeOverlapIssues, overtimeBreakdown, overtimeRange, useStore } from "../store";
+import { downloadOvertimeXlsx } from "../overtimeReport";
+import { overtimeAbsenceFor } from "../overtimeSummary";
+import { addDays, addMonths, dayLabel, fmtDur, minToHM, monthEnd, monthStart, today, uid, weekStart } from "../utils";
 import { Avatar, Empty, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { computeHoursIncidents, getDownlineIds, visibleIncidents, type HoursIncident } from "../compliance";
 import { buildForest, buildLayout, teamIds, CARD_W, CARD_H } from "../orgTree";
-import type { TimeEntry, User } from "../types";
+import { filterAndSortHours, NO_SUPERVISOR, type HoursSortKey } from "../listFilters";
+import type { OvertimeRequest, TimeEntry, User } from "../types";
 
 const DAY_SHORT = ["L", "M", "X", "J", "V", "S", "D"];
 
@@ -15,11 +18,27 @@ export function HoursControl() {
   const me = state.users.find((u) => u.id === state.currentUserId)!;
   const [anchor, setAnchor] = useState(today());
   const [tab, setTab] = useState<"semana" | "cadena">("semana");
+  const [period, setPeriod] = useState<"mes" | "semana">("mes");
+  const [fPerson, setFPerson] = useState("");
+  const [fSupervisor, setFSupervisor] = useState("");
+  const [fStatus, setFStatus] = useState("");
+  const [fJornada, setFJornada] = useState("");
+  const [sortKey, setSortKey] = useState<HoursSortKey>("persona");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const ws = weekStart(anchor);
-  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(ws, i)), [ws]);
-  // Las horas extra de una semana solo se pueden reclamar hasta 3 meses después de esa semana.
-  const claimExpired = today() > overtimeClaimDeadline(ws);
+  // Las horas extra se calculan por mes: cada mes se solicita aparte
+  const ms = monthStart(anchor);
+  const me2 = monthEnd(ms);
+  const from = period === "mes" ? ms : ws;
+  const to = period === "mes" ? me2 : addDays(ws, 6);
+  const monthDays = useMemo(() => {
+    const n = period === "mes" ? Number(me2.slice(8)) : 7;
+    return Array.from({ length: n }, (_, i) => addDays(from, i));
+  }, [from, me2, period]);
+  const monthLabel = new Date(ms + "T00:00:00").toLocaleDateString("es", { month: "long", year: "numeric" });
+  // Las horas extra de un mes solo se pueden reclamar hasta 3 meses después de que termina.
+  const claimExpired = today() > overtimeClaimDeadline(me2);
 
   // El supervisor controla a toda su línea de mando (directos e indirectos,
   // a través de los supervisores que dependen de él); admin y gerente ven a
@@ -33,21 +52,34 @@ export function HoursControl() {
       .filter((u) => u.team !== "espana")
       .filter((u) => me.role !== "supervisor" || myDownline.has(u.id))
       .map((u) => {
-        const perDay = weekDays.map((d) =>
+        const perDay = monthDays.map((d) =>
           state.entries.filter((e) => e.userId === u.id && e.date === d).reduce((a, e) => a + (e.end - e.start), 0),
         );
         const loaded = perDay.reduce((a, b) => a + b, 0);
+        // Horas extra: lo que se carga después de completar la jornada de cada día
+        const bd = overtimeBreakdown(state, u, from, to);
         // Descuenta feriados y ausencias de día completo ya aprobadas de esa
         // semana (mismo cálculo que Reportes) — un feriado no exige carga.
-        const expected = expectedMinutesInRange(state, u, ws, addDays(ws, 6));
-        const overtimeMin = Math.max(0, loaded - expected);
+        const expected = expectedMinutesInRange(state, u, from, to);
+        const overtimeMin = bd.extraMin;
+        const excluded = loaded - bd.computableMin;
+        const overlapIssues = overtimeOverlapIssues(state, u.id, ms);
         const supervisor = state.users.find((x) => x.id === u.supervisorId);
-        const otRequest = state.overtime.find((o) => o.userId === u.id && o.weekStart === ws);
+        const otRequest = overtimeRequestForMonth(state, u.id, ms);
         const status: "sin-carga" | "incompleto" | "ok" | "extra" =
           loaded === 0 ? "sin-carga" : overtimeMin > 0 ? "extra" : loaded >= expected * 0.95 ? "ok" : "incompleto";
-        return { u, perDay, loaded, expected, overtimeMin, supervisor, otRequest, status };
+        return { u, perDay, loaded, expected, overtimeMin, excluded, overlapIssues, supervisor, otRequest, status };
       });
-  }, [state, weekDays, ws, me.id, me.role, myDownline]);
+  }, [state, monthDays, from, to, ms, me2, me.id, me.role, myDownline]);
+
+  const visibleRows = useMemo(
+    () => filterAndSortHours(rows, { person: fPerson, supervisor: fSupervisor, status: fStatus, jornada: fJornada }, sortKey, sortDir),
+    [rows, fPerson, fSupervisor, fStatus, fJornada, sortKey, sortDir],
+  );
+  const supervisorOptions = useMemo(() => {
+    const seen = new Map(rows.flatMap((r) => (r.supervisor ? [[r.supervisor.id, r.supervisor.name] as const] : [])));
+    return [...seen].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [rows]);
 
   // Incidencias de la cadena de mando: semanas ya cerradas donde alguien no
   // cargó correctamente, con su nivel de escalamiento actual. Ver compliance.ts.
@@ -79,11 +111,16 @@ export function HoursControl() {
   }
 
   function sendOvertime(userId: string, minutes: number) {
-    dispatch({
-      type: "addOvertime",
-      o: { id: uid(), userId, weekStart: ws, minutes, status: "Pendiente", createdAt: today() },
-    });
-    toast("Horas extra enviadas a supervisión y aprobación.");
+    const o: OvertimeRequest = { id: uid(), userId, weekStart: ms, minutes, status: "Pendiente", createdAt: today() };
+    dispatch({ type: "addOvertime", o });
+    dispatch({ type: "addAbsence", absence: overtimeAbsenceFor(state, o) });
+    toast("Horas extra enviadas a Recursos Humanos con su informe.");
+  }
+  const monthOpen = ms >= monthStart(today());
+
+  async function exportOvertime() {
+    const file = await downloadOvertimeXlsx(state, visibleRows.map((r) => r.u), ms);
+    toast(`Reporte descargado: ${file}`);
   }
 
   function notifyMissing(id: string, name: string) {
@@ -95,10 +132,38 @@ export function HoursControl() {
   }
 
   const summary = {
-    ok: rows.filter((r) => r.status === "ok" || r.status === "extra").length,
-    incompleto: rows.filter((r) => r.status === "incompleto").length,
-    sinCarga: rows.filter((r) => r.status === "sin-carga").length,
+    ok: visibleRows.filter((r) => r.status === "ok" || r.status === "extra").length,
+    incompleto: visibleRows.filter((r) => r.status === "incompleto").length,
+    sinCarga: visibleRows.filter((r) => r.status === "sin-carga").length,
   };
+
+  const filtersActive = Boolean(fPerson || fSupervisor || fStatus || fJornada);
+
+  function clearFilters() {
+    setFPerson("");
+    setFSupervisor("");
+    setFStatus("");
+    setFJornada("");
+  }
+
+  function toggleSort(key: HoursSortKey) {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  function sortHeader(key: HoursSortKey, label: string) {
+    return (
+      <th style={{ cursor: "pointer", userSelect: "none" }} aria-sort={sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : "none"} onClick={() => toggleSort(key)}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {label}
+          {sortKey === key && <Icon name="chevron-right" size={11} style={{ transform: sortDir === "asc" ? "rotate(-90deg)" : "rotate(90deg)" }} />}
+        </span>
+      </th>
+    );
+  }
 
   return (
     <>
@@ -106,7 +171,7 @@ export function HoursControl() {
         <h1>Control de horas</h1>
         <span className="spacer" />
         <div className="tabs">
-          <button className={tab === "semana" ? "active" : ""} onClick={() => setTab("semana")}>Semana actual</button>
+          <button className={tab === "semana" ? "active" : ""} onClick={() => setTab("semana")}>Mes actual</button>
           <button className={tab === "cadena" ? "active" : ""} onClick={() => setTab("cadena")}>
             Cadena de mando{incidents.length > 0 ? ` (${incidents.length})` : ""}
           </button>
@@ -120,10 +185,28 @@ export function HoursControl() {
           renglón intermedio compensa con más margen abajo (mismo ajuste que
           en Calendario). */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}>
-        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, -7))} aria-label="Semana anterior"><Icon name="arrow-left" size={14} /></button>
+        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(tab === "semana" && period === "mes" ? addMonths(ms, -1) : addDays(anchor, -7))} aria-label="Anterior"><Icon name="arrow-left" size={14} /></button>
         <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(today())}>Hoy</button>
-        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(addDays(anchor, 7))} aria-label="Semana siguiente"><Icon name="arrow-right" size={14} /></button>
-        <strong>Semana del {dayLabel(ws)} al {dayLabel(addDays(ws, 6))}</strong>
+        <button className="btn btn-secondary btn-sm" onClick={() => setAnchor(tab === "semana" && period === "mes" ? addMonths(ms, 1) : addDays(anchor, 7))} aria-label="Siguiente"><Icon name="arrow-right" size={14} /></button>
+        {tab === "semana" && (
+          <div className="tabs" style={{ marginLeft: 6 }}>
+            <button className={period === "mes" ? "active" : ""} onClick={() => setPeriod("mes")}>Mensual</button>
+            <button className={period === "semana" ? "active" : ""} onClick={() => setPeriod("semana")}>Semanal</button>
+          </div>
+        )}
+        <strong>
+          {tab === "semana" && period === "mes"
+            ? <span style={{ textTransform: "capitalize" }}>{monthLabel}</span>
+            : <>Semana del {dayLabel(ws)} al {dayLabel(addDays(ws, 6))}</>}
+        </strong>
+        {tab === "semana" && (
+          <>
+            <span style={{ flex: 1 }} />
+            <button className="btn btn-secondary btn-sm" onClick={exportOvertime} title="Excel con las horas extra del mes por persona y proyecto, con porcentajes">
+              <Icon name="download" size={13} /> Reporte de horas extra
+            </button>
+          </>
+        )}
       </div>
 
       {tab === "cadena" ? (
@@ -131,7 +214,7 @@ export function HoursControl() {
       ) : (
         <>
           <p className="page-sub">
-            La carga esperada se controla según el tipo de jornada de cada persona (completa o media).
+            La carga esperada se controla según el tipo de jornada de cada persona (completa o media). Horas extra: se cuentan las horas de cada día desde el inicio hasta completar la jornada (8 h) y el resto es extra, atribuido al proyecto donde se cargó. No cuentan los proyectos <strong>No laborable</strong> y <strong>Vacaciones</strong>. Se solicitan por mes.
           </p>
 
           <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))" }}>
@@ -150,21 +233,51 @@ export function HoursControl() {
             </div>
           </div>
 
+          <div className="card card-pad no-print" style={{ marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <select className="select" style={{ width: "auto" }} aria-label="Filtrar por persona" value={fPerson} onChange={(e) => setFPerson(e.target.value)}>
+              <option value="">Todas las personas</option>
+              {rows.map((r) => r.u).sort((a, b) => a.name.localeCompare(b.name)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+            <select className="select" style={{ width: "auto" }} aria-label="Filtrar por supervisor" value={fSupervisor} onChange={(e) => setFSupervisor(e.target.value)}>
+              <option value="">Todos los supervisores</option>
+              {supervisorOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              <option value={NO_SUPERVISOR}>Sin supervisor</option>
+            </select>
+            <select className="select" style={{ width: "auto" }} aria-label="Filtrar por estado" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+              <option value="">Todos los estados</option>
+              <option value="sin-carga">Sin carga</option>
+              <option value="incompleto">Incompleto</option>
+              <option value="ok">OK</option>
+              <option value="extra">OK + extra</option>
+            </select>
+            <select className="select" style={{ width: "auto" }} aria-label="Filtrar por jornada" value={fJornada} onChange={(e) => setFJornada(e.target.value)}>
+              <option value="">Todas las jornadas</option>
+              <option value="completa">Jornada completa</option>
+              <option value="media">Media jornada</option>
+            </select>
+            {filtersActive && <button className="btn btn-ghost btn-sm" onClick={clearFilters}><Icon name="x" size={13} /> Limpiar filtros</button>}
+            <span style={{ fontSize: 12.5, color: "var(--text-3)", marginLeft: "auto" }}>
+              {filtersActive ? `${visibleRows.length} de ${rows.length} personas` : `${rows.length} personas`} · clic en una columna para ordenar
+            </span>
+          </div>
+
           <div className="card" style={{ overflowX: "auto" }}>
+        {visibleRows.length === 0 && <Empty icon="search" text="Nada coincide con los filtros" sub="Probá ajustar o limpiar los filtros." />}
+        {visibleRows.length > 0 && (
         <table className="table">
           <thead>
             <tr>
-              <th>Persona</th>
-              <th>Supervisor</th>
-              <th>Jornada</th>
+              {sortHeader("persona", "Persona")}
+              {sortHeader("supervisor", "Supervisor")}
+              {sortHeader("jornada", "Jornada")}
               <th>Carga diaria</th>
-              <th>Cargado / esperado</th>
-              <th>Estado</th>
-              <th>Horas extra</th>
+              {sortHeader("cargado", "Cargado / esperado")}
+              {sortHeader("estado", "Estado")}
+              {sortHeader("extra", "Horas extra")}
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ u, perDay, loaded, expected, overtimeMin, supervisor, otRequest, status }) => {
+            {visibleRows.map(({ u, perDay, loaded, expected, overtimeMin, excluded, overlapIssues, supervisor, otRequest, status }) => {
               const pct = Math.min(100, (loaded / Math.max(1, expected)) * 100);
               const maxDay = Math.max(60, ...perDay);
               return (
@@ -193,27 +306,28 @@ export function HoursControl() {
                     <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 3 }}>{u.weeklyHours} h/sem</div>
                   </td>
                   <td>
-                    <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 34 }} title={perDay.map((m, i) => `${DAY_SHORT[i]}: ${fmtDur(m)}`).join(" · ")}>
+                    <div style={{ display: "flex", gap: 1, alignItems: "flex-end", height: 34 }} title={perDay.map((m, i) => `${i + 1}: ${fmtDur(m)}`).join(" · ")}>
                       {perDay.map((m, i) => (
-                        <div key={i} style={{ width: 14, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                          <div
-                            style={{
-                              width: 10, borderRadius: 3,
-                              height: Math.max(2, (m / maxDay) * 26),
-                              // Un día fuera del horario habitual con horas cargadas es extra, no un
-                              // problema a validar — mismo color que un día habilitado normal.
-                              background: m === 0 ? "var(--surface-3)" : "var(--accent)",
-                            }}
-                          />
-                          <span style={{ fontSize: 9, color: "var(--text-3)" }}>{DAY_SHORT[i]}</span>
-                        </div>
+                        <div
+                          key={i}
+                          style={{
+                            width: 5, borderRadius: 2,
+                            height: Math.max(2, (m / maxDay) * 30),
+                            // Un día fuera del horario habitual con horas cargadas es extra, no un
+                            // problema a validar — mismo color que un día habilitado normal.
+                            background: m === 0 ? "var(--surface-3)" : "var(--accent)",
+                          }}
+                        />
                       ))}
                     </div>
                   </td>
                   <td style={{ minWidth: 150 }}>
                     <div style={{ fontSize: 12.5, fontFamily: "var(--mono)", marginBottom: 4 }}>
-                      {fmtDur(loaded)} / {u.weeklyHours} h
+                      {fmtDur(loaded)} / {fmtDur(expected)}
                     </div>
+                    {excluded > 0 && (
+                      <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 4 }}>{fmtDur(excluded)} en No laborable / Vacaciones no computan</div>
+                    )}
                     <div className="progress">
                       <div style={{ width: `${pct}%`, background: status === "sin-carga" ? "var(--danger)" : status === "incompleto" ? "var(--warning)" : "var(--success)" }} />
                     </div>
@@ -242,17 +356,30 @@ export function HoursControl() {
                       ) : claimExpired ? (
                         <div>
                           <span className="badge bad"><Icon name="flame" size={11} /> {fmtDur(overtimeMin)}</span>
-                          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }} title="Pasaron más de 3 meses de esa semana: ya no se puede reclamar.">
+                          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }} title="Pasaron más de 3 meses de ese mes: ya no se puede reclamar.">
                             Vencida
                           </div>
                         </div>
                       ) : (
                         <div>
                           <span className="badge warn"><Icon name="flame" size={11} /> {fmtDur(overtimeMin)}</span>
+                          {overlapIssues.length > 0 && (
+                            <div style={{ fontSize: 11.5, color: "var(--danger)", marginTop: 4, maxWidth: 260 }}>
+                              Corregí las superposiciones antes de solicitarlas:
+                              {overlapIssues.slice(0, 3).map((t, i) => <div key={i}>{t}</div>)}
+                              {overlapIssues.length > 3 && <div>y {overlapIssues.length - 3} más…</div>}
+                            </div>
+                          )}
                           <div>
-                            <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={() => sendOvertime(u.id, overtimeMin)}>
-                              <Icon name="arrow-right" size={12} /> A supervisión
-                            </button>
+                            {period === "mes" && monthOpen ? (
+                              <span style={{ fontSize: 11, color: "var(--text-3)" }}>Se solicita al cerrar el mes</span>
+                            ) : period === "mes" ? (
+                              <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} disabled={overlapIssues.length > 0 || claimExpired} onClick={() => sendOvertime(u.id, overtimeMin)}>
+                                <Icon name="arrow-right" size={12} /> A supervisión
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: 11, color: "var(--text-3)" }}>Se solicita por mes</span>
+                            )}
                           </div>
                         </div>
                       )
@@ -265,6 +392,7 @@ export function HoursControl() {
             })}
           </tbody>
         </table>
+        )}
           </div>
         </>
       )}
