@@ -4,6 +4,7 @@ import { addDays, addMonths, fmtDate, downloadFile, fmtDur, toCSV, today, weekSt
 import { HBarChart, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { downloadProjectHoursXlsx } from "../projectHoursReport";
+import { downloadDailyHoursXlsx } from "../dailyHoursReport";
 
 type Period = "semana" | "mes" | "personalizado";
 
@@ -126,12 +127,26 @@ export function Reports() {
     toast("CSV exportado (compatible con Excel).");
   }
 
+  async function exportDaily() {
+    if (filtered.length === 0) {
+      toast("No hay horas cargadas en el período con estos filtros.");
+      return;
+    }
+    try {
+      const file = await downloadDailyHoursXlsx(state, filtered, rFrom, rTo);
+      toast(`Excel generado: ${file}`);
+    } catch {
+      toast("No se pudo generar el Excel.");
+    }
+  }
+
   return (
     <>
       <div className="page-head">
         <h1>Reportes</h1>
         <span className="spacer" />
         <button className="btn btn-secondary" onClick={exportCSV}><Icon name="download" size={14} /> CSV / Excel</button>
+        <button className="btn btn-secondary" onClick={exportDaily} title="Horas por día y proyecto del período, con los filtros aplicados"><Icon name="download" size={14} /> Excel por día</button>
         {!isEmployee && <button className="btn btn-secondary" onClick={() => setProjectXlsx(true)}><Icon name="download" size={14} /> Excel por proyecto</button>}
         <button className="btn btn-secondary" onClick={() => { window.print(); }}><Icon name="printer" size={14} /> PDF</button>
       </div>
