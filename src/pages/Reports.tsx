@@ -358,9 +358,8 @@ function BalanceCard({ from, to, userFilter }: { from: string; to: string; userF
             <th title="Días hábiles disponibles del período anual vigente (de 10)">Vacaciones disponibles</th>
             <th title="Días hábiles de vacaciones aprobadas dentro del período">Tomadas en el período</th>
             <th title="Horas extra y días a favor aprobados en el período">Extra aprobadas</th>
-            <th title="Compensaciones de horas aprobadas en el período">Recuperadas</th>
             <th title="Saldo de días a favor sin vencer al cierre del período">Saldo a favor</th>
-            <th title="Solicitudes de horas extra en revisión de Recursos Humanos">Pendientes de validar</th>
+            <th title="Horas extra del calendario que todavía no están aprobadas, enviadas a revisión o no">Pendientes de validar</th>
           </tr>
         </thead>
         <tbody>
@@ -376,13 +375,16 @@ function BalanceCard({ from, to, userFilter }: { from: string; to: string; userF
                 {r.vacPending > 0 && <div style={{ fontSize: 11, color: "var(--warning)" }}>{r.vacPending} pendiente{r.vacPending !== 1 ? "s" : ""}</div>}
               </td>
               {cell(r.otApprovedMin)}
-              {cell(r.otRecoveredMin)}
               <td style={{ fontFamily: "var(--mono)" }}>
                 {r.otBalanceMin > 0 ? <>{fmtDur(r.otBalanceMin)} <span style={{ color: "var(--text-3)" }}>≈ {asDays(r.otBalanceMin, r.dailyMin)} d</span></> : <span style={{ color: "var(--text-3)" }}>—</span>}
               </td>
               <td style={{ fontFamily: "var(--mono)", color: r.otPendingMin > 0 ? "var(--warning)" : "var(--text-3)" }}>
                 {r.otPendingMin > 0 ? fmtDur(r.otPendingMin) : "—"}
-                {r.otReturnedMin > 0 && <div style={{ fontSize: 11, color: "var(--accent)" }}>{fmtDur(r.otReturnedMin)} devueltas</div>}
+                {r.otPendingMin > 0 && (
+                  <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                    {[r.otInReviewMin > 0 && `${fmtDur(r.otInReviewMin)} en revisión`, r.otNotSentMin > 0 && `${fmtDur(r.otNotSentMin)} sin enviar`].filter(Boolean).join(" · ")}
+                  </div>
+                )}
               </td>
             </tr>
           ))}

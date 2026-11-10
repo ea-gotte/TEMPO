@@ -1,4 +1,4 @@
-import { compensationMinutes, countWorkDays, holidayDateSet, overtimeBalance, vacationInfo } from "./store";
+import { compensationMinutes, countWorkDays, holidayDateSet, overtimeBalance, overtimeBreakdown, vacationInfo } from "./store";
 import type { AppState, User } from "./types";
 import { addDays, addMonths, monthLabel, today } from "./utils";
 
@@ -20,7 +20,14 @@ export interface BalanceRow {
   otApprovedMin: number;
   /** Compensaciones de horas aprobadas que empiezan dentro del rango */
   otRecoveredMin: number;
+  /** Horas extra que da el calendario en el período (cada día, lo que pasa de la jornada) */
+  otDetectedMin: number;
+  /** Del calendario, todo lo que todavía no está aprobado: en revisión + sin enviar */
   otPendingMin: number;
+  /** Enviadas a Recursos Humanos y sin resolver (pendientes o devueltas para corregir) */
+  otInReviewMin: number;
+  /** Detectadas en el calendario que nadie envió todavía */
+  otNotSentMin: number;
   otReturnedMin: number;
   /** Saldo disponible (sin vencer) al cierre del período */
   otBalanceMin: number;
@@ -54,6 +61,11 @@ export function balanceRows(state: AppState, from: string, to: string, users: Us
       const vacations = state.absences.filter((a) => a.userId === u.id && a.type === "Vacaciones" && a.dateFrom <= to && a.dateTo >= from);
       const overtime = state.overtime.filter((o) => o.userId === u.id && inRange(o.weekStart));
       const sumMin = (status: string) => overtime.filter((o) => o.status === status).reduce((acc, o) => acc + o.minutes, 0);
+      // Lo que da el calendario contra lo ya aprobado de esas horas (el saldo cargado a mano no sale del calendario)
+      const detected = overtimeBreakdown(state, u, from, to).extraMin;
+      const approvedFromCalendar = overtime.filter((o) => o.status === "Aprobado" && o.kind !== "saldo").reduce((acc, o) => acc + o.minutes, 0);
+      const inReview = sumMin("Pendiente") + sumMin("Devuelto");
+      const pending = Math.max(0, detected - approvedFromCalendar);
 
       // Saldo al cierre: solo lo aprobado y lo recuperado hasta esa fecha
       const upToAsOf: AppState = {
@@ -77,7 +89,10 @@ export function balanceRows(state: AppState, from: string, to: string, users: Us
         otRecoveredMin: state.absences
           .filter((a) => a.userId === u.id && a.type === "Compensación de horas" && a.status === "Aprobado" && inRange(a.dateFrom))
           .reduce((acc, a) => acc + compensationMinutes(state, u.id, a), 0),
-        otPendingMin: sumMin("Pendiente"),
+        otDetectedMin: detected,
+        otPendingMin: pending,
+        otInReviewMin: Math.min(inReview, pending),
+        otNotSentMin: Math.max(0, pending - inReview),
         otReturnedMin: sumMin("Devuelto"),
         otBalanceMin: bal.availableMin,
         otExpiredMin: bal.expiredMin,
@@ -93,18 +108,20 @@ const HEADER = [
   "Persona", "Equipo", "Jornada (h/día)",
   "Vacaciones: corresponden", "Vacaciones: usadas", "Vacaciones: disponibles", "Vacaciones: vencen",
   "Vacaciones tomadas en el período (días)", "Vacaciones pendientes de aprobar (días)",
-  "Horas extra aprobadas en el período (h)", "Recuperadas en el período (h)",
+  "Horas extra aprobadas en el período (h)",
   "Saldo a favor al cierre (h)", "Saldo a favor al cierre (días)",
-  "Pendientes de validar (h)", "Devueltas para corregir (h)", "Vencidas sin usar (h)",
+  "Extra según calendario (h)", "Pendientes de validar (h)", "  · en revisión (h)", "  · sin enviar (h)",
+  "Devueltas para corregir (h)", "Vencidas sin usar (h)",
 ];
 
 const toRow = (r: BalanceRow) => [
   r.user.name, r.user.team === "espana" ? "España" : "LATAM", h(r.dailyMin),
   r.vacEntitled, r.vacUsed, r.vacAvailable, ddmmyyyy(r.vacExpires),
   r.vacTaken, r.vacPending,
-  h(r.otApprovedMin), h(r.otRecoveredMin),
+  h(r.otApprovedMin),
   h(r.otBalanceMin), days(r.otBalanceMin, r.dailyMin),
-  h(r.otPendingMin), h(r.otReturnedMin), h(r.otExpiredMin),
+  h(r.otDetectedMin), h(r.otPendingMin), h(r.otInReviewMin), h(r.otNotSentMin),
+  h(r.otReturnedMin), h(r.otExpiredMin),
 ];
 
 /** Excel de saldos: una hoja con el período completo y otra con el detalle mes por mes. */
@@ -113,6 +130,7 @@ export function buildBalanceWorkbook(XLSX: typeof import("xlsx"), state: AppStat
     ["Saldos (vacaciones y días a favor) al cierre del período, o a hoy si el período todavía no terminó."],
     ["Vacaciones: 10 días hábiles por período anual desde la fecha de ingreso; vencen en el aniversario."],
     ["Horas extra y días a favor: aprobados que empiezan en el período; el saldo descuenta las compensaciones y lo vencido (1 año)."],
+    ["Pendientes de validar: las horas extra del calendario (cada día, lo que pasa de la jornada) que todavía no están aprobadas, enviadas a revisión o no."],
   ];
   const summary: (string | number)[][] = [
     [`Vacaciones y horas extra · ${ddmmyyyy(from)} al ${ddmmyyyy(to)}`],
@@ -132,7 +150,7 @@ export function buildBalanceWorkbook(XLSX: typeof import("xlsx"), state: AppStat
   }
 
   const wb = XLSX.utils.book_new();
-  const widths = [28, 9, 9, 12, 11, 12, 12, 16, 16, 16, 14, 14, 14, 14, 14, 12];
+  const widths = [28, 9, 9, 12, 11, 12, 12, 16, 16, 16, 14, 14, 14, 14, 14, 14, 14, 12];
   const add = (name: string, aoa: (string | number)[][], cols: number[]) => {
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws["!cols"] = cols.map((wch) => ({ wch }));
