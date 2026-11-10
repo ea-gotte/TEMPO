@@ -5,6 +5,7 @@ import { HBarChart, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { downloadProjectHoursXlsx } from "../projectHoursReport";
 import { downloadDailyHoursXlsx } from "../dailyHoursReport";
+import { balanceRows, downloadBalanceXlsx } from "../balanceReport";
 
 type Period = "semana" | "mes" | "personalizado";
 
@@ -305,6 +306,7 @@ export function Reports() {
           </tbody>
         </table>
       </div>
+      {!isEmployee && <BalanceCard from={rFrom} to={rTo} userFilter={userFilter} />}
       {projectXlsx && (
         <ProjectXlsxModal
           initialProject={projectFilter} initialFrom={rFrom} initialTo={rTo}
@@ -312,6 +314,84 @@ export function Reports() {
         />
       )}
     </>
+  );
+}
+
+/**
+ * Vacaciones y días a favor de cada persona en el período de Reportes: disponibles, tomados,
+ * aprobados, pendientes de validar y saldo al cierre. Solo para admin/gerente.
+ */
+function BalanceCard({ from, to, userFilter }: { from: string; to: string; userFilter: string }) {
+  const { state } = useStore();
+  const toast = useToast();
+  const users = useMemo(
+    () => state.users.filter((u) => u.active && (!userFilter || u.id === userFilter)),
+    [state.users, userFilter],
+  );
+  const rows = useMemo(() => balanceRows(state, from, to, users), [state, from, to, users]);
+  const asDays = (min: number, daily: number) => (daily > 0 ? Math.round((min / daily) * 10) / 10 : 0);
+  const cell = (min: number, warn = false) => (
+    <td style={{ fontFamily: "var(--mono)", color: min > 0 ? (warn ? "var(--warning)" : undefined) : "var(--text-3)" }}>{min > 0 ? fmtDur(min) : "—"}</td>
+  );
+
+  async function exportXlsx() {
+    try {
+      const file = await downloadBalanceXlsx(state, from, to, users);
+      toast(`Excel generado: ${file}`);
+    } catch {
+      toast("No se pudo generar el Excel.");
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 14, overflowX: "auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px 0", flexWrap: "wrap" }}>
+        <div className="card-title" style={{ margin: 0 }}>Vacaciones y días a favor por persona</div>
+        <span style={{ fontSize: 12, color: "var(--text-3)" }}>Saldos al {fmtDate(to < today() ? to : today())}</span>
+        <span style={{ flex: 1 }} />
+        <button className="btn btn-secondary btn-sm" onClick={exportXlsx}><Icon name="download" size={13} /> Excel de saldos</button>
+      </div>
+      <table className="table table-compact">
+        <thead>
+          <tr>
+            <th>Persona</th>
+            <th title="Días hábiles disponibles del período anual vigente (de 10)">Vacaciones disponibles</th>
+            <th title="Días hábiles de vacaciones aprobadas dentro del período">Tomadas en el período</th>
+            <th title="Horas extra y días a favor aprobados en el período">Extra aprobadas</th>
+            <th title="Compensaciones de horas aprobadas en el período">Recuperadas</th>
+            <th title="Saldo de días a favor sin vencer al cierre del período">Saldo a favor</th>
+            <th title="Solicitudes de horas extra en revisión de Recursos Humanos">Pendientes de validar</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.user.id}>
+              <td style={{ fontWeight: 600 }}>{r.user.name}</td>
+              <td>
+                <strong>{r.vacAvailable}</strong> <span style={{ color: "var(--text-3)" }}>de {r.vacEntitled}</span>
+                <div style={{ fontSize: 11, color: "var(--text-3)" }}>vencen {fmtDate(r.vacExpires)}</div>
+              </td>
+              <td>
+                {r.vacTaken > 0 ? `${r.vacTaken} día${r.vacTaken !== 1 ? "s" : ""}` : "—"}
+                {r.vacPending > 0 && <div style={{ fontSize: 11, color: "var(--warning)" }}>{r.vacPending} pendiente{r.vacPending !== 1 ? "s" : ""}</div>}
+              </td>
+              {cell(r.otApprovedMin)}
+              {cell(r.otRecoveredMin)}
+              <td style={{ fontFamily: "var(--mono)" }}>
+                {r.otBalanceMin > 0 ? <>{fmtDur(r.otBalanceMin)} <span style={{ color: "var(--text-3)" }}>≈ {asDays(r.otBalanceMin, r.dailyMin)} d</span></> : <span style={{ color: "var(--text-3)" }}>—</span>}
+              </td>
+              <td style={{ fontFamily: "var(--mono)", color: r.otPendingMin > 0 ? "var(--warning)" : "var(--text-3)" }}>
+                {r.otPendingMin > 0 ? fmtDur(r.otPendingMin) : "—"}
+                {r.otReturnedMin > 0 && <div style={{ fontSize: 11, color: "var(--accent)" }}>{fmtDur(r.otReturnedMin)} devueltas</div>}
+              </td>
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text-3)" }}>Sin personas para mostrar.</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
