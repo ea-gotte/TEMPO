@@ -6,7 +6,6 @@ import { fmtDate } from "../utils";
 import { activeSprint, isDone, scopeStats, sumHours } from "./agile";
 import { useEnv } from "./env";
 import type { Perms } from "./logic";
-import { KpiCard, Person } from "./parts";
 import type { ChangeRequest, ChangeStatus } from "./types";
 import { useWork, workActions } from "./workStore";
 import { downloadChangeReport } from "./changeReport";
@@ -19,21 +18,25 @@ const STATUS: Record<ChangeStatus, { label: string; cls: string }> = {
 };
 
 /**
- * Solicitudes de cambio del cliente. Las horas de los cambios aprobados se
- * absorben y quedan medidas (crecimiento del alcance). Cada aprobación crea
- * una nueva línea base. Decide el Project Manager.
+ * Cambios que pide el cliente, en una lista: qué pidió, cuánto cuesta y qué se decidió.
+ * Las horas de lo aprobado se absorben y quedan medidas; cada aprobación crea una línea
+ * base nueva. Decide el Project Manager.
  */
 export function ChangesTab({ projectId, perms }: { projectId: string; perms: Perms }) {
   const env = useEnv();
   const work = useWork();
-  const [filter, setFilter] = useState<ChangeStatus | "">("");
+  const [onlyPending, setOnlyPending] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deciding, setDeciding] = useState<ChangeRequest | null>(null);
 
-  const changes = work.changes.filter((c) => c.projectId === projectId).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  // Primero lo que espera decisión; después, lo más reciente
+  const changes = work.changes
+    .filter((c) => c.projectId === projectId)
+    .sort((a, b) => Number(b.status === "pendiente") - Number(a.status === "pendiente") || b.createdAt.localeCompare(a.createdAt));
   const baselines = work.baselines.filter((b) => b.projectId === projectId).sort((a, b) => b.version - a.version);
   const st = scopeStats(baselines, changes);
-  const shown = changes.filter((c) => !filter || c.status === filter);
+  const shown = changes.filter((c) => !onlyPending || c.status === "pendiente");
   const userOf = (id: string | null) => env.users.find((u) => u.id === id);
 
   const handleExport = () => {
@@ -53,74 +56,78 @@ export function ChangesTab({ projectId, perms }: { projectId: string; perms: Per
 
   return (
     <>
-      <div className="kpi-grid">
-        <KpiCard icon="clipboard" label="Solicitudes" value={st.total} hint={`${st.approved} aprobadas · ${st.rejected} rechazadas · ${st.deferred} diferidas`} />
-        <KpiCard icon="hourglass" label="Pendientes de decidir" value={st.pending} tone={st.pending ? "bad" : "ok"} hint={st.oldestPendingDays ? `la más antigua, hace ${st.oldestPendingDays} d` : undefined} />
-        <KpiCard icon="flame" label="Horas absorbidas" value={`${st.absorbedHours} h`} hint="horas de cambios aprobados" tone={st.absorbedHours ? "bad" : undefined} />
-        <KpiCard icon="trending-up" label="Crecimiento del alcance" value={st.growthPct === null ? "—" : `${st.growthPct > 0 ? "+" : ""}${st.growthPct}%`} hint={st.baselineHours !== null ? `${st.baselineHours} h → ${st.currentHours} h` : undefined} tone={st.growthPct !== null && st.growthPct >= 20 ? "bad" : undefined} />
-        <KpiCard icon="calendar-days" label="Fin del proyecto" value={st.currentEnd ? fmtDate(st.currentEnd).slice(0, 5) : "—"} hint={st.endShiftDays ? `${st.endShiftDays > 0 ? "+" : ""}${st.endShiftDays} d contra el plan original` : "sin corrimiento"} />
-      </div>
-
-      <div className="pw-toolbar">
-        <div className="tabs">
-          {([["", "Todas"], ["pendiente", "Pendientes"], ["aprobado", "Aprobadas"], ["diferido", "Diferidas"], ["rechazado", "Rechazadas"]] as const).map(([k, l]) => (
-            <button key={k} className={filter === k ? "active" : ""} onClick={() => setFilter(k)}>{l}</button>
-          ))}
+      <div className="pw-toolbar" style={{ marginBottom: 6 }}>
+        <div style={{ fontSize: 13, color: "var(--text-2)" }}>
+          <b style={{ color: st.pending ? "var(--danger)" : undefined }}>{st.pending} sin decidir</b>
+          {" · "}{st.approved} aprobado{st.approved !== 1 ? "s" : ""}
+          {" · "}<b>{st.absorbedHours} h</b> absorbidas
+          {st.growthPct !== null && <span style={{ color: st.growthPct >= 20 ? "var(--danger)" : undefined }}> ({st.growthPct > 0 ? "+" : ""}{st.growthPct}% del alcance)</span>}
+          {st.endShiftDays ? <> · fin {st.endShiftDays > 0 ? "+" : ""}{st.endShiftDays} d</> : null}
         </div>
         <span className="grow" />
-        <button className="btn btn-secondary" disabled={changes.length === 0} onClick={handleExport}><Icon name="download" size={15} /> Exportar historial</button>
-        <button className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" size={15} /> Nueva solicitud</button>
+        {changes.length > 0 && (
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer" }}>
+            <input type="checkbox" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} /> Solo sin decidir
+          </label>
+        )}
+        <button className="btn btn-ghost btn-sm" disabled={changes.length === 0} onClick={handleExport} title="Exportar el historial de cambios" aria-label="Exportar el historial de cambios"><Icon name="download" size={14} /></button>
+        <button className="btn btn-primary btn-sm" onClick={() => setCreating(true)}><Icon name="plus" size={13} /> Nuevo cambio</button>
       </div>
 
-      {shown.length === 0 && <div className="card card-pad"><Empty icon="message" text="No hay solicitudes" sub="Cuando el cliente pida algo nuevo, registralo acá para decidir con datos." /></div>}
+      {shown.length === 0 && <Empty icon="message" text={changes.length ? "Nada sin decidir" : "Sin cambios del cliente"} sub={changes.length ? undefined : "Cuando el cliente pida algo fuera de lo acordado, registralo acá."} />}
       {shown.map((c) => {
+        const open = openId === c.id;
         const task = work.tasks.find((t) => t.id === c.taskId);
         return (
-          <div key={c.id} className="card card-pad" style={{ marginBottom: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <strong style={{ fontSize: 14.5 }}>{c.title}</strong>
-              <span className={`pw-pill ${STATUS[c.status].cls}`}>{STATUS[c.status].label}</span>
-              {c.urgent && <span className="pw-pill late"><Icon name="flame" size={11} /> urgente</span>}
-              {c.duringSprint && c.status === "aprobado" && <span className="pw-pill soon" title="Se aprobó con un sprint en marcha">entró en pleno sprint</span>}
-              <span style={{ flex: 1 }} />
-              <span className="pw-pill">{c.impactHours != null ? `${c.impactHours} h` : "sin horas"}{c.impactDays ? ` · +${c.impactDays} d` : ""}</span>
-              {c.status === "pendiente" && perms.canApprove && <button className="btn btn-primary btn-sm" onClick={() => setDeciding(c)}>Decidir</button>}
+          <div key={c.id} className="pw-chg">
+            <div className="pw-chg-row" onClick={() => setOpenId(open ? null : c.id)} role="button" aria-expanded={open}>
+              <Icon name="chevron-right" size={13} style={{ transform: open ? "rotate(90deg)" : undefined, color: "var(--text-3)", flexShrink: 0 }} />
+              <span className="t">{c.title}</span>
+              {c.urgent && c.status === "pendiente" && <span className="pw-pill late">urgente</span>}
+              <span className="h">{c.impactHours != null ? `${c.impactHours} h` : "—"}{c.impactDays ? ` · +${c.impactDays} d` : ""}</span>
+              <span className={`pw-pill ${STATUS[c.status].cls}`} style={{ minWidth: 76, justifyContent: "center" }}>{STATUS[c.status].label}</span>
+              {c.status === "pendiente" && perms.canApprove && (
+                <button className="btn btn-primary btn-sm" onClick={(e) => { e.stopPropagation(); setDeciding(c); }}>Decidir</button>
+              )}
             </div>
-            <div style={{ fontSize: 12, color: "var(--text-3)", margin: "4px 0 6px" }}>
-              Pedido por {c.requestedBy || "—"} · registrado el {fmtDate(c.createdAt)} por {userOf(c.registeredBy)?.name ?? "—"}
-            </div>
-            {c.description && <div style={{ fontSize: 13, color: "var(--text-2)" }}>{c.description}</div>}
-            {c.status !== "pendiente" && (
-              <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed var(--border)", fontSize: 12.5, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <span style={{ color: "var(--text-3)" }}>Decisión de</span> <Person user={userOf(c.decidedBy)} size={18} />
-                <span style={{ color: "var(--text-3)" }}>el {c.decidedAt ? fmtDate(c.decidedAt) : "—"}</span>
-                {c.decisionNote && <span style={{ color: "var(--text-2)" }}>· {c.decisionNote}</span>}
-                {task && <span className="pw-tag" title="Ítem creado en el backlog / sprint">▸ {task.name}{task.sprintId ? ` (${work.sprints.find((s) => s.id === task.sprintId)?.name ?? "sprint"})` : " (backlog)"}</span>}
+            {open && (
+              <div className="pw-chg-detail">
+                {c.description && <div>{c.description}</div>}
+                <div style={{ color: "var(--text-3)" }}>
+                  Pedido por {c.requestedBy || "—"} · registrado el {fmtDate(c.createdAt)} por {userOf(c.registeredBy)?.name ?? "—"}
+                </div>
+                {c.status !== "pendiente" && (
+                  <div>
+                    <b>{STATUS[c.status].label}</b> por {userOf(c.decidedBy)?.name ?? "—"}{c.decidedAt ? ` el ${fmtDate(c.decidedAt)}` : ""}
+                    {c.decisionNote && <> · {c.decisionNote}</>}
+                    {task && <span style={{ color: "var(--text-3)" }}> · quedó como “{task.name}”{task.sprintId ? ` en ${work.sprints.find((sp) => sp.id === task.sprintId)?.name ?? "un sprint"}` : " en el backlog"}</span>}
+                  </div>
+                )}
               </div>
             )}
           </div>
         );
       })}
 
-      <div className="pw-section-title">Líneas base del plan</div>
-      <div className="card" style={{ overflowX: "auto" }}>
-        <table className="table">
-          <thead><tr><th>Versión</th><th>Fecha</th><th>Alcance</th><th>Fin planificado</th><th>Motivo</th></tr></thead>
-          <tbody>
-            {baselines.length === 0 && <tr><td colSpan={5}><Empty icon="history" text="Sin línea base todavía" sub="Se crea sola al aprobar el primer cambio." /></td></tr>}
-            {baselines.map((b, i) => (
-              <tr key={b.id}>
-                <td><span className={`pw-pill ${i === 0 ? "ok" : ""}`}>v{b.version}{i === 0 ? " · vigente" : ""}</span></td>
-                <td>{fmtDate(b.date)}</td>
-                <td><b>{b.scopeHours} h</b></td>
-                <td>{b.endDate ? fmtDate(b.endDate) : "—"}</td>
-                <td>{b.reason}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 6 }}>Los indicadores de plazo se miden contra la línea base vigente; lo que se movió por decisión del cliente queda registrado acá.</div>
+      {baselines.length > 0 && (
+        <details className="pw-chg-base">
+          <summary>Líneas base del plan ({baselines.length})</summary>
+          <table className="table table-compact" style={{ fontSize: 12.5 }}>
+            <thead><tr><th>Versión</th><th>Fecha</th><th>Alcance</th><th>Fin planificado</th><th>Motivo</th></tr></thead>
+            <tbody>
+              {baselines.map((b, i) => (
+                <tr key={b.id}>
+                  <td>v{b.version}{i === 0 ? " · vigente" : ""}</td>
+                  <td>{fmtDate(b.date)}</td>
+                  <td>{b.scopeHours} h</td>
+                  <td>{b.endDate ? fmtDate(b.endDate) : "—"}</td>
+                  <td>{b.reason}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      )}
 
       {creating && <NewChangeModal projectId={projectId} onClose={() => setCreating(false)} />}
       {deciding && <DecideModal change={deciding} onClose={() => setDeciding(null)} />}
@@ -140,7 +147,7 @@ function NewChangeModal({ projectId, onClose }: { projectId: string; onClose: ()
 
   return (
     <Modal
-      title="Nueva solicitud de cambio"
+      title="Nuevo cambio del cliente"
       onClose={onClose}
       footer={
         <>
@@ -149,7 +156,7 @@ function NewChangeModal({ projectId, onClose }: { projectId: string; onClose: ()
             className="btn btn-primary" disabled={!title.trim()}
             onClick={() => {
               workActions.addChange({ projectId, title: title.trim(), description: description.trim(), requestedBy: requestedBy.trim(), registeredBy: env.me.id, urgent, impactHours: hours === "" ? null : Number(hours), impactDays: days === "" ? null : Number(days) });
-              toast("Solicitud registrada. Queda pendiente de decisión del Project Manager.");
+              toast("Cambio registrado. Queda pendiente de decisión del Project Manager.");
               onClose();
             }}
           >
@@ -159,13 +166,20 @@ function NewChangeModal({ projectId, onClose }: { projectId: string; onClose: ()
       }
     >
       <div className="field"><label>¿Qué pide el cliente?</label><input className="input" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej.: Agregar un nivel de subsuelo" /></div>
-      <div className="field"><label>Detalle</label><textarea className="textarea" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} /></div>
       <div className="form-grid">
-        <div className="field"><label>Quién lo pidió (cliente)</label><input className="input" value={requestedBy} onChange={(e) => setRequestedBy(e.target.value)} /></div>
-        <div className="field"><label>¿Es urgente?</label><label style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 0" }}><input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> Sí, no puede esperar</label></div>
-        <div className="field"><label>Impacto estimado (horas)</label><input className="input" type="number" min={0} step={0.5} value={hours} onChange={(e) => setHours(e.target.value)} /></div>
-        <div className="field"><label>Corrimiento de fecha (días)</label><input className="input" type="number" min={0} value={days} onChange={(e) => setDays(e.target.value)} /></div>
+        <div className="field"><label>Horas estimadas</label><input className="input" type="number" min={0} step={0.5} value={hours} onChange={(e) => setHours(e.target.value)} /></div>
+        <div className="field"><label>&nbsp;</label><label style={{ display: "flex", gap: 8, alignItems: "center", padding: "8px 0", fontWeight: 400 }}><input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> Es urgente</label></div>
       </div>
+      <details>
+        <summary style={{ cursor: "pointer", fontSize: 12.5, color: "var(--text-3)" }}>Más datos (opcional)</summary>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 10 }}>
+          <div className="field"><label>Detalle</label><textarea className="textarea" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} /></div>
+          <div className="form-grid">
+            <div className="field"><label>Quién lo pidió</label><input className="input" value={requestedBy} onChange={(e) => setRequestedBy(e.target.value)} /></div>
+            <div className="field"><label>Corre la fecha de fin (días)</label><input className="input" type="number" min={0} value={days} onChange={(e) => setDays(e.target.value)} /></div>
+          </div>
+        </div>
+      </details>
     </Modal>
   );
 }
@@ -215,14 +229,14 @@ function DecideModal({ change, onClose }: { change: ChangeRequest; onClose: () =
             <div className="field"><label>Horas que absorbe el proyecto</label><input className="input" type="number" min={0} step={0.5} value={hours} onChange={(e) => setHours(e.target.value)} /></div>
             <div className="field"><label>Corrimiento de la fecha de fin (días)</label><input className="input" type="number" min={0} value={days} onChange={(e) => setDays(e.target.value)} /></div>
           </div>
-          <div className="field">
+          {(planned || act) && <div className="field">
             <label>¿Dónde entra?</label>
             <select className="select" value={dest} onChange={(e) => { setDest(e.target.value as typeof dest); setError(""); }}>
               <option value="backlog">Al backlog (se prioriza después)</option>
               {planned && <option value="proximo">Al {planned.name} (todavía no empezó)</option>}
               {act && <option value="activo">Al {act.name} (en marcha) — intercambio</option>}
             </select>
-          </div>
+          </div>}
           {dest === "activo" && act && (
             <div className="pw-field-card">
               <div style={{ fontSize: 12.5, marginBottom: 6 }}>Con el sprint en marcha <b>entra uno, sale uno</b>. Elegí qué sale (necesitás liberar {impact} h):</div>

@@ -328,83 +328,90 @@ export function IndicatorsPanel({ onOpen }: { onOpen: (projectId: string) => voi
   );
 }
 
-/** Tarjeta de indicadores de UN proyecto (ficha). */
+/** Tarjeta de indicadores de UN proyecto (ficha): cuatro cuadros, el detalle y los puntos críticos. */
 export function ProjectIndicatorsCard({ ind, onOpenCritical }: { ind: ProjectIndicators; onOpenCritical?: () => void }) {
   const s = ind.schedule, h = ind.hours, tk = ind.tasks, m = ind.milestones;
+  const [allCritical, setAllCritical] = useState(false);
+  const end = s.actualEnd ?? s.forecastEnd;
+  const SHOWN = 4;
+  const critical = allCritical ? ind.critical : ind.critical.slice(0, SHOWN);
+  const muted = { color: "var(--text-3)" } as const;
+
+  // Detalle secundario: una fila por dato, solo los que aplican al proyecto
+  const rows: [string, React.ReactNode][] = [
+    ["Tareas", <>{tk.done} hechas · {tk.open} abiertas{tk.overdue ? <> · <b style={{ color: "var(--danger)" }}>{tk.overdue} atrasadas</b></> : null}</>],
+    ["Cerradas a tiempo", tk.onTimePct === null ? "—" : <>{tk.onTimePct}%{tk.avgDelayDays ? <span style={muted}> · atraso medio {tk.avgDelayDays} d</span> : null}</>],
+  ];
+  if (m.avgSlipDays !== null) rows.push(["Desvío de hitos", <>{m.avgSlipDays > 0 ? "+" : ""}{m.avgSlipDays} d de promedio{m.onTimePct !== null && <span style={muted}> · {m.onTimePct}% a tiempo</span>}</>]);
+  if (ind.scope.total > 0) {
+    rows.push(["Alcance", <>
+      {ind.scope.growthPct !== null ? <b style={{ color: ind.scope.growthPct >= 20 ? "var(--danger)" : undefined }}>{ind.scope.growthPct > 0 ? "+" : ""}{ind.scope.growthPct}%</b> : "—"} sobre el plan original
+      <span style={muted}> · {ind.scope.absorbedHours} h absorbidas · {ind.scope.pending} cambio{ind.scope.pending !== 1 ? "s" : ""} sin decidir</span>
+    </>]);
+  }
+  if (ind.mode !== "planificado") {
+    rows.push(["Ritmo del equipo", <>
+      {ind.agile.velocityAvg !== null ? <><b>{ind.agile.velocityAvg} h</b> por sprint</> : "Sin sprints cerrados"}
+      {ind.agile.sprintsLeft !== null && <span style={muted}> · quedan ~{ind.agile.sprintsLeft} sprints ({ind.agile.backlogHours} h)</span>}
+    </>]);
+  }
+  if (ind.uncertainty.range && (ind.mode === "hibrido" || ind.uncertainty.maturityPct !== null)) {
+    rows.push(["Horas finales", <>
+      entre <b>{ind.uncertainty.range.min}</b> y <b>{ind.uncertainty.range.max} h</b>
+      <span style={muted}> · probable {ind.uncertainty.range.prob} h · madurez del plan {ind.uncertainty.maturityPct ?? "—"}%</span>
+    </>]);
+  }
+
   return (
     <div className="card card-pad">
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         <div className="card-title" style={{ margin: 0 }}>Indicadores: proyectado vs. real</div>
         <HealthPill h={ind.health} />
       </div>
-      <div className="grid-2" style={{ gap: 18, alignItems: "start" }}>
-        <div>
-          <dl className="pw-kv" style={{ gridTemplateColumns: "140px 1fr", rowGap: 9 }}>
-            <dt>Fin planificado</dt><dd>{s.plannedEnd ? fmtDate(s.plannedEnd) : "—"}</dd>
-            <dt>{s.actualEnd ? "Fin real" : "Fin pronosticado"}</dt><dd>{(s.actualEnd ?? s.forecastEnd) ? fmtDate((s.actualEnd ?? s.forecastEnd)!) : "—"} <Variance days={s.varianceDays} /></dd>
-            <dt>Cerradas a tiempo</dt><dd>{tk.onTimePct === null ? "—" : `${tk.onTimePct}%`}{tk.avgDelayDays ? <span style={{ color: "var(--text-3)", fontSize: 12 }}> · atraso medio {tk.avgDelayDays} d</span> : null}</dd>
-            <dt>Hitos cumplidos</dt><dd>{m.met} de {m.total}{m.overdue ? <span className="pw-pill late" style={{ marginLeft: 6 }}>{m.overdue} vencido{m.overdue > 1 ? "s" : ""}</span> : null}{m.onTimePct !== null && <span style={{ color: "var(--text-3)", fontSize: 12 }}> · {m.onTimePct}% a tiempo</span>}{m.avgSlipDays !== null && <span style={{ color: "var(--text-3)", fontSize: 12 }}> · desvío medio {m.avgSlipDays > 0 ? "+" : ""}{m.avgSlipDays} d (real vs. plan)</span>}</dd>
-            {m.endShiftDays > 0 && (<><dt>Fin previsto de hitos</dt><dd><span className={`pw-pill ${m.endShiftDays >= 14 ? "late" : "soon"}`}>último hito +{m.endShiftDays} d</span><span style={{ color: "var(--text-3)", fontSize: 12 }}> · {m.delayedOpen} atrasado{m.delayedOpen > 1 ? "s" : ""} hoy</span></dd></>)}
-            <dt>Tareas</dt><dd>{tk.done} hechas · {tk.open} abiertas · {tk.overdue} atrasadas</dd>
-          </dl>
+
+      <div className="pw-ind-grid">
+        <div className="pw-ind">
+          <div className="pw-mini-label">{s.actualEnd ? "Fin real" : "Fin pronosticado"}</div>
+          <div className="v">{end ? fmtDate(end).slice(0, 5) : "—"} <Variance days={s.varianceDays} /></div>
+          <div className="h">planificado {s.plannedEnd ? fmtDate(s.plannedEnd) : "—"}</div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div>
-            <div className="pw-mini-label">Horas reales vs. proyectadas</div>
-            <PlanVsReal real={h.logged} plan={h.budget} unit="h" over={(h.consumedPct ?? 0) > 100} />
-            {h.eac !== null && h.budget && <div style={{ fontSize: 12, color: h.eacVariancePct! > 15 ? "var(--danger)" : "var(--text-2)", marginTop: 3 }}>Final estimado: <b>{h.eac} h</b> ({h.eacVariancePct! > 0 ? "+" : ""}{h.eacVariancePct}% sobre lo proyectado)</div>}
+        <div className="pw-ind">
+          <div className="pw-mini-label">Horas</div>
+          <PlanVsReal real={h.logged} plan={h.budget} unit="h" over={(h.consumedPct ?? 0) > 100} />
+          <div className="h" style={h.eac !== null && h.budget && h.eacVariancePct! > 15 ? { color: "var(--danger)" } : undefined}>
+            {h.eac !== null && h.budget ? <>final estimado {h.eac} h ({h.eacVariancePct! > 0 ? "+" : ""}{h.eacVariancePct}%)</> : "sin horas proyectadas"}
           </div>
-          <div>
-            <div className="pw-mini-label">Avance real vs. esperado a la fecha</div>
-            <ProgressVsExpected real={s.realPct} expected={s.expectedPct} />
+        </div>
+        <div className="pw-ind">
+          <div className="pw-mini-label">Avance</div>
+          <ProgressVsExpected real={s.realPct} expected={s.expectedPct} />
+          <div className="h">la marca es lo esperado a hoy</div>
+        </div>
+        <div className="pw-ind">
+          <div className="pw-mini-label">Hitos</div>
+          <div className="v">{m.met} de {m.total}</div>
+          <div className="h" style={m.overdue ? { color: "var(--danger)" } : undefined}>
+            {m.overdue ? `${m.overdue} vencido${m.overdue > 1 ? "s" : ""}` : "ninguno vencido"}{m.endShiftDays > 0 ? ` · último hito +${m.endShiftDays} d` : ""}
           </div>
         </div>
       </div>
-      {(ind.scope.total > 0 || ind.mode !== "planificado") && (
-        <div className="pw-method-strip">
-          {ind.scope.total > 0 && (
-            <div>
-              <div className="pw-mini-label">Estabilidad del alcance</div>
-              <div style={{ fontSize: 13 }}>
-                {ind.scope.growthPct !== null ? <b style={{ color: ind.scope.growthPct >= 20 ? "var(--danger)" : undefined }}>{ind.scope.growthPct > 0 ? "+" : ""}{ind.scope.growthPct}%</b> : "—"} sobre el plan original
-                <span style={{ color: "var(--text-3)" }}> · {ind.scope.absorbedHours} h absorbidas · {ind.scope.approved} aprobados, {ind.scope.pending} pendientes, {ind.scope.rejected} rechazados</span>
-                {ind.scope.late > 0 && <span className="pw-pill soon" style={{ marginLeft: 6 }}>{ind.scope.late} entró en pleno sprint</span>}
-              </div>
-            </div>
-          )}
-          {ind.mode !== "planificado" && (
-            <div>
-              <div className="pw-mini-label">Ritmo del equipo</div>
-              <div style={{ fontSize: 13 }}>
-                {ind.agile.velocityAvg !== null ? <><b>{ind.agile.velocityAvg} h</b> por sprint</> : "Sin sprints cerrados"}
-                {ind.agile.sprintsLeft !== null && <span style={{ color: "var(--text-3)" }}> · el backlog ({ind.agile.backlogHours} h) llevaría ~{ind.agile.sprintsLeft} sprints</span>}
-                {ind.agile.active && <span style={{ color: ind.agile.active.remaining - ind.agile.active.ideal > 8 ? "var(--danger)" : "var(--text-3)" }}> · {ind.agile.active.name}: quedan {ind.agile.active.remaining} h (ideal {ind.agile.active.ideal} h)</span>}
-              </div>
-            </div>
-          )}
-          {ind.uncertainty.range && (ind.mode === "hibrido" || ind.uncertainty.maturityPct !== null) && (
-            <div>
-              <div className="pw-mini-label">Incertidumbre</div>
-              <div style={{ fontSize: 13 }}>
-                Horas finales entre <b>{ind.uncertainty.range.min}</b> y <b>{ind.uncertainty.range.max} h</b> (probable {ind.uncertainty.range.prob} h)
-                <span style={{ color: "var(--text-3)" }}> · madurez del plan {ind.uncertainty.maturityPct ?? "—"}%{ind.uncertainty.reserveUsedPct !== null ? ` · reserva al ${ind.uncertainty.reserveUsedPct}%` : ""}</span>
-              </div>
-            </div>
-          )}
+
+      <dl className="pw-ind-rows">
+        {rows.map(([k, v]) => <React.Fragment key={k}><dt>{k}</dt><dd>{v}</dd></React.Fragment>)}
+      </dl>
+
+      <div className="pw-mini-label" style={{ marginTop: 16 }}>Puntos críticos{ind.critical.length > 0 && ` (${ind.critical.length})`}</div>
+      {ind.critical.length === 0 && <div style={{ color: "var(--success)", fontSize: 13 }}>Sin puntos críticos.</div>}
+      {critical.map((c, i) => (
+        <div key={i} className="pw-crit" style={{ cursor: onOpenCritical ? "pointer" : undefined }} onClick={onOpenCritical}>
+          <span className="pw-dotc" style={{ background: c.severity === "alta" ? "var(--danger)" : "var(--warning)" }} title={c.severity === "alta" ? "Severidad alta" : "Severidad media"} />
+          <span>{c.text}</span>
         </div>
-      )}
-      {ind.critical.length > 0 ? (
-        <div style={{ marginTop: 14 }}>
-          <div className="pw-mini-label">Puntos críticos</div>
-          {ind.critical.map((c, i) => (
-            <div key={i} className="list-item" style={{ cursor: onOpenCritical ? "pointer" : undefined }} onClick={onOpenCritical}>
-              <span className={`pw-pill ${c.severity === "alta" ? "late" : "soon"}`} style={{ width: 52, justifyContent: "center" }}>{c.severity === "alta" ? "Alta" : "Media"}</span>
-              <span>{c.text}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div style={{ marginTop: 12, color: "var(--success)", fontSize: 13 }}>Sin puntos críticos.</div>
+      ))}
+      {ind.critical.length > SHOWN && (
+        <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={() => setAllCritical((v) => !v)}>
+          {allCritical ? "Ver menos" : `Ver los ${ind.critical.length - SHOWN} restantes`}
+        </button>
       )}
     </div>
   );

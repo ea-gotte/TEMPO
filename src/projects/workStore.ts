@@ -70,14 +70,23 @@ function withCompletion(prev: Task | null, next: Task): Task {
   return { ...next, completedAt: null, archived: false, archivedAt: null };
 }
 
+/**
+ * Roles guardados en el navegador, al día con el catálogo: ya no existe el Referente y el
+ * Líder Funcional es opcional y va al final.
+ */
+function normalizeRoles(roles: RoleDef[]): RoleDef[] {
+  const kept = roles.filter((r) => r.key !== "referente");
+  const lead = kept.find((r) => r.key === "lider_tecnico");
+  const rest = kept.filter((r) => r.key !== "lider_tecnico");
+  return lead ? [...rest, { ...lead, label: "Líder Funcional", required: false }] : rest;
+}
+
 function load(): WorkData {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<WorkData>;
-      const roles = (parsed.roles ?? DEFAULT_ROLES).map((r) =>
-        r.key === "lider_tecnico" ? { ...r, label: "Líder Funcional" } : r,
-      );
+      const roles = normalizeRoles(parsed.roles ?? DEFAULT_ROLES);
       return { ...empty(), ...parsed, roles };
     }
   } catch {

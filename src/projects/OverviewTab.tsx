@@ -195,30 +195,21 @@ export function InfoTab({ projectId, perms, onEditProject }: { projectId: string
 
         {/* ---------- Documentación ---------- */}
         <div className="card card-pad" style={{ marginTop: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
-            <div className="card-title" style={{ margin: 0 }}>Documentación</div>
+          <div style={{ display: "flex", alignItems: "center", marginBottom: 4 }}>
+            <div className="card-title" style={{ margin: 0 }}>Carpetas del proyecto</div>
             <span style={{ flex: 1 }} />
-            {perms.canManage && <button className="btn btn-secondary btn-sm" onClick={() => setEditDocs(true)}><Icon name="pencil" size={12} /> Editar enlaces</button>}
+            {perms.canManage && <button className="btn btn-ghost btn-sm" onClick={() => setEditDocs(true)} title="Editar enlaces" aria-label="Editar enlaces"><Icon name="pencil" size={13} /></button>}
           </div>
-          <DocLink label="Carpeta en SharePoint" url={meta?.sharepointUrl} />
-          <DocLink label="Carpeta en Autodesk Construction Cloud" url={meta?.accUrl} />
-          {project.notionUrl && safeHttpUrl(project.notionUrl) && <DocLink label="Notion del proyecto" url={project.notionUrl} />}
+          <div className="pw-docs">
+            <DocLink label="SharePoint" url={meta?.sharepointUrl} onAdd={perms.canManage ? () => setEditDocs(true) : undefined} />
+            <DocLink label="Autodesk Construction Cloud" url={meta?.accUrl} onAdd={perms.canManage ? () => setEditDocs(true) : undefined} />
+            {project.notionUrl && safeHttpUrl(project.notionUrl) && <DocLink label="Notion" url={project.notionUrl} />}
+          </div>
         </div>
 
-        {/* ---------- Equipo ---------- */}
-        <div className="card card-pad" style={{ marginTop: 14 }}>
-          <div className="card-title">Equipo del proyecto ({project.memberIds.length})</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {project.memberIds.length === 0 && <span style={{ color: "var(--warning)", fontSize: 13 }}>Sin equipo asignado.</span>}
-            {project.memberIds.map((id) => {
-              const u = userOf(id);
-              return u ? <span className="pw-chip-user" key={id} style={{ padding: "2px 10px 2px 3px" }}><Avatar name={u.name} size={20} /> {u.name}</span> : null;
-            })}
-          </div>
-          <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 8 }}>La membresía se administra desde “Miembros” en la lista de proyectos.</div>
-        </div>
         </div>
 
+        <div>
         {/* ---------- Roles ---------- */}
         <div className="card card-pad">
           <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
@@ -297,6 +288,20 @@ export function InfoTab({ projectId, perms, onEditProject }: { projectId: string
             Una persona puede tener más de un rol y distintos roles en cada proyecto. El botón <Icon name="info" size={11} style={{ verticalAlign: "-2px" }} /> muestra lo que se espera de cada rol.
           </div>
         </div>
+
+        {/* ---------- Equipo ---------- */}
+        <div className="card card-pad" style={{ marginTop: 14 }}>
+          <div className="card-title">Equipo del proyecto ({project.memberIds.length})</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {project.memberIds.length === 0 && <span style={{ color: "var(--warning)", fontSize: 13 }}>Sin equipo asignado.</span>}
+            {project.memberIds.map((id) => {
+              const u = userOf(id);
+              return u ? <span className="pw-chip-user" key={id} style={{ padding: "2px 10px 2px 3px" }}><Avatar name={u.name} size={20} /> {u.name}</span> : null;
+            })}
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 8 }}>La membresía se administra desde “Miembros” en la lista de proyectos.</div>
+        </div>
+        </div>
       </div>
 
       {perms.canManage && (
@@ -311,10 +316,9 @@ export function InfoTab({ projectId, perms, onEditProject }: { projectId: string
         </div>
       )}
 
-      <details className="pw-fold" style={{ marginTop: 14 }}>
-        <summary>Indicadores: proyectado vs. real</summary>
-        <div style={{ marginTop: 10 }}><ProjectIndicatorsCard ind={ind} /></div>
-      </details>
+      <div style={{ marginTop: 14 }}>
+        <ProjectIndicatorsCard ind={ind} />
+      </div>
 
       <div style={{ marginTop: 14, fontSize: 12, color: "var(--text-3)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <span>Demo: tareas, hitos, sprints y tableros se guardan solo en este navegador.</span>
@@ -373,24 +377,27 @@ function AddStructureModal({ projectId, onClose }: { projectId: string; onClose:
   );
 }
 
-/** Acceso directo a una carpeta de documentación; si no hay enlace, lo dice. */
-function DocLink({ label, url }: { label: string; url?: string | null }) {
+/** Una carpeta del proyecto en una línea: nombre, dirección y acceso; si falta el enlace, ofrece cargarlo. */
+function DocLink({ label, url, onAdd }: { label: string; url?: string | null; onAdd?: () => void }) {
   const href = url ? safeHttpUrl(url) : null;
   if (!href) {
     return (
-      <div className="pw-doc empty">
-        <Icon name="folder" size={16} />
-        <div className="txt"><div className="l">{label}</div><div className="u">Sin enlace cargado</div></div>
+      <div className="pw-doc-row none">
+        <Icon name="folder" size={15} />
+        <span className="l">{label}</span>
+        <span className="u">Sin enlace</span>
+        {onAdd && <button className="btn btn-ghost btn-sm" onClick={onAdd}><Icon name="plus" size={12} /> Agregar</button>}
       </div>
     );
   }
   let shown = href;
   try { const u = new URL(href); shown = u.host + (u.pathname === "/" ? "" : u.pathname); } catch { /* se muestra completo */ }
   return (
-    <a className="pw-doc" href={href} target="_blank" rel="noreferrer" title={href}>
-      <Icon name="folder" size={16} />
-      <div className="txt"><div className="l">{label}</div><div className="u">{shown}</div></div>
-      <Icon name="external-link" size={14} />
+    <a className="pw-doc-row" href={href} target="_blank" rel="noreferrer" title={href}>
+      <Icon name="folder" size={15} />
+      <span className="l">{label}</span>
+      <span className="u">{shown}</span>
+      <Icon name="external-link" size={13} />
     </a>
   );
 }

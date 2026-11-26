@@ -31,10 +31,10 @@ export const PLAN_STATUS: { key: PlanStatus; label: string; color: string }[] = 
 ];
 
 /**
- * Roles de un proyecto. Los tres imprescindibles: Project Manager (cliente y
- * gestión; es quien aprueba), Líder Funcional y Coordinador (día a día con
- * los modeladores). El Modelador ejecuta las tareas. El Referente queda como rol
- * opcional de consulta. Cada rol lleva sus responsabilidades. El Project Manager
+ * Roles de un proyecto. Los dos imprescindibles: Project Manager (cliente y
+ * gestión; es quien aprueba) y Coordinador (día a día con los modeladores).
+ * El Modelador ejecuta las tareas. El Líder Funcional es opcional y va al final.
+ * Cada rol lleva sus responsabilidades. El Project Manager
  * también lleva la relación comercial con el cliente (ya no hay un Líder comercial aparte).
  */
 export const DEFAULT_ROLES: RoleDef[] = [
@@ -48,16 +48,6 @@ export const DEFAULT_ROLES: RoleDef[] = [
       "Controla las horas contra lo proyectado y avisa a gerencia ante desvíos.",
       "Mantiene la relación comercial con el cliente y el contrato.",
       "Conoce el alcance contratado para detectar los pedidos que lo exceden y llevarlos a Cambios del cliente.",
-    ],
-  },
-  {
-    key: "lider_tecnico", label: "Líder Funcional", active: true, manage: true, approve: false, required: true,
-    responsibilities: [
-      "Da el soporte técnico al equipo y define los criterios y estándares de modelado.",
-      "Revisa la calidad técnica de los entregables antes de emitirlos.",
-      "Estima el impacto técnico de los cambios que pide el cliente.",
-      "Resuelve los bloqueos técnicos que el coordinador le escala.",
-      "Participa en las estimaciones y en las puertas de decisión.",
     ],
   },
   {
@@ -81,11 +71,13 @@ export const DEFAULT_ROLES: RoleDef[] = [
     ],
   },
   {
-    key: "referente", label: "Referente", active: true, manage: false, approve: false, required: false,
+    key: "lider_tecnico", label: "Líder Funcional", active: true, manage: true, approve: false, required: false,
     responsibilities: [
-      "Es un contacto de consulta del proyecto.",
-      "Aporta contexto y criterio cuando se lo piden.",
-      "Consulta el avance; no modifica el plan.",
+      "Da el soporte técnico al equipo y define los criterios y estándares de modelado.",
+      "Revisa la calidad técnica de los entregables antes de emitirlos.",
+      "Estima el impacto técnico de los cambios que pide el cliente.",
+      "Resuelve los bloqueos técnicos que el coordinador le escala.",
+      "Participa en las estimaciones y en las puertas de decisión.",
     ],
   },
 ];
