@@ -495,7 +495,7 @@ function ComplianceChart({
                         title={overlapTooltip(overlapPairs)}
                         style={{
                           position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%",
-                          background: "var(--warning)", color: "var(--on-accent)", display: "grid", placeItems: "center",
+                          background: "var(--warning)", color: "#fff", display: "grid", placeItems: "center",
                           boxShadow: "var(--shadow-sm)", cursor: "help",
                         }}
                       >

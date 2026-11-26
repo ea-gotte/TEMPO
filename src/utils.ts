@@ -285,32 +285,6 @@ export function initials(name: string): string {
 }
 
 /** Colores de avatar estables por nombre */
-/** Luminancia relativa (WCAG 2) de un color RGB 0-255 */
-function luminance(r: number, g: number, b: number): number {
-  const lin = (v: number) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
-
-/**
- * Fondo y color de texto para escribir ENCIMA de un color elegido por el usuario (proyecto,
- * cliente) con contraste AA (4,5:1). Los colores claros (naranja, amarillo, turquesa) llevan
- * texto oscuro; los demás, texto blanco, oscureciendo apenas el fondo si hace falta.
- */
-export function readableOn(color: string): { background: string; color: string } {
-  const m = /^#([0-9a-f]{6})$/i.exec(color.trim());
-  // Variables CSS y otros formatos: se asume el color de marca
-  if (!m) return { background: color, color: "var(--on-accent)" };
-  let r = parseInt(m[1].slice(0, 2), 16), g = parseInt(m[1].slice(2, 4), 16), b = parseInt(m[1].slice(4, 6), 16);
-  const onWhite = () => 1.05 / (luminance(r, g, b) + 0.05);
-  if (onWhite() < 3) return { background: color, color: "#17181c" };
-  for (let i = 0; i < 40 && onWhite() < 4.6; i++) { r *= 0.97; g *= 0.97; b *= 0.97; }
-  const hex = (v: number) => Math.round(v).toString(16).padStart(2, "0");
-  return { background: `#${hex(r)}${hex(g)}${hex(b)}`, color: "#fff" };
-}
-
 export function hashHue(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
