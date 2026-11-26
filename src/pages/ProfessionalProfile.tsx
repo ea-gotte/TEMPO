@@ -443,7 +443,7 @@ function EntryRow({
           onBlur={commitLink}
           onKeyDown={(ev) => {
             if (ev.key === "Enter") (ev.target as HTMLInputElement).blur();
-            if (ev.key === "Escape") { linkCancelled.current = true; setLinkOpen(false); }
+            if (ev.key === "Escape") { ev.preventDefault(); linkCancelled.current = true; setLinkOpen(false); }
           }}
         />
         <div style={{ marginTop: 6 }}><LinkHowTo /></div>

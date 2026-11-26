@@ -236,7 +236,8 @@ export function ProjectSelect({
         onFocus={() => { setOpen(true); setQuery(""); }}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Escape") { setOpen(false); setQuery(""); }
+          // Con la lista abierta, Escape solo la cierra (no el diálogo que la contiene)
+          if (e.key === "Escape") { if (open) e.preventDefault(); setOpen(false); setQuery(""); }
           if (e.key === "Enter" && filtered.length > 0) {
             e.preventDefault();
             onChange(filtered[0].id);
