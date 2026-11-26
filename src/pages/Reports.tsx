@@ -174,55 +174,55 @@ export function Reports() {
           )}
           {period === "personalizado" && (
             <>
-              <div className="field">
-                <label>Desde</label>
+              <label className="field">
+                <span className="field-lbl">Desde</span>
                 <input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} />
-              </div>
-              <div className="field">
-                <label>Hasta</label>
+              </label>
+              <label className="field">
+                <span className="field-lbl">Hasta</span>
                 <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
-              </div>
+              </label>
             </>
           )}
           {!isEmployee && (
-            <div className="field">
-              <label>Persona</label>
+            <label className="field">
+              <span className="field-lbl">Persona</span>
               <select className="select" value={userFilterRaw} onChange={(e) => setUserFilter(e.target.value)}>
                 <option value="">Todas</option>
                 {[...state.users].sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
                   <option key={u.id} value={u.id}>{u.name}{u.active ? "" : " (baja)"}</option>
                 ))}
               </select>
-            </div>
+            </label>
           )}
-          <div className="field">
-            <label>Cliente</label>
+          <label className="field">
+            <span className="field-lbl">Cliente</span>
             <select className="select" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
               <option value="">Todos</option>
               {[...state.clients].sort((a, b) => a.name.localeCompare(b.name)).map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
-          </div>
-          <div className="field">
-            <label>Proyecto</label>
+          </label>
+          <label className="field">
+            <span className="field-lbl">Proyecto</span>
             <select className="select" value={projectFilter} onChange={(e) => { setProjectFilter(e.target.value); setSubProjectFilter(""); }}>
               <option value="">Todos</option>
               {[...visibleProjects(state, state.currentUserId)].sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
-          </div>
+          </label>
           {projectFilter && state.subProjects.some((sp) => sp.projectId === projectFilter) && (
-            <div className="field">
-              <label>Subproyecto</label>
+            <label className="field">
+              <span className="field-lbl">Subproyecto</span>
               <select className="select" value={subProjectFilter} onChange={(e) => setSubProjectFilter(e.target.value)}>
                 <option value="">Todos</option>
                 {state.subProjects.filter((sp) => sp.projectId === projectFilter).sort((a, b) => a.name.localeCompare(b.name)).map((sp) => (
                   <option key={sp.id} value={sp.id}>{sp.name}</option>
                 ))}
               </select>
-            </div>
+            </label>
           )}
         </div>
       </div>
@@ -447,24 +447,24 @@ function ProjectXlsxModal({ initialProject, initialFrom, initialTo, onClose }: {
         </>
       }
     >
-      <div className="field">
-        <label>Proyecto</label>
+      <label className="field">
+        <span className="field-lbl">Proyecto</span>
         <select className="select" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
           <option value="">Elegir proyecto…</option>
           {[...state.projects].sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
             <option key={p.id} value={p.id}>{p.name}{p.status !== "activo" ? ` (${p.status})` : ""}</option>
           ))}
         </select>
-      </div>
+      </label>
       <div style={{ display: "flex", gap: 10 }}>
-        <div className="field" style={{ flex: 1 }}>
-          <label>Desde</label>
+        <label className="field" style={{ flex: 1 }}>
+          <span className="field-lbl">Desde</span>
           <input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} />
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label>Hasta</label>
+        </label>
+        <label className="field" style={{ flex: 1 }}>
+          <span className="field-lbl">Hasta</span>
           <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
-        </div>
+        </label>
       </div>
       {projectId && (
         <div className="field">

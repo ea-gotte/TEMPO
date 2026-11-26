@@ -408,17 +408,17 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
       }
     >
       <div className="form-grid">
-        <div className="field">
-          <label>Nombre</label>
+        <label className="field">
+          <span className="field-lbl">Nombre</span>
           <input className="input" value={name} onChange={(e) => { setName(e.target.value); setError(""); }} autoFocus />
-        </div>
-        <div className="field">
-          <label>Email</label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Email</span>
           <input type="email" className="input" value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }} />
-        </div>
+        </label>
         {!user && (
-          <div className="field">
-            <label>Clave de acceso inicial</label>
+          <label className="field">
+            <span className="field-lbl">Clave de acceso inicial</span>
             <input
               type="text"
               className="input"
@@ -427,15 +427,15 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
               placeholder="Clave temporal"
               autoComplete="new-password"
             />
-          </div>
+          </label>
         )}
         {error && (
           <div style={{ color: "var(--danger)", fontSize: 12, fontWeight: 650, gridColumn: "span 2", display: "flex", alignItems: "center", gap: 6 }} role="alert">
             <Icon name="alert" size={13} /> {error}
           </div>
         )}
-        <div className="field">
-          <label>Rol</label>
+        <label className="field">
+          <span className="field-lbl">Rol</span>
           <select className="select" value={role} onChange={(e) => setRole(e.target.value as Role)} disabled={roleLocked}>
             <option value="usuario">Usuario</option>
             <option value="supervisor">Supervisor</option>
@@ -443,9 +443,9 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
             {(isAdmin || roleLocked) && <option value="admin">Administrador</option>}
           </select>
           {roleLocked && <span style={{ fontSize: 11, color: "var(--text-3)" }}>Solo un administrador puede cambiar el rol de otro administrador.</span>}
-        </div>
-        <div className="field">
-          <label>Equipo de trabajo</label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Equipo de trabajo</span>
           <select className="select" value={team} onChange={(e) => setTeam(e.target.value as TeamType)}>
             <option value="latam">Equipo LATAM</option>
             <option value="espana">Equipo España</option>
@@ -456,18 +456,18 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
               ausencias propias, y nunca genera alertas de incumplimiento de carga.
             </span>
           )}
-        </div>
-        <div className="field">
-          <label>Supervisor</label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Supervisor</span>
           <select className="select" value={supervisorId} onChange={(e) => setSupervisorId(e.target.value)}>
             <option value="">— Sin supervisor —</option>
             {state.users.filter((u) => u.role !== "usuario" && u.id !== user?.id && (u.active || u.id === user?.supervisorId)).sort((a, b) => a.name.localeCompare(b.name)).map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </select>
-        </div>
-        <div className="field">
-          <label>Tipo de jornada</label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Tipo de jornada</span>
           <select
             className="select"
             value={jornada}
@@ -481,11 +481,11 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
             <option value="completa">Jornada completa</option>
             <option value="media">Media jornada</option>
           </select>
-        </div>
-        <div className="field">
-          <label>Jornada semanal (horas)</label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Jornada semanal (horas)</span>
           <input type="number" className="input" value={weeklyHours} onChange={(e) => setWeeklyHours(Number(e.target.value))} />
-        </div>
+        </label>
         <div className="field">
           <label>Fecha de ingreso</label>
           <DateField value={hireDate} onChange={setHireDate} max={today()} />
@@ -500,14 +500,14 @@ function UserModal({ user, onClose }: { user: User | null; onClose: () => void }
             Se agrega automáticamente al calendario corporativo.
           </span>
         </div>
-        <div className="field">
-          <label>Horario desde</label>
+        <label className="field">
+          <span className="field-lbl">Horario desde</span>
           <input type="time" className="input" value={dayStart} onChange={(e) => setDayStart(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Horario hasta</label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Horario hasta</span>
           <input type="time" className="input" value={dayEnd} onChange={(e) => setDayEnd(e.target.value)} />
-        </div>
+        </label>
       </div>
       <div className="field">
         <label>Días laborales (turnos personalizados)</label>

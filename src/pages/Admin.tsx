@@ -283,50 +283,50 @@ export function Admin() {
         <div className="card card-pad" style={{ maxWidth: 640 }}>
           <div className="card-title">Configuración de la empresa</div>
           <div className="form-grid">
-            <div className="field">
-              <label>Nombre</label>
+            <label className="field">
+              <span className="field-lbl">Nombre</span>
               <input className="input" value={c.name} onChange={(e) => setC({ ...c, name: e.target.value })} />
-            </div>
-            <div className="field">
-              <label>País (calendario de feriados)</label>
+            </label>
+            <label className="field">
+              <span className="field-lbl">País (calendario de feriados)</span>
               <select className="select" value={c.country} onChange={(e) => setC({ ...c, country: e.target.value })}>
                 {["Argentina", "Chile", "Colombia", "España", "México", "Perú", "Uruguay"].map((p) => (
                   <option key={p}>{p}</option>
                 ))}
               </select>
-            </div>
-            <div className="field">
-              <label>Zona horaria</label>
+            </label>
+            <label className="field">
+              <span className="field-lbl">Zona horaria</span>
               <select className="select" value={c.timezone} onChange={(e) => setC({ ...c, timezone: e.target.value })}>
                 {["America/Argentina/Buenos_Aires", "America/Bogota", "America/Lima", "America/Mexico_City", "America/Montevideo", "America/Santiago", "Europe/Madrid"].map((z) => (
                   <option key={z}>{z}</option>
                 ))}
               </select>
-            </div>
-            <div className="field">
-              <label>Moneda</label>
+            </label>
+            <label className="field">
+              <span className="field-lbl">Moneda</span>
               <select className="select" value={c.currency} onChange={(e) => setC({ ...c, currency: e.target.value })}>
                 {["ARS", "CLP", "EUR", "MXN", "USD", "UYU"].map((m) => (
                   <option key={m}>{m}</option>
                 ))}
               </select>
-            </div>
-            <div className="field">
-              <label>Jornada — inicio por defecto</label>
+            </label>
+            <label className="field">
+              <span className="field-lbl">Jornada — inicio por defecto</span>
               <input type="time" className="input" value={c.defaultDayStart} onChange={(e) => setC({ ...c, defaultDayStart: e.target.value })} />
-            </div>
-            <div className="field">
-              <label>Jornada — fin por defecto</label>
+            </label>
+            <label className="field">
+              <span className="field-lbl">Jornada — fin por defecto</span>
               <input type="time" className="input" value={c.defaultDayEnd} onChange={(e) => setC({ ...c, defaultDayEnd: e.target.value })} />
-            </div>
-            <div className="field">
-              <label>Horas semanales por defecto</label>
+            </label>
+            <label className="field">
+              <span className="field-lbl">Horas semanales por defecto</span>
               <input type="number" className="input" value={c.defaultWeeklyHours} onChange={(e) => setC({ ...c, defaultWeeklyHours: Number(e.target.value) })} />
-            </div>
-            <div className="field">
-              <label>Expiración de recuperación de clave (minutos)</label>
+            </label>
+            <label className="field">
+              <span className="field-lbl">Expiración de recuperación de clave (minutos)</span>
               <input type="number" className="input" value={c.passwordResetExpireMin ?? 30} onChange={(e) => setC({ ...c, passwordResetExpireMin: Number(e.target.value) })} />
-            </div>
+            </label>
           </div>
           <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
             <button className="btn btn-primary" onClick={saveCompany}>Guardar cambios</button>
@@ -580,14 +580,14 @@ export function Admin() {
             <div className="card card-pad">
               <div className="card-title">Nueva encuesta</div>
               <div className="form-grid">
-                <div className="field">
-                  <label>Título</label>
+                <label className="field">
+                  <span className="field-lbl">Título</span>
                   <input className="input" value={surveyTitle} onChange={(e) => setSurveyTitle(e.target.value)} placeholder="Ej. Autoevaluación 2026" />
-                </div>
-                <div className="field">
-                  <label>Fecha límite</label>
+                </label>
+                <label className="field">
+                  <span className="field-lbl">Fecha límite</span>
                   <input type="date" className="input" min={today()} value={surveyDueDate} onChange={(e) => setSurveyDueDate(e.target.value)} />
-                </div>
+                </label>
               </div>
 
               <div style={{ marginTop: 14 }}>
@@ -724,20 +724,20 @@ export function Admin() {
           </div>
           {isAdmin && (
             <div className="form-grid" style={{ marginTop: 14 }}>
-              <div className="field">
-                <label>Fecha</label>
+              <label className="field">
+                <span className="field-lbl">Fecha</span>
                 <input type="date" className="input" value={newHolidayDate} onChange={(e) => setNewHolidayDate(e.target.value)} />
-              </div>
-              <div className="field">
-                <label>Tipo</label>
+              </label>
+              <label className="field">
+                <span className="field-lbl">Tipo</span>
                 <select className="select" value={newHolidayType} onChange={(e) => setNewHolidayType(e.target.value as HolidayType)}>
                   {HOLIDAY_TYPES.map((t) => (
                     <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
-              </div>
-              <div className="field" style={{ gridColumn: "1 / -1" }}>
-                <label>Título</label>
+              </label>
+              <label className="field" style={{ gridColumn: "1 / -1" }}>
+                <span className="field-lbl">Título</span>
                 <input
                   className="input"
                   placeholder="Ej: Día de la Independencia"
@@ -745,7 +745,7 @@ export function Admin() {
                   onChange={(e) => setNewHolidayTitle(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addHoliday()}
                 />
-              </div>
+              </label>
             </div>
           )}
           {isAdmin && (

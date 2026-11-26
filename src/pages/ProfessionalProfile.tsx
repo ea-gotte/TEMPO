@@ -205,10 +205,10 @@ function ExperienceRow({
         <div style={{ fontSize: 18, fontWeight: 700 }}>{since ? fmtYearsSince(since) : "Sin definir"}</div>
       </div>
       {canEdit && (
-        <div className="field" style={{ gap: 3 }}>
-          <label style={{ fontSize: 11 }}>Desde</label>
+        <label className="field" style={{ gap: 3 }}>
+          <span className="field-lbl" style={{ fontSize: 11 }}>Desde</span>
           <input type="date" className="input" max={today()} value={since ?? ""} onChange={(e) => onChange(e.target.value || null)} />
-        </div>
+        </label>
       )}
     </div>
   );

@@ -662,28 +662,28 @@ function CargarSaldoModal({ onClose }: { onClose: () => void }) {
       }
     >
       <div className="form-grid">
-        <div className="field">
-          <label>Tipo</label>
+        <label className="field">
+          <span className="field-lbl">Tipo</span>
           <select className="select" value={tipo} onChange={(e) => setTipo(e.target.value as SaldoTipo)}>
             <option value="festivo">Festivo o fin de semana trabajado</option>
             <option value="vacaciones">Vacaciones</option>
           </select>
-        </div>
-        <div className="field">
-          <label>Persona</label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Persona</span>
           <select className="select" value={userId} onChange={(e) => setUserId(e.target.value)}>
             {activeUsers.map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </select>
-        </div>
+        </label>
       </div>
 
       {tipo === "festivo" ? (
         <div className="field" style={{ marginTop: 10 }}>
-          <label>Días a favor</label>
+          <label htmlFor="saldo-dias">Días a favor</label>
           <input
-            type="number" className="input" min="0.5" step="0.5" placeholder="Ej: 18.5"
+            id="saldo-dias" type="number" className="input" min="0.5" step="0.5" placeholder="Ej: 18.5"
             value={days} onChange={(e) => setDays(e.target.value)}
           />
           {user && validFestivo && (
@@ -700,14 +700,14 @@ function CargarSaldoModal({ onClose }: { onClose: () => void }) {
       ) : (
         <div style={{ marginTop: 10 }}>
           <div className="form-grid">
-            <div className="field">
-              <label>Desde</label>
+            <label className="field">
+              <span className="field-lbl">Desde</span>
               <input type="date" className="input" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); if (dateTo < e.target.value) setDateTo(e.target.value); }} />
-            </div>
-            <div className="field">
-              <label>Hasta</label>
+            </label>
+            <label className="field">
+              <span className="field-lbl">Hasta</span>
               <input type="date" className="input" value={dateTo} min={dateFrom} onChange={(e) => setDateTo(e.target.value)} />
-            </div>
+            </label>
           </div>
           {user && (
             <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 4 }}>
@@ -721,13 +721,13 @@ function CargarSaldoModal({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      <div className="field" style={{ marginTop: 10 }}>
-        <label>Nota (opcional)</label>
+      <label className="field" style={{ marginTop: 10 }}>
+        <span className="field-lbl">Nota (opcional)</span>
         <input
           className="input" placeholder="Ej: Saldo acumulado 2025-2026 según planilla de vacaciones"
           value={note} onChange={(e) => setNote(e.target.value)}
         />
-      </div>
+      </label>
     </Modal>
   );
 }

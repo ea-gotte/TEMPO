@@ -2,6 +2,10 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState,
 import { hashHue, initials, normText } from "../utils";
 import { Icon, type IconName } from "./Icon";
 
+/** Diálogos abiertos, del más viejo al más nuevo: el teclado lo atiende el último */
+const openModals: object[] = [];
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function Modal({
   title,
   onClose,
@@ -15,9 +19,54 @@ export function Modal({
   footer?: React.ReactNode;
   width?: number;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  // Quién tenía el foco antes de abrir: se anota al crear el diálogo, antes de que un autoFocus de adentro se lo lleve
+  const [previous] = useState(() => document.activeElement as HTMLElement | null);
+  const wanted = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const token = {};
+    openModals.push(token);
+    const el = ref.current;
+    // Si nada de adentro pidió el foco (autoFocus), lo toma el diálogo. Se recuerda quién lo pidió
+    // porque en desarrollo React monta el efecto dos veces y entre una y otra el foco vuelve afuera.
+    if (el) {
+      if (el.contains(document.activeElement)) wanted.current = document.activeElement as HTMLElement;
+      else if (wanted.current && el.contains(wanted.current)) wanted.current.focus();
+      else el.focus();
+    }
+    const onKey = (e: KeyboardEvent) => {
+      // Con un diálogo sobre otro, solo responde el de arriba
+      if (openModals[openModals.length - 1] !== token || !el) return;
+      if (e.key === "Escape") {
+        // Un control de adentro (buscador, desplegable) puede haberlo usado ya
+        if (e.defaultPrevented) return;
+        e.preventDefault();
+        closeRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      // Tab no sale del diálogo: da la vuelta entre el primer y el último control
+      const items = Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((n) => n.getClientRects().length > 0);
+      if (items.length === 0) { e.preventDefault(); return; }
+      const first = items[0], last = items[items.length - 1];
+      const active = document.activeElement;
+      const outside = !el.contains(active) || active === el;
+      if (e.shiftKey && (active === first || outside)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (active === last || outside)) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      const i = openModals.indexOf(token);
+      if (i >= 0) openModals.splice(i, 1);
+      if (previous && document.contains(previous)) previous.focus();
+    };
+  }, []);
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={title} style={width ? { width: `min(${width}px, 100%)` } : undefined}>
+      <div ref={ref} tabIndex={-1} className="modal" role="dialog" aria-modal="true" aria-label={title} style={width ? { width: `min(${width}px, 100%)` } : undefined}>
         <div className="modal-head">
           <h2>{title}</h2>
           <button className="iconbtn" onClick={onClose} aria-label="Cerrar"><Icon name="x" /></button>

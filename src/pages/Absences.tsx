@@ -427,10 +427,10 @@ export function Absences() {
                 ))}
               </div>
             )}
-            <div className="field">
-              <label>Comentario</label>
+            <label className="field">
+              <span className="field-lbl">Comentario</span>
               <textarea className="textarea" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Opcional al aprobar o rechazar. Obligatorio para devolver: indicá qué hay que corregir (horas, fechas…)." />
-            </div>
+            </label>
           </Modal>
         );
       })()}
@@ -610,10 +610,10 @@ function ResubmitOvertime({ ot, onClose }: { ot: OvertimeRequest; onClose: () =>
           <span>Ahora <strong>{fmtDur(bd.extraMin)}</strong></span>
         </div>
         {issues.length > 0 && <OverlapBlock issues={issues} />}
-        <div className="field" style={{ margin: "8px 0 0" }}>
-          <label>Tu respuesta a Recursos Humanos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional)</span></label>
+        <label className="field" style={{ margin: "8px 0 0" }}>
+          <span className="field-lbl">Tu respuesta a Recursos Humanos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional)</span></span>
           <textarea className="textarea" rows={2} value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Qué corregiste o por qué las horas están bien…" />
-        </div>
+        </label>
         {expired && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>Pasaron más de 3 meses: ya no se puede reclamar.</div>}
         {bd.extraMin === 0 && !expired && <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>Con los registros actuales ya no hay horas extra en el mes.</div>}
       </Modal>
@@ -800,10 +800,10 @@ function RequestDetail({
       )}
 
       {canApprove && (
-        <div className="field" style={{ margin: 0 }}>
-          <label>Comentario <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(obligatorio para devolver)</span></label>
+        <label className="field" style={{ margin: 0 }}>
+          <span className="field-lbl">Comentario <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(obligatorio para devolver)</span></span>
           <textarea className="textarea" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Qué hay que corregir: horas, fechas, algo que llame la atención…" />
-        </div>
+        </label>
       )}
     </Modal>
   );
@@ -1095,32 +1095,32 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
     >
       {staff && !resubmit && (
         <div className="form-grid">
-          <div className="field">
-            <label>Persona</label>
+          <label className="field">
+            <span className="field-lbl">Persona</span>
             <select className="select" value={personId} onChange={(e) => setPersonId(e.target.value)}>
               {state.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
-          </div>
+          </label>
           {canSetStatus && (
-            <div className="field">
-              <label>Estado</label>
+            <label className="field">
+              <span className="field-lbl">Estado</span>
               <select className="select" value={status} onChange={(e) => setStatus(e.target.value as AbsenceRequest["status"])}>
                 <option value="Pendiente">Pendiente</option>
                 <option value="Aprobado">Aprobado</option>
                 <option value="Rechazado">Rechazado</option>
               </select>
-            </div>
+            </label>
           )}
         </div>
       )}
-      <div className="field">
-        <label>Tipo de ausencia <span style={{ color: "var(--danger)" }}>*</span></label>
+      <label className="field">
+        <span className="field-lbl">Tipo de ausencia <span style={{ color: "var(--danger)" }}>*</span></span>
         <select className="select" value={type} disabled={resubmit} onChange={(e) => setType(e.target.value as AbsenceType)}>
           {availableTypes.map((t) => (
             <option key={t} value={t}>{t}</option>
           ))}
         </select>
-      </div>
+      </label>
       {overlapIssues.length > 0 && <OverlapBlock issues={overlapIssues} />}
       {type === "Compensación de horas" && (
         <div style={{ fontSize: 12.5, background: otBalance > 0 ? "var(--success-soft)" : "var(--warning-soft)", color: otBalance > 0 ? "var(--success)" : "var(--warning)", padding: "8px 12px", borderRadius: 8, fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}>
@@ -1131,40 +1131,40 @@ function NewAbsence({ onClose, initialType, edit }: { onClose: () => void; initi
         </div>
       )}
       <div className="form-grid">
-        <div className="field">
-          <label>Desde <span style={{ color: "var(--danger)" }}>*</span></label>
+        <label className="field">
+          <span className="field-lbl">Desde <span style={{ color: "var(--danger)" }}>*</span></span>
           <input type="date" className="input" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); if (dateTo < e.target.value) setDateTo(e.target.value); }} />
-        </div>
-        <div className="field">
-          <label>Hasta <span style={{ color: "var(--danger)" }}>*</span></label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Hasta <span style={{ color: "var(--danger)" }}>*</span></span>
           <input type="date" className="input" value={dateTo} min={dateFrom} onChange={(e) => setDateTo(e.target.value)} />
-        </div>
+        </label>
         {partial && (
           <>
-            <div className="field">
-              <label>Hora inicio</label>
+            <label className="field">
+              <span className="field-lbl">Hora inicio</span>
               <input type="time" className="input" value={timeFrom} onChange={(e) => setTimeFrom(e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Hora fin</label>
+            </label>
+            <label className="field">
+              <span className="field-lbl">Hora fin</span>
               <input type="time" className="input" value={timeTo} onChange={(e) => setTimeTo(e.target.value)} />
-            </div>
+            </label>
           </>
         )}
       </div>
-      <div className="field">
-        <label>Motivo <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional)</span></label>
+      <label className="field">
+        <span className="field-lbl">Motivo <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional)</span></span>
         <textarea className="textarea" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Contanos brevemente el motivo…" />
-      </div>
+      </label>
       {edit?.status === "Devuelto" && (
-        <div className="field">
-          <label>Tu respuesta a Recursos Humanos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional)</span></label>
+        <label className="field">
+          <span className="field-lbl">Tu respuesta a Recursos Humanos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional)</span></span>
           <textarea className="textarea" rows={2} value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Qué corregiste o por qué está bien…" />
-        </div>
+        </label>
       )}
       <div className="field">
-        <label>Adjuntos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional — certificados, comprobantes · PDF, PNG o JPG · máx. 10 MB por archivo)</span></label>
-        <input type="file" className="input" multiple accept={ATTACHMENT_ACCEPT} onChange={(e) => onFiles(e.target.files)} />
+        <label htmlFor="abs-adjuntos">Adjuntos <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(opcional — certificados, comprobantes · PDF, PNG o JPG · máx. 10 MB por archivo)</span></label>
+        <input id="abs-adjuntos" type="file" className="input" multiple accept={ATTACHMENT_ACCEPT} onChange={(e) => onFiles(e.target.files)} />
         {files.length > 0 && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
             {files.map((f, i) => (

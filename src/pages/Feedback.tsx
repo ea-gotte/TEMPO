@@ -70,27 +70,27 @@ export function Feedback() {
 
       <div className="card card-pad no-print" style={{ marginBottom: 14 }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div className="field" style={{ flex: "1 1 200px" }}>
-            <label>Buscar</label>
+          <label className="field" style={{ flex: "1 1 200px" }}>
+            <span className="field-lbl">Buscar</span>
             <input className="input" placeholder="Título o descripción…" value={query} onChange={(e) => setQuery(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Tipo</label>
+          </label>
+          <label className="field">
+            <span className="field-lbl">Tipo</span>
             <select className="select" value={fType} onChange={(e) => setFType(e.target.value as FeedbackType | "")}>
               <option value="">Todos</option>
               <option value="bug">Error</option>
               <option value="mejora">Mejora</option>
             </select>
-          </div>
-          <div className="field">
-            <label>Estado</label>
+          </label>
+          <label className="field">
+            <span className="field-lbl">Estado</span>
             <select className="select" value={fStatus} onChange={(e) => setFStatus(e.target.value as FeedbackStatus | "")}>
               <option value="">Todos</option>
               {(Object.keys(STATUS_LABELS) as FeedbackStatus[]).map((s) => (
                 <option key={s} value={s}>{STATUS_LABELS[s]}</option>
               ))}
             </select>
-          </div>
+          </label>
           {filtersActive && (
             <button className="btn btn-ghost btn-sm" onClick={() => { setFType(""); setFStatus(""); setQuery(""); }}>
               Limpiar filtros
@@ -185,18 +185,18 @@ function FeedbackCard({ item, isAdmin, isOwn }: { item: FeedbackItem; isAdmin: b
 
       {isAdmin && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div className="field" style={{ width: 180 }}>
-            <label>Estado</label>
+          <label className="field" style={{ width: 180 }}>
+            <span className="field-lbl">Estado</span>
             <select className="select" value={status} onChange={(e) => setStatus(e.target.value as FeedbackStatus)}>
               {(Object.keys(STATUS_LABELS) as FeedbackStatus[]).map((s) => (
                 <option key={s} value={s}>{STATUS_LABELS[s]}</option>
               ))}
             </select>
-          </div>
-          <div className="field" style={{ flex: "1 1 240px" }}>
-            <label>Respuesta</label>
+          </label>
+          <label className="field" style={{ flex: "1 1 240px" }}>
+            <span className="field-lbl">Respuesta</span>
             <input className="input" placeholder="Comentario para quien lo reportó…" value={response} onChange={(e) => setResponse(e.target.value)} />
-          </div>
+          </label>
           <button className="btn btn-primary btn-sm" onClick={saveAdmin} disabled={!dirty}>
             <Icon name="check" size={13} /> Guardar
           </button>
@@ -268,17 +268,17 @@ function NewFeedbackModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </div>
-        <div className="field">
-          <label>Título</label>
+        <label className="field">
+          <span className="field-lbl">Título</span>
           <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Resumen corto" autoFocus />
-        </div>
-        <div className="field">
-          <label>Descripción</label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Descripción</span>
           <textarea
             className="textarea" rows={4} value={description} onChange={(e) => setDescription(e.target.value)}
             placeholder={type === "bug" ? "¿Qué pasó? ¿Cómo se reproduce?" : "¿Qué te gustaría que hiciera la plataforma?"}
           />
-        </div>
+        </label>
       </div>
     </Modal>
   );

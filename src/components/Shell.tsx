@@ -7,6 +7,21 @@ import { Avatar, Modal, useToast } from "./ui";
 import { Icon, type IconName } from "./Icon";
 import { supabase } from "../supabase";
 
+/** true mientras el navegador tiene conexión; cambia solo al perderla o recuperarla */
+function useOnline(): boolean {
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true), off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
+  return online;
+}
+
 /** Páginas visibles para cualquier rol, incluido "usuario" (vista básica) */
 export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "profile", "absences", "corp", "feedback"];
 
@@ -107,6 +122,18 @@ export function Shell({
   const { state, dispatch } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  // Escape cierra el menú del celular y el panel de notificaciones
+  useEffect(() => {
+    if (!menuOpen && !notifOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      setMenuOpen(false);
+      setNotifOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menuOpen, notifOpen]);
+  const online = useOnline();
   const [allNotifsOpen, setAllNotifsOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -301,7 +328,12 @@ export function Shell({
           >
             <Icon name={state.theme === "light" ? "moon" : "sun"} />
           </button>
-          <button className="iconbtn" onClick={() => setNotifOpen((o) => !o)} aria-label="Notificaciones">
+          <button
+            className="iconbtn"
+            onClick={() => setNotifOpen((o) => !o)}
+            aria-expanded={notifOpen}
+            aria-label={unread > 0 ? `Notificaciones: ${unread > 99 ? "99+" : unread} sin leer` : "Notificaciones"}
+          >
             <Icon name="bell" />
             {unread > 0 && <span className="badge-count">{unread > 99 ? "99+" : unread}</span>}
           </button>
@@ -333,6 +365,11 @@ export function Shell({
           </div>
         )}
 
+        {!online && (
+          <div className="offline-bar" role="status">
+            <Icon name="alert" size={14} /> Sin conexión a internet. Lo que cargues ahora puede no guardarse: esperá a que vuelva antes de seguir.
+          </div>
+        )}
         <main className="content" onClick={() => notifOpen && setNotifOpen(false)}>
           <div className="content-inner">{children}</div>
         </main>
@@ -519,22 +556,22 @@ function ProfileModal({ onClose }: { onClose: () => void }) {
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div className="form-grid">
-          <div className="field">
-            <label>Nombre</label>
+          <label className="field">
+            <span className="field-lbl">Nombre</span>
             <input className="input" value={name} onChange={(e) => { setName(e.target.value); setError(""); }} />
-          </div>
-          <div className="field">
-            <label>Email</label>
+          </label>
+          <label className="field">
+            <span className="field-lbl">Email</span>
             <input className="input" value={me.email} disabled style={{ opacity: 0.8 }} />
-          </div>
-          <div className="field">
-            <label>Rol</label>
+          </label>
+          <label className="field">
+            <span className="field-lbl">Rol</span>
             <input className="input" value={me.role === "admin" ? "Administrador" : me.role === "gerente" ? "Gerente" : me.role === "supervisor" ? "Supervisor" : "Usuario"} disabled style={{ opacity: 0.8 }} />
-          </div>
-          <div className="field">
-            <label>Jornada</label>
+          </label>
+          <label className="field">
+            <span className="field-lbl">Jornada</span>
             <input className="input" value={`${me.weeklyHours} h/semana (${me.jornada === "completa" ? "Completa" : "Media"})`} disabled style={{ opacity: 0.8 }} />
-          </div>
+          </label>
         </div>
 
         <hr style={{ border: "0.5px solid var(--border)", margin: "8px 0" }} />

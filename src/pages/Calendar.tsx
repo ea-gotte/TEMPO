@@ -865,7 +865,7 @@ export function CalendarPage() {
                 {dayEntries.slice(0, 2).map((e) => {
                   const p = state.projects.find((x) => x.id === e.projectId);
                   return (
-                    <span key={e.id} className="month-evt" style={{ background: (p?.color ?? "#888") + "22", color: p?.color }}>
+                    <span key={e.id} className="month-evt" style={{ background: (p?.color ?? "#888") + "22", borderLeft: `3px solid ${p?.color ?? "#888"}` }}>
                       {e.description || p?.name}
                     </span>
                   );

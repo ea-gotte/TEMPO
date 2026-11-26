@@ -266,23 +266,23 @@ function EventModal({
         </>
       }
     >
-      <div className="field">
-        <label>Título</label>
+      <label className="field">
+        <span className="field-lbl">Título</span>
         <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-      </div>
+      </label>
       <div className="form-grid">
-        <div className="field">
-          <label>Fecha</label>
+        <label className="field">
+          <span className="field-lbl">Fecha</span>
           <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Tipo</label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Tipo</span>
           <select className="select" value={type} onChange={(e) => setType(e.target.value as CorpEventType)}>
             {(["Capacitación"] as CorpEventType[]).map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-        </div>
+        </label>
       </div>
       <div className="field">
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -292,14 +292,14 @@ function EventModal({
       </div>
       {!allDay && (
         <div className="form-grid">
-          <div className="field">
-            <label>Desde</label>
+          <label className="field">
+            <span className="field-lbl">Desde</span>
             <input type="time" className="input" value={timeFrom} onChange={(e) => setTimeFrom(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Hasta</label>
+          </label>
+          <label className="field">
+            <span className="field-lbl">Hasta</span>
             <input type="time" className="input" value={timeTo} onChange={(e) => setTimeTo(e.target.value)} />
-          </div>
+          </label>
         </div>
       )}
       <p style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: -4 }}>

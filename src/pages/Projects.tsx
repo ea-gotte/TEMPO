@@ -550,28 +550,28 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
         </>
       }
     >
-      <div className="field">
-        <label>Nombre</label>
+      <label className="field">
+        <span className="field-lbl">Nombre</span>
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-      </div>
+      </label>
       <div className="form-grid">
-        <div className="field">
-          <label>Cliente</label>
+        <label className="field">
+          <span className="field-lbl">Cliente</span>
           <select className="select" value={clientId} onChange={(e) => setClientId(e.target.value)}>
             {[...state.clients].sort((a, b) => a.name.localeCompare(b.name)).map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
-        </div>
-        <div className="field">
-          <label>Estado</label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Estado</span>
           <select className="select" value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>
             <option value="activo">Activo</option>
             <option value="pausado">Pausado</option>
             <option value="completado">Completado</option>
             <option value="archivado">Archivado</option>
           </select>
-        </div>
+        </label>
         <div className="field">
           <label>Horas proyectadas</label>
           {subProjects.length > 0 ? (
@@ -583,8 +583,8 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
             <input type="number" className="input" value={budgetHours} onChange={(e) => setBudgetHours(e.target.value)} placeholder="Sin proyección" />
           )}
         </div>
-        <div className="field">
-          <label>Link a Notion</label>
+        <label className="field">
+          <span className="field-lbl">Link a Notion</span>
           <input
             type="url"
             className="input"
@@ -592,9 +592,9 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
             onChange={(e) => setNotionUrl(e.target.value)}
             placeholder="https://notion.so/…"
           />
-        </div>
-        <div className="field">
-          <label>Actividad — Horas de vuelo</label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Actividad — Horas de vuelo</span>
           <select className="select" value={flightActivityId} onChange={(e) => setFlightActivityId(e.target.value)}>
             <option value="">— Sin asignar —</option>
             {state.flightCategories
@@ -615,7 +615,7 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
               })}
           </select>
           <span style={{ fontSize: 11, color: "var(--text-3)" }}>Las horas cargadas en este proyecto suman experiencia a esta actividad.</span>
-        </div>
+        </label>
         <div className="field">
           <label>Color</label>
           <div style={{ display: "flex", gap: 6, paddingTop: 4 }}>
@@ -833,23 +833,23 @@ function SubProjectForm({
   return (
     <div style={{ border: "1px solid var(--border-strong)", borderRadius: "var(--r-md)", padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
       <div className="form-grid">
-        <div className="field">
-          <label>Nombre</label>
+        <label className="field">
+          <span className="field-lbl">Nombre</span>
           <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-        </div>
-        <div className="field">
-          <label>Estado</label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Estado</span>
           <select className="select" value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>
             <option value="activo">Activo</option>
             <option value="pausado">Pausado</option>
             <option value="completado">Completado</option>
             <option value="archivado">Archivado</option>
           </select>
-        </div>
-        <div className="field">
-          <label>Horas proyectadas</label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Horas proyectadas</span>
           <input type="number" className="input" value={budgetHours} onChange={(e) => setBudgetHours(e.target.value)} placeholder="Sin proyección" />
-        </div>
+        </label>
       </div>
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button type="button" className="btn btn-secondary btn-sm" onClick={onCancel}>Cancelar</button>
@@ -891,10 +891,10 @@ function ClientModal({ client, onClose }: { client: Client | null; onClose: () =
         </>
       }
     >
-      <div className="field">
-        <label>Nombre</label>
+      <label className="field">
+        <span className="field-lbl">Nombre</span>
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-      </div>
+      </label>
       <div className="field">
         <label>Color</label>
         <div style={{ display: "flex", gap: 6 }}>

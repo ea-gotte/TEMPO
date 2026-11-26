@@ -97,8 +97,8 @@ export function EntryModal({
         </>
       }
     >
-      <div className="field">
-        <label>Descripción</label>
+      <label className="field">
+        <span className="field-lbl">Descripción</span>
         <textarea
           className="textarea"
           value={description}
@@ -118,7 +118,7 @@ export function EntryModal({
             el.style.height = `${el.scrollHeight}px`;
           }}
         />
-      </div>
+      </label>
       <div className="form-grid">
         <div className="field">
           <label>Proyecto <span style={{ color: "var(--danger)" }}>*</span></label>
@@ -129,20 +129,20 @@ export function EntryModal({
           />
         </div>
         {subProjects.length > 0 && (
-          <div className="field">
-            <label>Subproyecto</label>
+          <label className="field">
+            <span className="field-lbl">Subproyecto</span>
             <select className="select" value={subProjectId} onChange={(e) => setSubProjectId(e.target.value)}>
               <option value="">— Sin subproyecto —</option>
               {subProjects.map((sp) => (
                 <option key={sp.id} value={sp.id}>{sp.name}</option>
               ))}
             </select>
-          </div>
+          </label>
         )}
-        <div className="field">
-          <label>Fecha</label>
+        <label className="field">
+          <span className="field-lbl">Fecha</span>
           <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
-        </div>
+        </label>
         <div className="field">
           <label>Etiquetas</label>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", paddingTop: 4 }}>
@@ -158,14 +158,14 @@ export function EntryModal({
             ))}
           </div>
         </div>
-        <div className="field">
-          <label>Hora inicio</label>
+        <label className="field">
+          <span className="field-lbl">Hora inicio</span>
           <input type="time" className="input" value={start} onChange={(e) => setStart(e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Hora fin</label>
+        </label>
+        <label className="field">
+          <span className="field-lbl">Hora fin</span>
           <input type="time" className="input" value={end} onChange={(e) => setEnd(e.target.value)} />
-        </div>
+        </label>
       </div>
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
         <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, fontWeight: 600, color: "var(--text-2)" }}>

@@ -122,26 +122,26 @@ export function TeamSummary() {
 
       <div className="card card-pad no-print" style={{ marginBottom: 14 }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div className="field" style={{ flex: "1 1 200px" }}>
-            <label>Buscar persona</label>
+          <label className="field" style={{ flex: "1 1 200px" }}>
+            <span className="field-lbl">Buscar persona</span>
             <input className="input" placeholder="Nombre…" value={query} onChange={(e) => setQuery(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Actividad</label>
+          </label>
+          <label className="field">
+            <span className="field-lbl">Actividad</span>
             <select className="select" value={activityFilter} onChange={(e) => setActivityFilter(e.target.value)}>
               <option value="">Todas</option>
               {activityColumns.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>
-          </div>
-          <div className="field" style={{ width: 140 }}>
-            <label>Horas mínimas</label>
+          </label>
+          <label className="field" style={{ width: 140 }}>
+            <span className="field-lbl">Horas mínimas</span>
             <input
               type="number" className="input" placeholder="Ej. 500" value={minHours}
               onChange={(e) => setMinHours(e.target.value)} disabled={!activityFilter}
             />
-          </div>
+          </label>
           {(query || activityFilter) && (
             <button className="btn btn-ghost btn-sm" onClick={() => { setQuery(""); setActivityFilter(""); setMinHours(""); }}>
               Limpiar filtros

@@ -451,7 +451,14 @@ function loadInitial(): AppState {
   } catch {
     /* seed */
   }
-  return { ...seedState(), passwordRecovery: isPasswordRecoveryLink };
+  // Primera visita en este navegador: arranca con el tema del sistema
+  let theme: AppState["theme"] = "light";
+  try {
+    if (window.matchMedia("(prefers-color-scheme: dark)").matches) theme = "dark";
+  } catch {
+    /* sin matchMedia: claro */
+  }
+  return { ...seedState(), theme, passwordRecovery: isPasswordRecoveryLink };
 }
 
 /**
