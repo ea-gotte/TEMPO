@@ -98,14 +98,203 @@ function load(): WorkData {
 let data: WorkData = load();
 const listeners = new Set<() => void>();
 
-function commit(next: WorkData) {
+/* ---------- Datos compartidos (Supabase) ---------- */
+
+/** Colecciones que se comparten con el equipo; cada una es una tabla (ver workSync.ts). */
+export const SYNC_KEYS = ["meta", "milestones", "deliverables", "reviews", "tasks", "sprints", "changes", "baselines", "risks", "meetings", "fields"] as const;
+export type SyncKey = (typeof SYNC_KEYS)[number];
+type ListKey = Exclude<SyncKey, "meta">;
+
+/** Un elemento que cambió: hay que guardarlo (crear o actualizar) o borrarlo en la base. */
+export interface WorkChange {
+  key: SyncKey;
+  op: "upsert" | "delete";
+  id: string;
+  projectId: string | null;
+  /** El elemento completo, para "upsert" */
+  item?: unknown;
+}
+
+export interface WorkBackend {
+  /** Sube los cambios; los errores los informa el propio backend. */
+  push(changes: WorkChange[]): void;
+}
+
+let workBackend: WorkBackend | null = null;
+/** true cuando los datos se leen y guardan en la base (ya no es la demo local) */
+let shared = false;
+
+/** Diferencias entre dos estados, elemento por elemento (se compara el contenido, no el objeto). */
+export function diffWork(prev: WorkData, next: WorkData): WorkChange[] {
+  const out: WorkChange[] = [];
+  for (const key of SYNC_KEYS) {
+    if (key === "meta") {
+      if (prev.meta === next.meta) continue;
+      for (const [id, m] of Object.entries(next.meta)) {
+        const old = prev.meta[id];
+        if (!old || JSON.stringify(old) !== JSON.stringify(m)) out.push({ key, op: "upsert", id, projectId: id, item: m });
+      }
+      for (const id of Object.keys(prev.meta)) if (!next.meta[id]) out.push({ key, op: "delete", id, projectId: id });
+      continue;
+    }
+    const a = (prev[key] ?? []) as { id: string; projectId: string | null }[];
+    const b = (next[key] ?? []) as { id: string; projectId: string | null }[];
+    if (a === b) continue;
+    const before = new Map(a.map((x) => [x.id, x]));
+    for (const x of b) {
+      const old = before.get(x.id);
+      if (old !== x && (!old || JSON.stringify(old) !== JSON.stringify(x))) out.push({ key, op: "upsert", id: x.id, projectId: x.projectId, item: x });
+      before.delete(x.id);
+    }
+    for (const x of before.values()) out.push({ key, op: "delete", id: x.id, projectId: x.projectId });
+  }
+  return out;
+}
+
+/**
+ * Aplica un estado nuevo. Con la base conectada, lo que cambió se sube; `local` marca los cambios
+ * que NO son de la persona (lo que llega de la base, valores por defecto) y por eso no se suben.
+ */
+function commit(next: WorkData, opts?: { local?: boolean }) {
+  const prev = data;
   data = next;
   try {
     localStorage.setItem(KEY, JSON.stringify(data));
   } catch {
-    /* cuota llena o modo privado: la demo sigue andando en memoria */
+    /* cuota llena o modo privado: sigue andando en memoria */
   }
   listeners.forEach((l) => l());
+  if (workBackend && shared && !opts?.local) {
+    const changes = diffWork(prev, next);
+    if (changes.length) workBackend.push(changes);
+  }
+}
+
+const LEFTOVER_KEY = "tempo-gestion-proyectos-local-previo";
+const SHARED_MARK = "tempo-gestion-proyectos-compartido";
+const EXAMPLE_NOTE = "Datos de ejemplo de la demo: se guardan solo en este navegador.";
+const LEFTOVER_LISTS: ListKey[] = ["milestones", "deliverables", "reviews", "tasks", "sprints", "changes", "baselines", "risks", "meetings"];
+
+/** Guarda aparte lo que este navegador tenía cargado antes de que Proyectos se compartiera (sin los datos de ejemplo). */
+function stashLocalData(local: WorkData) {
+  try {
+    if (localStorage.getItem(SHARED_MARK)) return;
+    localStorage.setItem(SHARED_MARK, "1");
+    const examples = new Set(Object.values(local.meta).filter((m) => m.notes === EXAMPLE_NOTE).map((m) => m.projectId));
+    const kept: Record<string, unknown> = {};
+    let count = 0;
+    for (const k of LEFTOVER_LISTS) {
+      const list = ((local[k] ?? []) as { projectId: string }[]).filter((x) => !examples.has(x.projectId));
+      kept[k] = list;
+      count += list.length;
+    }
+    if (count > 0) localStorage.setItem(LEFTOVER_KEY, JSON.stringify(kept));
+  } catch {
+    /* sin almacenamiento: no hay nada que rescatar */
+  }
+}
+
+function readLeftovers(): Partial<WorkData> | null {
+  try {
+    const raw = localStorage.getItem(LEFTOVER_KEY);
+    return raw ? (JSON.parse(raw) as Partial<WorkData>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Lo que llega de la base. Nada de esto se vuelve a subir. */
+export const workRemote = {
+  /** Conecta (o desconecta) la base. */
+  setBackend(b: WorkBackend | null) {
+    workBackend = b;
+  },
+  /** Lectura completa: lo de la base reemplaza lo que había en este navegador. */
+  replaceAll(rows: Partial<Record<SyncKey, unknown[]>>) {
+    if (!shared) stashLocalData(data);
+    shared = true;
+    const next: WorkData = { ...data };
+    for (const key of SYNC_KEYS) {
+      const list = rows[key];
+      if (!list) continue;
+      if (key === "meta") {
+        const meta: WorkData["meta"] = {};
+        for (const m of list as ProjectMeta[]) meta[m.projectId] = m;
+        // Los proyectos sin ficha guardada conservan la que se arma por defecto
+        for (const [id, m] of Object.entries(data.meta)) if (!meta[id] && m.notes !== EXAMPLE_NOTE) meta[id] = m;
+        next.meta = meta;
+      } else {
+        (next as unknown as Record<string, unknown>)[key] = list;
+      }
+    }
+    // Los proyectos que quedaron sin ficha (tenían datos de ejemplo) se vuelven a preparar vacíos
+    const seeded: WorkData["seeded"] = {};
+    for (const id of Object.keys(next.meta)) seeded[id] = true;
+    commit({ ...next, seeded }, { local: true });
+  },
+  /** Cambios puntuales avisados por la base (los propios vuelven idénticos y no cambian nada). */
+  apply(changes: WorkChange[]) {
+    if (!shared || changes.length === 0) return;
+    let next = data;
+    for (const c of changes) {
+      if (c.key === "meta") {
+        const cur = next.meta[c.id];
+        if (c.op === "delete") {
+          if (!cur) continue;
+          const meta = { ...next.meta };
+          delete meta[c.id];
+          const seeded = { ...next.seeded };
+          delete seeded[c.id];
+          next = { ...next, meta, seeded };
+        } else if (!cur || JSON.stringify(cur) !== JSON.stringify(c.item)) {
+          next = { ...next, meta: { ...next.meta, [c.id]: c.item as ProjectMeta }, seeded: { ...next.seeded, [c.id]: true } };
+        }
+        continue;
+      }
+      const list = (next[c.key] ?? []) as { id: string }[];
+      const i = list.findIndex((x) => x.id === c.id);
+      if (c.op === "delete") {
+        if (i >= 0) next = { ...next, [c.key]: list.filter((x) => x.id !== c.id) };
+      } else if (i < 0) {
+        next = { ...next, [c.key]: [...list, c.item] };
+      } else if (JSON.stringify(list[i]) !== JSON.stringify(c.item)) {
+        next = { ...next, [c.key]: list.map((x) => (x.id === c.id ? c.item : x)) };
+      }
+    }
+    if (next !== data) commit(next, { local: true });
+  },
+  /** Cierre de sesión: quien entre después no ve los datos de quien salió. */
+  reset() {
+    if (!shared) return;
+    shared = false;
+    commit({ ...empty(), roles: data.roles }, { local: true });
+  },
+  /** Las tablas todavía no existen en la base: el módulo sigue siendo la demo de este navegador. */
+  setLocal() {
+    if (!shared) return;
+    shared = false;
+    listeners.forEach((l) => l());
+  },
+  isShared: () => shared,
+};
+
+/** true cuando Proyectos ya se comparte con el equipo; false mientras sea la demo de este navegador */
+export function useWorkShared(): boolean {
+  return useSyncExternalStore(subscribe, () => shared, () => shared);
+}
+
+/** Avisa a las vistas que algo cambió sin tocar los datos (subir o descartar lo guardado aparte). */
+let leftoverVersion = 0;
+
+/** Cuánto había cargado en este navegador antes de compartir, por si se quiere subir. */
+export function useLocalLeftovers(): { tasks: number; plan: number; other: number } | null {
+  useSyncExternalStore(subscribe, () => leftoverVersion, () => leftoverVersion);
+  const isShared = useWorkShared();
+  if (!isShared) return null;
+  const left = readLeftovers();
+  if (!left) return null;
+  const n = (k: ListKey) => ((left[k] ?? []) as unknown[]).length;
+  return { tasks: n("tasks"), plan: n("milestones") + n("deliverables"), other: n("reviews") + n("sprints") + n("changes") + n("baselines") + n("risks") + n("meetings") };
 }
 
 function subscribe(l: () => void) {
@@ -369,7 +558,8 @@ export const workActions = {
     if (stale.length === 0) return;
     const meta = { ...data.meta };
     for (const p of stale) meta[p.id] = { ...meta[p.id], mode: p.managementMode ?? DEFAULT_MODE };
-    commit({ ...data, meta });
+    // La metodología ya está guardada en el proyecto: acá solo se refleja
+    commit({ ...data, meta }, { local: true });
   },
   async assignRole(projectId: string, userId: string, roleKey: string): Promise<string | null> {
     if (data.assignments.some((a) => a.projectId === projectId && a.userId === userId && a.roleKey === roleKey)) return null;
@@ -649,7 +839,29 @@ export const workActions = {
       };
       seeded[p.id] = true;
     }
-    commit({ ...data, meta, seeded });
+    // Es la ficha por defecto, igual para todos: recién se guarda en la base cuando alguien la edita
+    commit({ ...data, meta, seeded }, { local: true });
+  },
+
+  /** Sube a la base lo que este navegador tenía cargado antes de compartir (solo de proyectos que existen). */
+  uploadLeftovers(projectIds: string[]) {
+    const left = readLeftovers();
+    if (!left) return;
+    const valid = new Set(projectIds);
+    let next = data;
+    for (const k of LEFTOVER_LISTS) {
+      const have = new Set(((next[k] ?? []) as { id: string }[]).map((x) => x.id));
+      const add = ((left[k] ?? []) as { id: string; projectId: string }[]).filter((x) => valid.has(x.projectId) && !have.has(x.id));
+      if (add.length) next = { ...next, [k]: [...((next[k] ?? []) as unknown[]), ...add] };
+    }
+    try { localStorage.removeItem(LEFTOVER_KEY); } catch { /* idem */ }
+    leftoverVersion++;
+    commit(next);
+  },
+  discardLeftovers() {
+    try { localStorage.removeItem(LEFTOVER_KEY); } catch { /* idem */ }
+    leftoverVersion++;
+    listeners.forEach((l) => l());
   },
 
   /** Carga datos de ejemplo para un proyecto (una sola vez por proyecto). */

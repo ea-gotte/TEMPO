@@ -16,7 +16,7 @@ import { PlanTab } from "./PlanTab";
 import { BacklogTab } from "./BacklogTab";
 import { DiscoveryTab, RisksTab } from "./Uncertainty";
 import type { WorkEnv } from "./types";
-import { useWork, workActions } from "./workStore";
+import { useWork, workActions, useLocalLeftovers, useWorkShared } from "./workStore";
 import { clearAllBoards } from "./board/boardStore";
 import { BoardBoundary } from "./board/BoardBoundary";
 import "./projects.css";
@@ -37,6 +37,27 @@ const GROUP_OF: Record<Tab, Group> = {
 
 export function DemoBanner() {
   const env = useEnv();
+  const shared = useWorkShared();
+  const left = useLocalLeftovers();
+  // Ya se comparte con el equipo: no es una demo. Solo se avisa si este navegador tenía algo cargado de antes.
+  if (shared) {
+    if (!left) return null;
+    const parts = [
+      left.tasks ? `${left.tasks} tarea${left.tasks !== 1 ? "s" : ""}` : "",
+      left.plan ? `${left.plan} hito${left.plan !== 1 ? "s" : ""} o entregable${left.plan !== 1 ? "s" : ""}` : "",
+      left.other ? `${left.other} elemento${left.other !== 1 ? "s" : ""} más` : "",
+    ].filter(Boolean).join(", ");
+    return (
+      <div className="pw-demo-banner">
+        <b>Datos de este navegador</b>
+        <span>Antes de que Proyectos se compartiera con el equipo, acá habías cargado {parts}. Podés subirlos para que los vean todos o descartarlos.</span>
+        <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => { if (confirm("¿Descartar lo que estaba guardado solo en este navegador? No se puede deshacer.")) workActions.discardLeftovers(); }}>Descartar</button>
+          <button className="btn btn-primary btn-sm" onClick={() => workActions.uploadLeftovers(env.projects.map((p) => p.id))}>Subirlos</button>
+        </span>
+      </div>
+    );
+  }
   return (
     <div className="pw-demo-banner">
       <b>Demo</b>
@@ -77,6 +98,7 @@ function Workspace({ projectId, onBack, onEditProject, tabParam, onTabChange }: 
   const project = env.projects.find((p) => p.id === projectId);
   const index = Math.max(0, env.projects.findIndex((p) => p.id === projectId));
   const seeded = !!work.seeded[projectId];
+  const shared = useWorkShared();
 
   useEffect(() => {
     if (!project || seeded) return;
@@ -142,7 +164,7 @@ function Workspace({ projectId, onBack, onEditProject, tabParam, onTabChange }: 
         {code && <span className="pw-code">{code}</span>}
         <span className={`badge ${project.status === "activo" ? "ok" : project.status === "completado" ? "acc" : ""}`}>{project.status}</span>
         {late && <span className="pw-pill late"><Icon name="alert" size={11} /> Atrasado</span>}
-        <span className="pw-pill" title="Gestión de proyectos en prueba: tareas, hitos, sprints y tableros se guardan solo en este navegador. Los roles y la asignación mensual sí se comparten con el equipo.">Demo</span>
+        {!shared && <span className="pw-pill" title="Gestión de proyectos en prueba: tareas, hitos, sprints y tableros se guardan solo en este navegador. Los roles y la asignación mensual sí se comparten con el equipo.">Demo</span>}
         <span style={{ flex: 1 }} />
         <button className={`btn btn-sm ${current === "tablero" ? "btn-primary" : "btn-secondary"}`} onClick={() => setTab(current === "tablero" ? "resumen" : "tablero")}>
           <Icon name="image" size={13} /> {current === "tablero" ? "Cerrar tablero" : "Tablero"}

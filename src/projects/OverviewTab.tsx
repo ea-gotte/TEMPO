@@ -17,7 +17,7 @@ import type { Task } from "./types";
 import { projectCode } from "./templates";
 import { StructurePicker, buildStructure, structureChoiceValid, type StructureChoice } from "./StructurePicker";
 import { Modal } from "../components/ui";
-import { useWork, workActions } from "./workStore";
+import { useWork, workActions, useWorkShared } from "./workStore";
 import { clearAllBoards } from "./board/boardStore";
 
 type Tab = import("./ProjectWorkspace").Tab;
@@ -133,6 +133,7 @@ export function OverviewTab({ projectId, perms, go, onOpenTask }: { projectId: s
 
 /** Ficha del proyecto: datos, documentación, roles, equipo e indicadores proyectado vs. real */
 export function InfoTab({ projectId, perms, onEditProject }: { projectId: string; perms: Perms; onEditProject?: () => void }) {
+  const shared = useWorkShared();
   const env = useEnv();
   const work = useWork();
   const toast = useToast();
@@ -321,7 +322,7 @@ export function InfoTab({ projectId, perms, onEditProject }: { projectId: string
       </div>
 
       <div style={{ marginTop: 14, fontSize: 12, color: "var(--text-3)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <span>Demo: tareas, hitos, sprints y tableros se guardan solo en este navegador.</span>
+        <span>{shared ? "El tablero todavía se guarda solo en este navegador." : "Demo: tareas, hitos, sprints y tableros se guardan solo en este navegador."}</span>
         {env.examples && <button className="btn btn-ghost btn-sm" onClick={() => { if (confirm("¿Restablecer los datos de ejemplo? Se pierden los cambios hechos en la demo, incluidos los tableros.")) { workActions.resetDemo(); void clearAllBoards(); } }}>
           Restablecer datos de ejemplo
         </button>}

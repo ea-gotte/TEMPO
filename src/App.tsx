@@ -1,12 +1,13 @@
 import React, { Suspense, lazy, useEffect } from "react";
 import { StoreProvider, useStore } from "./store";
-import { ToastProvider } from "./components/ui";
+import { ToastProvider, useToast } from "./components/ui";
 import { Shell, canSeePage, type PageKey } from "./components/Shell";
 import { Login } from "./pages/Login";
 import { ForceChangePassword } from "./pages/ForceChangePassword";
 import { ResetPassword } from "./pages/ResetPassword";
 import { goToPage, useRoute } from "./routes";
 import { useProjectRolesSync } from "./projects/projectRolesSync";
+import { useWorkSync } from "./projects/workSync";
 import type { Role } from "./types";
 
 /**
@@ -111,6 +112,13 @@ function Root() {
 /** Con sesión lista: la página sale de la URL, así recargar no saca de la pestaña. */
 function Pages({ role }: { role: Role }) {
   useProjectRolesSync();
+  // Proyectos compartido con el equipo: lectura, guardado y tiempo real (fase 39)
+  const workSync = useWorkSync();
+  const toast = useToast();
+  useEffect(() => {
+    if (workSync.error) toast(workSync.error);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workSync.errorId]);
   const { page, isRoot } = useRoute();
   const requested = page ?? "calendar";
   // Si la página actual no está permitida para el rol, volver al calendario
