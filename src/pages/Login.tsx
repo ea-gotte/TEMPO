@@ -122,8 +122,8 @@ export function Login() {
           <span
             style={{
               width: 44, height: 44, borderRadius: 12,
-              background: "linear-gradient(135deg, var(--accent), #9b6bff)",
-              display: "grid", placeItems: "center", color: "#fff", fontSize: 22, fontWeight: 800,
+              background: "var(--accent)",
+              display: "grid", placeItems: "center", color: "var(--on-accent)", fontSize: 22, fontWeight: 800,
               boxShadow: "var(--shadow-md)",
             }}
           >

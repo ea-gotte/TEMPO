@@ -5,15 +5,21 @@
   --font: "Inter", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "Cascadia Code", "SF Mono", Consolas, monospace;
 
-  --accent: #5b6cff;
-  --accent-strong: #4757f0;
-  --accent-soft: rgba(91, 108, 255, 0.12);
-  --success: #16a34a;
-  --success-soft: rgba(22, 163, 74, 0.12);
-  --warning: #d97706;
-  --warning-soft: rgba(217, 119, 6, 0.14);
-  --danger: #e11d48;
-  --danger-soft: rgba(225, 29, 72, 0.1);
+  /* Colores elegidos para cumplir contraste AA (4,5:1): el de marca con texto blanco encima y
+     como texto sobre su fondo suave; los de estado, sobre su fondo suave. */
+  --accent: #4555e6;
+  --accent-strong: #3545cf;
+  --accent-soft: rgba(69, 85, 230, 0.12);
+  /* Texto o ícono que va ENCIMA del color de marca */
+  --on-accent: #ffffff;
+  --success: #166534;
+  --success-soft: rgba(22, 101, 52, 0.12);
+  --warning: #9a4a07;
+  --warning-soft: rgba(154, 74, 7, 0.14);
+  --danger: #be123c;
+  --danger-soft: rgba(190, 18, 60, 0.1);
+  /* Rojo lleno para contadores y "detener": siempre lleva texto blanco */
+  --danger-fill: #be123c;
 
   --bg: #f7f7f9;
   --surface: #ffffff;
@@ -22,8 +28,8 @@
   --border: #e4e6eb;
   --border-strong: #d3d6de;
   --text: #17181c;
-  --text-2: #5b6069;
-  --text-3: #8f95a1;
+  --text-2: #4d525c;
+  --text-3: #646b78;
   --shadow-sm: 0 1px 2px rgba(20, 22, 32, 0.06);
   --shadow-md: 0 4px 16px rgba(20, 22, 32, 0.08);
   --shadow-lg: 0 12px 40px rgba(20, 22, 32, 0.16);
@@ -33,9 +39,11 @@
 }
 
 :root[data-theme="dark"] {
-  --accent: #7482ff;
-  --accent-strong: #8b97ff;
-  --accent-soft: rgba(116, 130, 255, 0.16);
+  --accent: #8b97ff;
+  --accent-strong: #a3acff;
+  --accent-soft: rgba(139, 151, 255, 0.16);
+  --on-accent: #101116;
+  --danger-fill: #e11d48;
   --success: #34d399;
   --success-soft: rgba(52, 211, 153, 0.14);
   --warning: #fbbf24;
@@ -50,8 +58,8 @@
   --border: #262935;
   --border-strong: #343849;
   --text: #eceef2;
-  --text-2: #a3a9b7;
-  --text-3: #6b7180;
+  --text-2: #b4bac6;
+  --text-3: #949aa8;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.6);
@@ -84,8 +92,8 @@ a { color: var(--accent); text-decoration: none; }
   font-weight: 700; font-size: 15px; letter-spacing: -0.2px;
 }
 .brand-logo {
-  width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, var(--accent), #9b6bff);
-  display: grid; place-items: center; color: #fff; font-size: 14px; font-weight: 800;
+  width: 28px; height: 28px; border-radius: 8px; background: var(--accent);
+  display: grid; place-items: center; color: var(--on-accent); font-size: 14px; font-weight: 800;
   box-shadow: var(--shadow-sm);
 }
 .nav-section { margin: 12px 10px 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-3); }
@@ -98,7 +106,7 @@ a { color: var(--accent); text-decoration: none; }
 .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .nav-item .ico { width: 18px; display: grid; place-items: center; flex-shrink: 0; }
 .nav-item .count {
-  margin-left: auto; background: var(--danger); color: #fff; border-radius: 99px;
+  margin-left: auto; background: var(--danger-fill); color: #fff; border-radius: 99px;
   font-size: 10.5px; font-weight: 700; padding: 1px 6px;
 }
 
@@ -139,7 +147,7 @@ a { color: var(--accent); text-decoration: none; }
 }
 .iconbtn .badge-count {
   position: absolute; top: -2px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px;
-  border-radius: 99px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700;
+  border-radius: 99px; background: var(--danger-fill); color: #fff; font-size: 10px; font-weight: 700;
   display: flex; align-items: center; justify-content: center; border: 2px solid var(--surface); line-height: 1;
 }
 
@@ -159,7 +167,7 @@ a { color: var(--accent); text-decoration: none; }
   border-radius: var(--r-md); font-weight: 600; font-size: 13.5px;
   border: 1px solid transparent; transition: all 0.13s; white-space: nowrap;
 }
-.btn-primary { background: var(--accent); color: #fff; box-shadow: var(--shadow-sm); }
+.btn-primary { background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow-sm); }
 .btn-primary:hover { background: var(--accent-strong); }
 .btn-secondary { background: var(--surface); border-color: var(--border-strong); color: var(--text); }
 .btn-secondary:hover { background: var(--surface-2); }
@@ -260,11 +268,11 @@ a { color: var(--accent); text-decoration: none; }
 .timer-clock { font-family: var(--mono); font-size: 17px; font-weight: 600; min-width: 78px; text-align: center; }
 .playbtn {
   width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--accent); color: #fff; font-size: 15px; box-shadow: var(--shadow-md);
+  background: var(--accent); color: var(--on-accent); font-size: 15px; box-shadow: var(--shadow-md);
   transition: transform 0.12s, background 0.12s; flex-shrink: 0;
 }
 .playbtn:hover { transform: scale(1.05); background: var(--accent-strong); }
-.playbtn.stop { background: var(--danger); }
+.playbtn.stop { background: var(--danger-fill); color: #fff; }
 .playbtn:disabled { background: var(--surface-3); color: var(--text-3); box-shadow: none; cursor: not-allowed; transform: none; }
 
 .running-timer {
@@ -348,8 +356,8 @@ a { color: var(--accent); text-decoration: none; }
   white-space: normal; overflow-wrap: break-word;
   display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
 }
-.cal-block .t { opacity: 0.85; font-weight: 500; font-size: 9px; }
-.cal-block-sub-inline { opacity: 0.85; font-weight: 500; font-size: 9px; }
+.cal-block .t { font-weight: 500; font-size: 9px; }
+.cal-block-sub-inline { font-weight: 500; font-size: 9px; }
 .cal-block.overlap { outline: 2px solid var(--danger); }
 .cal-block .rsz { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; }
 
@@ -359,7 +367,7 @@ a { color: var(--accent); text-decoration: none; }
 .month-cell:hover { background: var(--surface-2); }
 .month-cell.dim { background: var(--surface-2); color: var(--text-3); }
 .month-cell .num { font-weight: 650; font-size: 12.5px; }
-.month-cell .num.today { background: var(--accent); color: #fff; border-radius: 50%; width: 22px; height: 22px; display: inline-grid; place-items: center; }
+.month-cell .num.today { background: var(--accent); color: var(--on-accent); border-radius: 50%; width: 22px; height: 22px; display: inline-grid; place-items: center; }
 .month-evt { display: block; margin-top: 3px; padding: 1px 6px; border-radius: 4px; font-size: 10.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Timeline */
@@ -498,6 +506,10 @@ a { color: var(--accent); text-decoration: none; }
   .sidebar.open { transform: translateX(0); }
   .menu-toggle { display: grid; }
   .content { padding: 14px 14px 60px; }
+  /* Registro de tiempo: descripción arriba; proyecto (recortado si no entra), horario y duración abajo */
+  .entry-row { flex-wrap: wrap; row-gap: 4px; }
+  .entry-row .desc { flex: 1 1 100%; white-space: normal; overflow-wrap: anywhere; }
+  .entry-row .proj { display: block; flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .searchbox { width: 44vw; }
   .kpi .value { font-size: 20px; }
 }

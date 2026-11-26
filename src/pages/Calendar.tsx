@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useStore, overlaps } from "../store";
 import type { TimeEntry } from "../types";
-import { addDays, clamp, dayLabel, fmtDur, isoDate, minToHM, monthLabel, parseISO, today, uid, weekStart } from "../utils";
+import { addDays, clamp, dayLabel, fmtDur, isoDate, minToHM, monthLabel, parseISO, today, uid, weekStart, readableOn } from "../utils";
 import { EntryModal } from "../components/EntryModal";
 import { ContextMenu, DateField, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
@@ -146,7 +146,7 @@ const CalBlock = React.memo(function CalBlock({
     <div
       className={`cal-block ${conf ? "overlap" : ""}`}
       style={{
-        top, height, left, width, right: "auto", background,
+        top, height, left, width, right: "auto", ...readableOn(background),
         cursor: canEdit ? undefined : "default",
         ...(isDragging ? { zIndex: 30, boxShadow: "var(--shadow-md)" } : null),
       }}

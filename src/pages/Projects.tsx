@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useStore } from "../store";
 import type { Client, Project, ProjectStatus, SubProject } from "../types";
-import { fmtDur, safeHttpUrl, uid } from "../utils";
+import { fmtDur, safeHttpUrl, uid, readableOn } from "../utils";
 import { Avatar, Dot, Empty, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 
@@ -395,7 +395,7 @@ export function Projects() {
             return (
               <div className="card card-pad" key={c.id}>
                 <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
-                  <span style={{ width: 34, height: 34, borderRadius: 10, background: c.color, display: "grid", placeItems: "center", color: "#fff", fontWeight: 700 }}>
+                  <span style={{ width: 34, height: 34, borderRadius: 10, ...readableOn(c.color), display: "grid", placeItems: "center", fontWeight: 700 }}>
                     {c.name[0]}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
