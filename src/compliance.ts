@@ -135,34 +135,43 @@ export function visibleIncidents(incidents: HoursIncident[], viewer: User, users
   return incidents.filter((i) => downline.has(i.userId));
 }
 
+/** Título del aviso diario: es lo que permite reconocer si el de hoy ya se mandó */
+export const COMPLIANCE_SUMMARY_TITLE = "Carga de horas sin completar";
+
 /**
- * Avisos automáticos para el usuario logueado: se generan cuando él es el
- * destinatario actual de una incidencia (directo o por escalamiento), o
- * cuando la cadena se agotó sin llegar a un admin y él lo es (aviso de
- * respaldo). Se manda como máximo un recordatorio por día por incidencia
- * (la fecha del día queda en el texto, que es lo que se usa para
- * deduplicar contra el historial de notificaciones — mismo patrón que el
- * resto de los avisos automáticos de la app): si sigue sin resolverse,
- * al otro día se vuelve a avisar.
+ * Aviso automático para el usuario logueado: UNO por día, con el resumen de las incidencias
+ * de las que hoy es destinatario (directo o por escalamiento) o, si es admin, de las que
+ * agotaron la cadena sin llegar a un admin. Antes salía un aviso por persona y por semana
+ * (cerca de cien por día para un admin); el detalle sigue estando en Control de horas.
  */
-export function myComplianceAlerts(state: AppState, meId: ID, todayISO: string): { title: string; body: string }[] {
+export function myComplianceSummary(state: AppState, meId: ID, todayISO: string): { title: string; body: string } | null {
   const me = state.users.find((u) => u.id === meId);
-  if (!me) return [];
-  const incidents = computeHoursIncidents(state, todayISO);
-  const alerts: { title: string; body: string }[] = [];
-  for (const inc of incidents) {
+  if (!me) return null;
+  const weeksByUser = new Map<ID, number>();
+  let weeks = 0;
+  let escalated = 0;
+  for (const inc of computeHoursIncidents(state, todayISO)) {
     const isDirectTarget = inc.notifyTargetId === meId;
     const isAdminFallback = inc.fallbackToAdmins && me.role === "admin" && inc.notifyTargetId !== meId;
     if (!isDirectTarget && !isAdminFallback) continue;
-    const user = state.users.find((u) => u.id === inc.userId);
-    if (!user) continue;
-    const severityLabel = inc.severity === "sin-carga" ? "no cargó ninguna hora" : "no completó la carga de horas";
-    const levelTag = isAdminFallback ? "sin-responsable" : String(inc.escalationLevel);
-    const escalated = inc.escalationLevel > 0 || isAdminFallback;
-    alerts.push({
-      title: escalated ? "Incidencia de carga escalada" : "Aviso de carga de horas",
-      body: `Hoy ${dayLabel(todayISO)}: ${user.name} ${severityLabel} de la semana del ${dayLabel(inc.weekStart)} (nivel ${levelTag}).`,
-    });
+    weeksByUser.set(inc.userId, (weeksByUser.get(inc.userId) ?? 0) + 1);
+    weeks++;
+    if (inc.escalationLevel > 0 || isAdminFallback) escalated++;
   }
-  return alerts;
+  const people = weeksByUser.size;
+  if (people === 0) return null;
+  // Primero quienes más semanas deben
+  const names = [...weeksByUser]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => state.users.find((u) => u.id === id)?.name)
+    .filter((n): n is string => Boolean(n));
+  const shown = names.slice(0, 3);
+  const rest = people - shown.length;
+  const who = shown.join(", ") + (rest > 0 ? ` y ${rest} más` : "");
+  // Si todas están escaladas (lo habitual para un admin), decirlo no agrega nada
+  const esc = escalated > 0 && escalated < weeks ? ` (${escalated} escalada${escalated !== 1 ? "s" : ""})` : "";
+  return {
+    title: COMPLIANCE_SUMMARY_TITLE,
+    body: `Hoy ${dayLabel(todayISO)}: ${people} persona${people !== 1 ? "s" : ""} con ${weeks} semana${weeks !== 1 ? "s" : ""} sin completar${esc}: ${who}. El detalle está en Control de horas.`,
+  };
 }

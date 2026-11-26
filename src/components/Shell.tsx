@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { findAbsenceFor, serverEntriesLoaded, useStore, vacationInfo } from "../store";
 import type { Role } from "../types";
 import { dayLabel, fmtDate, today, validatePassword } from "../utils";
-import { myComplianceAlerts } from "../compliance";
+import { myComplianceSummary } from "../compliance";
 import { Avatar, Modal, useToast } from "./ui";
 import { Icon, type IconName } from "./Icon";
 import { supabase } from "../supabase";
@@ -186,25 +186,24 @@ export function Shell({
   // Cadena de mando: avisos automáticos de carga de horas — cuando alguien de
   // la línea de mando de este usuario (directa o escalada) no cargó una
   // semana ya cerrada. Ver compliance.ts para la lógica de escalamiento.
+  // Un solo aviso por día con el resumen (antes: uno por persona y por semana, cerca de cien por día).
   // Hasta que no llegan los registros del servidor no se calcula nada: con el calendario todavía
-  // vacío (o con lo guardado de otra sesión) "nadie cargó horas" y se mandaban cientos de avisos falsos.
-  const complianceAlerts = useMemo(
-    () => (serverEntriesLoaded() ? myComplianceAlerts(state, me.id, today()) : []),
+  // vacío (o con lo guardado de otra sesión) "nadie cargó horas" y el aviso salía falso.
+  const complianceSummary = useMemo(
+    () => (serverEntriesLoaded() ? myComplianceSummary(state, me.id, today()) : null),
     [state.users, state.entries, me.id],
   );
-  // Cada aviso sale una sola vez por sesión: la lista de notificaciones solo trae las últimas 100,
-  // así que mirar ahí no alcanza para saber si ya se mandó.
-  const sentAlerts = useRef(new Set<string>());
+  const summarySentOn = useRef<string | null>(null);
   useEffect(() => {
-    for (const alert of complianceAlerts) {
-      if (sentAlerts.current.has(alert.body)) continue;
-      sentAlerts.current.add(alert.body);
-      if (!state.notifications.some((n) => n.kind === "falta-carga" && n.body === alert.body)) {
-        dispatch({ type: "notify", n: { userId: me.id, kind: "falta-carga", title: alert.title, body: alert.body } });
-      }
-    }
+    if (!complianceSummary) return;
+    const day = today();
+    if (summarySentOn.current === day) return;
+    summarySentOn.current = day;
+    // El de hoy pudo haberse mandado ya desde otra pestaña u otro dispositivo
+    if (state.notifications.some((n) => n.kind === "falta-carga" && n.title === complianceSummary.title && n.date === day)) return;
+    dispatch({ type: "notify", n: { userId: me.id, kind: "falta-carga", title: complianceSummary.title, body: complianceSummary.body } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [complianceAlerts.map((a) => a.body).join("|")]);
+  }, [complianceSummary?.body]);
 
   const unread = state.notifications.filter((n) => !n.read).length;
   const pending = isApprover
