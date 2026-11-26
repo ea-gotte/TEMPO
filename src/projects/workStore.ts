@@ -631,6 +631,27 @@ export const workActions = {
     commit(roleBackend ? { ...empty(), roles: data.roles, assignments: data.assignments } : empty());
   },
 
+  /**
+   * Deja listos los proyectos que todavía no se abrieron en este navegador: ficha con el código
+   * tomado del nombre y la metodología del proyecto, sin tareas, hitos ni riesgos. Es lo que usa
+   * la app; los datos de ejemplo (ensureSeed) quedan solo para la página de demostración.
+   */
+  ensureProjects(projects: Project[]) {
+    const fresh = projects.filter((p) => !data.seeded[p.id]);
+    if (fresh.length === 0) return;
+    const meta = { ...data.meta };
+    const seeded = { ...data.seeded };
+    for (const p of fresh) {
+      meta[p.id] = {
+        projectId: p.id, code: projectCodeFromName(p.name) ?? "", startDate: null, endDate: null,
+        description: "", notes: "", sharepointUrl: "", accUrl: "",
+        mode: p.managementMode ?? DEFAULT_MODE, sprintWeeks: 2, contingencyPct: 10, discoveryHours: null, discoveryEnd: null,
+      };
+      seeded[p.id] = true;
+    }
+    commit({ ...data, meta, seeded });
+  },
+
   /** Carga datos de ejemplo para un proyecto (una sola vez por proyecto). */
   ensureSeed(project: Project, index: number) {
     if (data.seeded[project.id]) return;

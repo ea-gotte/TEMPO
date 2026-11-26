@@ -36,13 +36,14 @@ const GROUP_OF: Record<Tab, Group> = {
 
 
 export function DemoBanner() {
+  const env = useEnv();
   return (
     <div className="pw-demo-banner">
       <b>Demo</b>
       <span>Gestión de proyectos en prueba: las tareas, hitos, sprints y tableros se guardan solo en este navegador. Los roles por proyecto y la asignación mensual sí se comparten con el equipo.</span>
-      <button className="btn btn-secondary btn-sm" style={{ marginLeft: "auto" }} onClick={() => { if (confirm("¿Restablecer los datos de ejemplo? Se pierden los cambios hechos en la demo, incluidos los tableros.")) { workActions.resetDemo(); void clearAllBoards(); } }}>
+      {env.examples && <button className="btn btn-secondary btn-sm" style={{ marginLeft: "auto" }} onClick={() => { if (confirm("¿Restablecer los datos de ejemplo? Se pierden los cambios hechos en la demo, incluidos los tableros.")) { workActions.resetDemo(); void clearAllBoards(); } }}>
         Restablecer datos de ejemplo
-      </button>
+      </button>}
     </div>
   );
 }
@@ -78,8 +79,10 @@ function Workspace({ projectId, onBack, onEditProject, tabParam, onTabChange }: 
   const seeded = !!work.seeded[projectId];
 
   useEffect(() => {
-    if (project && !seeded) workActions.ensureSeed(project, index);
-  }, [project, seeded, index]);
+    if (!project || seeded) return;
+    if (env.examples) workActions.ensureSeed(project, index);
+    else workActions.ensureProjects([project]);
+  }, [project, seeded, index, env.examples]);
 
   if (!project) return <Empty icon="folder" text="El proyecto ya no existe" />;
   if (!seeded) return null;

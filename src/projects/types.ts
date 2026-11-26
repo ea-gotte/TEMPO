@@ -329,4 +329,6 @@ export interface WorkEnv {
   changeProjectMode?: (projectId: ID, mode: ProjectMode) => Promise<string | null>;
   /** Ausencias aprobadas (descuentan capacidad del sprint) */
   absences?: { userId: ID; dateFrom: string; dateTo: string }[];
+  /** Solo la página de demostración: cada proyecto arranca con tareas, hitos y riesgos de ejemplo. En la app arrancan vacíos. */
+  examples?: boolean;
 }

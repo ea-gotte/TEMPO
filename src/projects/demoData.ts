@@ -55,6 +55,7 @@ export function demoEnv(meId: string): WorkEnv {
     users: DEMO_USERS,
     me: DEMO_USERS.find((u) => u.id === meId) ?? DEMO_USERS[0],
     minutesByProject: DEMO_MINUTES,
+    examples: true,
     absences: [
       { userId: "u5", dateFrom: addDays(today(), 1), dateTo: addDays(today(), 4) },
       { userId: "u4", dateFrom: addDays(today(), 8), dateTo: addDays(today(), 12) },

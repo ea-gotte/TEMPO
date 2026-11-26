@@ -139,15 +139,18 @@ function GeneralPanelInner({ onOpen, viewParam, onViewChange }: { onOpen: (proje
   // Una vista oculta para este rol, o que no existe en la URL, cae en el cronograma
   const effectiveView: View = allowedViews.find((v) => v.key === view)?.key ?? "cronograma";
 
-  // Datos de ejemplo para los primeros proyectos (solo en la demo)
+  // En la app los proyectos arrancan vacíos; los datos de ejemplo son solo de la página de demostración
   useEffect(() => {
-    env.projects
-      .map((p, i) => ({ p, i }))
-      .filter(({ p }) => p.status !== "archivado")
+    const open = env.projects.map((p, i) => ({ p, i })).filter(({ p }) => p.status !== "archivado");
+    if (!env.examples) {
+      workActions.ensureProjects(open.map(({ p }) => p));
+      return;
+    }
+    open
       .slice(0, SEED_LIMIT)
       .filter(({ p }) => !work.seeded[p.id])
       .forEach(({ p, i }) => workActions.ensureSeed(p, i));
-  }, [env.projects, work.seeded]);
+  }, [env.projects, env.examples, work.seeded]);
 
   const visible = useMemo(
     () => env.projects.filter((p) => p.status !== "archivado" && projectPerms(env, work, p.id).canView),

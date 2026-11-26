@@ -322,9 +322,9 @@ export function InfoTab({ projectId, perms, onEditProject }: { projectId: string
 
       <div style={{ marginTop: 14, fontSize: 12, color: "var(--text-3)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <span>Demo: tareas, hitos, sprints y tableros se guardan solo en este navegador.</span>
-        <button className="btn btn-ghost btn-sm" onClick={() => { if (confirm("¿Restablecer los datos de ejemplo? Se pierden los cambios hechos en la demo, incluidos los tableros.")) { workActions.resetDemo(); void clearAllBoards(); } }}>
+        {env.examples && <button className="btn btn-ghost btn-sm" onClick={() => { if (confirm("¿Restablecer los datos de ejemplo? Se pierden los cambios hechos en la demo, incluidos los tableros.")) { workActions.resetDemo(); void clearAllBoards(); } }}>
           Restablecer datos de ejemplo
-        </button>
+        </button>}
       </div>
 
       {addStructure && <AddStructureModal projectId={projectId} onClose={() => setAddStructure(false)} />}
