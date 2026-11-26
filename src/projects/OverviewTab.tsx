@@ -18,6 +18,7 @@ import { projectCode } from "./templates";
 import { StructurePicker, buildStructure, structureChoiceValid, type StructureChoice } from "./StructurePicker";
 import { Modal } from "../components/ui";
 import { useWork, workActions } from "./workStore";
+import { clearAllBoards } from "./board/boardStore";
 
 type Tab = import("./ProjectWorkspace").Tab;
 
@@ -38,8 +39,8 @@ function useIndicators(projectId: string) {
 }
 
 /**
- * Resumen del proyecto: solo lo que hay que mirar al entrar. Estado, cuatro números,
- * lo próximo a vencer y las tareas propias. El resto vive en sus pestañas.
+ * Resumen del proyecto: entra en una pantalla. Una línea de estado, tres números y una sola
+ * lista con lo próximo a vencer (hitos, entregables y las tareas propias).
  */
 export function OverviewTab({ projectId, perms, go, onOpenTask }: { projectId: string; perms: Perms; go: (t: Tab) => void; onOpenTask: (t: Task) => void }) {
   const env = useEnv();
@@ -50,116 +51,83 @@ export function OverviewTab({ projectId, perms, go, onOpenTask }: { projectId: s
   const deliverables = work.deliverables.filter((d) => d.projectId === projectId);
   const userOf = (id: string | null) => env.users.find((u) => u.id === id);
   const ind = useIndicators(projectId);
+  const now = today();
 
   const pr = taskProgress(tasks);
   // La programación se sigue por hitos y entregables: lo atrasado es lo que pasó su fecha sin cumplirse
   const planLate = milestones.filter((m) => isPlanOverdue(m)).length + deliverables.filter((d) => isPlanOverdue(d)).length;
-  const mine = tasks.filter((t) => t.assigneeId === env.me.id && t.status !== "hecha").sort(byDue);
-  const nextMs = milestones.filter((m) => m.status !== "cumplido").sort(byDue).slice(0, 3);
-  const nextDel = deliverables.filter((d) => d.status !== "cumplido").sort(byDue).slice(0, 3);
+  const missingRoles = work.roles.filter((r) => r.active && r.required && !work.assignments.some((a) => a.projectId === projectId && a.roleKey === r.key));
+  const highRisks = work.risks.filter((r) => r.projectId === projectId && r.status === "abierto" && r.probability * r.impact >= 6).length;
 
   const spentMin = env.minutesByProject[projectId] ?? 0;
   const budget = project.budgetHours;
   const hoursPct = budget ? Math.min(100, (spentMin / 60 / budget) * 100) : null;
-  const missingRoles = work.roles.filter((r) => r.active && r.required && !work.assignments.some((a) => a.projectId === projectId && a.roleKey === r.key));
+
+  // Una sola lista por fecha: hitos, entregables y las tareas propias sin terminar
+  type Due = { key: string; kind: "hito" | "entregable" | "tarea"; name: string; dueDate: string | null; ownerId: string | null; open: () => void };
+  const dues: Due[] = [
+    ...milestones.filter((m) => m.status !== "cumplido").map((m): Due => ({ key: m.id, kind: "hito", name: m.name, dueDate: m.dueDate, ownerId: m.ownerId, open: () => go("plan") })),
+    ...deliverables.filter((d) => d.status !== "cumplido").map((d): Due => ({ key: d.id, kind: "entregable", name: d.name, dueDate: d.dueDate, ownerId: d.ownerId, open: () => go("plan") })),
+    ...tasks.filter((t) => t.assigneeId === env.me.id && t.status !== "hecha" && !t.archived).map((t): Due => ({ key: t.id, kind: "tarea", name: t.name, dueDate: t.dueDate, ownerId: t.assigneeId, open: () => onOpenTask(t) })),
+  ].sort(byDue);
+  const next = dues.find((d) => d.kind !== "tarea" && d.dueDate) ?? null;
+  const daysTo = next?.dueDate ? Math.round((new Date(next.dueDate + "T00:00:00").getTime() - new Date(now + "T00:00:00").getTime()) / 86400000) : null;
+  const SHOWN = 8;
 
   return (
     <>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12, fontSize: 13, color: "var(--text-2)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12, fontSize: 13 }}>
         <HealthPill h={ind.health} />
+        {planLate > 0 && <button className="pw-pill late" onClick={() => go("plan")}><Icon name="alert" size={11} /> {planLate} vencido{planLate !== 1 ? "s" : ""}</button>}
+        {highRisks > 0 && <button className="pw-pill soon" onClick={() => go("riesgos")}>{highRisks} riesgo{highRisks !== 1 ? "s" : ""} alto{highRisks !== 1 ? "s" : ""}</button>}
         {missingRoles.length > 0 && perms.canManage && (
           <button className="pw-pill late" onClick={() => go("ficha")} title="Asignar los roles que faltan">
-            <Icon name="alert" size={11} /> Falta asignar: {missingRoles.map((r) => r.label).join(", ")}
+            Falta asignar: {missingRoles.map((r) => r.label).join(", ")}
           </button>
         )}
-        <span style={{ flex: 1 }} />
-        <button className="btn btn-ghost btn-sm" onClick={() => go("ficha")}>Ficha, equipo e indicadores <Icon name="arrow-right" size={12} /></button>
       </div>
 
-      <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-        <KpiCard icon="check-circle" label="Avance de tareas" value={`${pr.pct}%`} hint={`${pr.done} de ${pr.total} hechas`} />
-        <KpiCard icon="alert" label="Atrasados" value={planLate} tone={planLate ? "bad" : "ok"} hint={planLate ? "hitos o entregables vencidos" : "todo al día"} />
-        <KpiCard icon="calendar-days" label="Próximo hito" value={nextMs[0] ? fmtDate(nextMs[0].dueDate ?? "").slice(0, 5) || "—" : "—"} hint={nextMs[0]?.name ?? "sin hitos pendientes"} />
+      <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+        <KpiCard icon="check-circle" label="Avance" value={`${pr.pct}%`} hint={`${pr.done} de ${pr.total} tareas hechas`} />
         <div className="card kpi">
-          <span className="label"><Icon name="clock" size={14} /> Horas cargadas</span>
+          <span className="label"><Icon name="clock" size={14} /> Horas</span>
           <div className="value" style={hoursPct !== null && hoursPct >= 90 ? { color: "var(--danger)" } : undefined}>{fmtDur(spentMin)}</div>
           {budget ? (
             <>
               <div style={{ margin: "6px 0 4px" }}><Bar pct={hoursPct ?? 0} color={hoursPct! >= 90 ? "var(--danger)" : hoursPct! >= 70 ? "var(--warning)" : "var(--accent)"} /></div>
               <div className="hint">{Math.round(hoursPct ?? 0)}% de {budget} h proyectadas</div>
             </>
-          ) : <div className="hint">sin proyección de horas</div>}
+          ) : <div className="hint">sin horas proyectadas</div>}
+        </div>
+        <div className="card kpi">
+          <span className="label"><Icon name="calendar-days" size={14} /> Próximo vencimiento</span>
+          <div className="value" style={daysTo !== null && daysTo < 0 ? { color: "var(--danger)" } : undefined}>{next?.dueDate ? fmtDate(next.dueDate).slice(0, 5) : "—"}</div>
+          <div className="hint">
+            {next ? <>{next.name} · {daysTo === 0 ? "hoy" : daysTo! > 0 ? `en ${daysTo} día${daysTo !== 1 ? "s" : ""}` : `vencido hace ${-daysTo!} día${daysTo !== -1 ? "s" : ""}`}</> : "nada pendiente"}
+          </div>
         </div>
       </div>
 
-      <div className="grid-2" style={{ alignItems: "start" }}>
-        <div className="card card-pad">
-          <div className="card-title">Próximos hitos y entregables</div>
-          {nextMs.length + nextDel.length === 0 && <div style={{ color: "var(--text-3)", fontSize: 13 }}>Nada pendiente.</div>}
-          {nextMs.map((m) => (
-            <div className="list-item" key={m.id}>
-              <span style={{ color: isPlanOverdue(m) ? "var(--danger)" : "var(--accent)" }}>◆</span>
-              <span style={{ flex: 1, fontWeight: 600 }}>{m.name}</span>
-              <Person user={userOf(m.ownerId)} size={18} />
-              <DuePill date={m.dueDate} done={false} />
-            </div>
-          ))}
-          {nextDel.map((d) => (
-            <div className="list-item" key={d.id}>
-              <span style={{ color: "var(--text-3)" }}>▣</span>
-              <span style={{ flex: 1 }}>{d.name}</span>
-              <Person user={userOf(d.ownerId)} size={18} />
-              <DuePill date={d.dueDate} done={false} />
-            </div>
-          ))}
-          <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => go("plan")}>Ver hitos y entregables <Icon name="arrow-right" size={12} /></button>
+      <div className="card card-pad">
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+          <div className="card-title" style={{ margin: 0 }}>Próximos vencimientos</div>
+          <span style={{ flex: 1 }} />
+          <button className="btn btn-ghost btn-sm" onClick={() => go("plan")}>Plan <Icon name="arrow-right" size={12} /></button>
+          <button className="btn btn-ghost btn-sm" onClick={() => go("trabajo")}>Tareas <Icon name="arrow-right" size={12} /></button>
         </div>
-
-        <div className="card card-pad">
-          <div className="card-title">Mis tareas pendientes{mine.length > 0 && ` (${mine.length})`}</div>
-          {mine.length === 0 && <div style={{ color: "var(--text-3)", fontSize: 13 }}>No tenés tareas pendientes acá.</div>}
-          {mine.slice(0, 6).map((t) => (
-            <div className="list-item" key={t.id} style={{ cursor: "pointer" }} onClick={() => onOpenTask(t)}>
-              <span className="pw-dotc" style={{ background: TASK_STATUS.find((s) => s.key === t.status)!.color }} />
-              <span style={{ flex: 1 }}>{t.name}</span>
-              <DuePill date={t.dueDate} done={false} />
-            </div>
-          ))}
-          <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => go("trabajo")}>Ver todas las tareas <Icon name="arrow-right" size={12} /></button>
-        </div>
+        {dues.length === 0 && <div style={{ color: "var(--text-3)", fontSize: 13, padding: "8px 0" }}>Nada pendiente.</div>}
+        {dues.slice(0, SHOWN).map((d) => (
+          <button className="pw-due-row" key={d.key} onClick={d.open} title={d.kind === "tarea" ? "Abrir la tarea" : "Ver en el plan"}>
+            <span className="kind" style={{ color: d.kind === "hito" ? "var(--accent)" : "var(--text-3)" }}>{d.kind === "hito" ? "◆" : d.kind === "entregable" ? "▣" : "●"}</span>
+            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: d.kind === "hito" ? 600 : 400 }}>{d.name}</span>
+            {d.kind === "tarea" ? <span className="badge acc">mía</span> : <Person user={userOf(d.ownerId)} size={18} />}
+            <DuePill date={d.dueDate} done={false} />
+          </button>
+        ))}
+        {dues.length > SHOWN && <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>y {dues.length - SHOWN} más en Plan y Tareas.</div>}
+        <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 10 }}>◆ hito · ▣ entregable · ● tarea tuya</div>
       </div>
     </>
-  );
-}
-
-type Section = "tareas" | "reuniones" | "cambios";
-
-/** Trabajo del proyecto: tareas, reuniones y cambios del cliente */
-export function WorkTab({ projectId, perms, draft, onConsume }: { projectId: string; perms: Perms; draft: TaskDraft | null; onConsume: () => void }) {
-  const work = useWork();
-  const [section, setSection] = useState<Section>("tareas");
-  const nTasks = work.tasks.filter((t) => t.projectId === projectId && !t.archived).length;
-  const nMeetings = work.meetings.filter((m) => m.projectId === projectId).length;
-  const pendingChanges = scopeStats([], work.changes.filter((c) => c.projectId === projectId)).pending;
-  const sections: { key: Section; label: string }[] = [
-    { key: "tareas", label: `Tareas (${nTasks})` },
-    { key: "reuniones", label: `Reuniones (${nMeetings})` },
-    { key: "cambios", label: `Cambios del cliente${pendingChanges ? ` (${pendingChanges} pendiente${pendingChanges > 1 ? "s" : ""})` : ""}` },
-  ];
-  // Una tarea abierta desde el resumen siempre se muestra en Tareas
-  const current: Section = draft ? "tareas" : section;
-
-  return (
-    <div className="card card-pad">
-      <div className="tabs" role="tablist" style={{ marginBottom: 12 }}>
-        {sections.map((s) => (
-          <button key={s.key} role="tab" aria-selected={current === s.key} className={current === s.key ? "active" : ""} onClick={() => setSection(s.key)}>{s.label}</button>
-        ))}
-      </div>
-      {current === "tareas" && <TasksTab projectId={projectId} perms={perms} initialDraft={draft} onConsume={onConsume} />}
-      {current === "reuniones" && <MeetingsTab projectId={projectId} perms={perms} />}
-      {current === "cambios" && <ChangesTab projectId={projectId} perms={perms} />}
-    </div>
   );
 }
 
@@ -343,8 +311,16 @@ export function InfoTab({ projectId, perms, onEditProject }: { projectId: string
         </div>
       )}
 
-      <div style={{ marginTop: 14 }}>
-        <ProjectIndicatorsCard ind={ind} />
+      <details className="pw-fold" style={{ marginTop: 14 }}>
+        <summary>Indicadores: proyectado vs. real</summary>
+        <div style={{ marginTop: 10 }}><ProjectIndicatorsCard ind={ind} /></div>
+      </details>
+
+      <div style={{ marginTop: 14, fontSize: 12, color: "var(--text-3)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span>Demo: tareas, hitos, sprints y tableros se guardan solo en este navegador.</span>
+        <button className="btn btn-ghost btn-sm" onClick={() => { if (confirm("¿Restablecer los datos de ejemplo? Se pierden los cambios hechos en la demo, incluidos los tableros.")) { workActions.resetDemo(); void clearAllBoards(); } }}>
+          Restablecer datos de ejemplo
+        </button>
       </div>
 
       {addStructure && <AddStructureModal projectId={projectId} onClose={() => setAddStructure(false)} />}
