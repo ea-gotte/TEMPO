@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { findAbsenceFor, useStore, vacationInfo } from "../store";
+import { findAbsenceFor, serverEntriesLoaded, useStore, vacationInfo } from "../store";
 import type { Role } from "../types";
 import { dayLabel, fmtDate, today, validatePassword } from "../utils";
 import { myComplianceAlerts } from "../compliance";
@@ -186,9 +186,19 @@ export function Shell({
   // Cadena de mando: avisos automáticos de carga de horas — cuando alguien de
   // la línea de mando de este usuario (directa o escalada) no cargó una
   // semana ya cerrada. Ver compliance.ts para la lógica de escalamiento.
-  const complianceAlerts = useMemo(() => myComplianceAlerts(state, me.id, today()), [state.users, state.entries, me.id]);
+  // Hasta que no llegan los registros del servidor no se calcula nada: con el calendario todavía
+  // vacío (o con lo guardado de otra sesión) "nadie cargó horas" y se mandaban cientos de avisos falsos.
+  const complianceAlerts = useMemo(
+    () => (serverEntriesLoaded() ? myComplianceAlerts(state, me.id, today()) : []),
+    [state.users, state.entries, me.id],
+  );
+  // Cada aviso sale una sola vez por sesión: la lista de notificaciones solo trae las últimas 100,
+  // así que mirar ahí no alcanza para saber si ya se mandó.
+  const sentAlerts = useRef(new Set<string>());
   useEffect(() => {
     for (const alert of complianceAlerts) {
+      if (sentAlerts.current.has(alert.body)) continue;
+      sentAlerts.current.add(alert.body);
       if (!state.notifications.some((n) => n.kind === "falta-carga" && n.body === alert.body)) {
         dispatch({ type: "notify", n: { userId: me.id, kind: "falta-carga", title: alert.title, body: alert.body } });
       }

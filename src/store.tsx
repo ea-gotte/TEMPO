@@ -32,6 +32,7 @@ type Action =
   | { type: "syncNotifications"; notifications: Notification[] }
   | { type: "audit"; action: string; detail: string }
   | { type: "syncEntries"; entries: TimeEntry[] }
+  | { type: "applyEntryChanges"; upserts: TimeEntry[]; removeIds: ID[] }
   | { type: "syncAbsences"; absences: AbsenceRequest[] }
   | { type: "addHoliday"; holiday: Holiday }
   | { type: "deleteHoliday"; id: string }
@@ -365,8 +366,28 @@ function baseReducer(s: AppState, a: Action): AppState {
       return { ...s, notifications: s.notifications.map((n) => ({ ...n, read: true })) };
     case "audit":
       return withAudit(s, a.action, a.detail);
-    case "syncEntries":
-      return { ...s, entries: a.entries };
+    case "syncEntries": {
+      // Los registros que no cambiaron conservan su objeto: las tarjetas del calendario no se redibujan
+      const prev = new Map(s.entries.map((e) => [e.id, e]));
+      return { ...s, entries: a.entries.map((e) => { const old = prev.get(e.id); return old && sameEntry(old, e) ? old : e; }) };
+    }
+    case "applyEntryChanges": {
+      const gone = new Set(a.removeIds);
+      const incoming = new Map(a.upserts.map((e) => [e.id, e]));
+      let changed = false;
+      const next: TimeEntry[] = [];
+      for (const e of s.entries) {
+        if (gone.has(e.id)) { changed = true; continue; }
+        const inc = incoming.get(e.id);
+        if (!inc) { next.push(e); continue; }
+        incoming.delete(e.id);
+        if (sameEntry(e, inc)) next.push(e);
+        else { next.push(inc); changed = true; }
+      }
+      for (const e of incoming.values()) { next.push(e); changed = true; }
+      // El eco de un cambio propio llega idéntico a lo que ya hay: no se toca nada
+      return changed ? { ...s, entries: next } : s;
+    }
     case "syncAbsences":
       return { ...s, absences: a.absences };
     case "addHoliday":
@@ -504,6 +525,28 @@ function toEntryRow(e: TimeEntry) {
     favorite: e.favorite ?? false,
     recurring: e.recurring ?? null,
   };
+}
+
+/** true si dos versiones de un registro dicen lo mismo */
+function sameEntry(a: TimeEntry, b: TimeEntry): boolean {
+  return a.userId === b.userId && a.projectId === b.projectId && a.subProjectId === b.subProjectId
+    && a.description === b.description && a.date === b.date && a.start === b.start && a.end === b.end
+    && a.favorite === b.favorite && JSON.stringify(a.tagIds) === JSON.stringify(b.tagIds)
+    && JSON.stringify(a.recurring ?? null) === JSON.stringify(b.recurring ?? null);
+}
+
+/**
+ * Registros con una escritura propia todavía viajando al servidor (id → cuántas). Mientras tanto
+ * se ignoran los avisos del servidor sobre ese registro: lo local es igual o más nuevo, y aplicar
+ * el eco de un cambio anterior hacía que la tarjeta volviera un instante a su posición vieja.
+ */
+const pendingEntryWrites = new Map<string, number>();
+
+/** false hasta que llega la primera lectura de registros del servidor en esta sesión */
+let entriesFromServer = false;
+/** Los registros en pantalla ya vienen del servidor (y no de lo guardado en el navegador) */
+export function serverEntriesLoaded(): boolean {
+  return entriesFromServer;
 }
 
 function fromEntryRow(r: any): TimeEntry {
@@ -796,33 +839,65 @@ interface LocalSettings {
  * .range() hasta recibir una página vacía, sin asumir cuál es el límite real
  * del servidor (podría no ser 1000). */
 async function fetchAllRows<T = any>(table: string, pageSize = 1000): Promise<{ data: T[]; error: any }> {
-  const rows: T[] = [];
-  let from = 0;
-  for (;;) {
-    let result = await supabase.from(table).select("*").range(from, from + pageSize - 1);
-    // Reintenta un par de veces ante un error transitorio (p. ej. un 500 pasajero
-    // del lado de Supabase) antes de darse por vencido — si no, un hipo de red de
-    // un instante hacía que esta página se devolviera vacía, y quien llama (ver
-    // fetchEntriesAndAbsences) reemplazaba los datos ya cargados por "0 registros"
-    // como si se hubieran perdido, cuando en realidad seguían intactos en la base.
+  // Una página, con orden fijo (sin orden, dos páginas pueden repetir o saltear filas) y reintentos:
+  // un error pasajero no debe terminar en "0 registros", como si se hubieran perdido.
+  const page = async (from: number, to: number, count: boolean) => {
+    const run = () => supabase.from(table).select("*", count ? { count: "exact" } : undefined).order("id").range(from, to);
+    let result = await run();
     for (let attempt = 0; result.error && attempt < 2; attempt++) {
       await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
-      result = await supabase.from(table).select("*").range(from, from + pageSize - 1);
+      result = await run();
     }
-    const { data, error } = result;
-    if (error) return { data: rows, error };
-    if (!data || data.length === 0) break;
-    rows.push(...(data as T[]));
-    from += data.length;
+    return result;
+  };
+  // La primera página trae además el total: con eso el resto se pide en paralelo en vez de
+  // una detrás de otra (time_entries son más de diez páginas).
+  const first = await page(0, pageSize - 1, true);
+  if (first.error) return { data: [], error: first.error };
+  const rows = (first.data ?? []) as T[];
+  const total = first.count ?? rows.length;
+  // El servidor puede cortar en menos filas que las pedidas: el tamaño real es lo que devolvió
+  const step = rows.length;
+  if (step === 0 || step >= total) return { data: rows, error: null };
+  const starts: number[] = [];
+  for (let from = step; from < total; from += step) starts.push(from);
+  const PARALLEL = 4;
+  for (let i = 0; i < starts.length; i += PARALLEL) {
+    const batch = await Promise.all(starts.slice(i, i + PARALLEL).map((from) => page(from, from + step - 1, false)));
+    for (const r of batch) {
+      if (r.error) return { data: rows, error: r.error };
+      rows.push(...((r.data ?? []) as T[]));
+    }
   }
-  return { data: rows, error: null };
+  // Si entró o salió una fila entre página y página, alguna puede venir repetida
+  const seen = new Set<unknown>();
+  const unique = rows.filter((r: any) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
+  return { data: unique, error: null };
 }
+
+/** Marca de "esta tabla no se pidió en esta lectura" (lecturas parciales por tabla) */
+const SKIPPED = { skipped: true };
+const SKIP = Promise.resolve({ data: null as any, error: SKIPPED as any });
+const failed = (err: unknown) => Boolean(err) && err !== SKIPPED;
+
+/** Tablas que se leen juntas en una lectura completa */
+const SYNC_TABLES = [
+  "time_entries", "absence_requests", "absences_calendar", "holidays", "clients", "projects", "sub_projects",
+  "overtime_requests", "audit_log", "corp_events", "app_settings", "notifications", "flight_categories",
+  "flight_activities", "professional_profiles", "surveys", "survey_responses", "feedback_items",
+];
 
 async function fetchEntriesAndAbsences(
   dispatch: React.Dispatch<Action>,
   localSettings: LocalSettings,
-  isCurrent: () => boolean = () => true,
+  // ¿Sigue siendo esta la última lectura pedida de esa tabla? Si no, su respuesta ya es vieja
+  isCurrent: (table: string) => boolean = () => true,
+  // Solo estas tablas (aviso de cambio del servidor); sin esto, todas
+  only?: Set<string>,
 ) {
+  const want = (t: string) => !only || only.has(t);
+  // Las ausencias se arman con dos lecturas (las propias completas + las aprobadas de todos)
+  const wantAbsences = want("absence_requests") || want("absences_calendar");
   const [
     { data: entryRows, error: entriesErr },
     { data: absenceRows, error: absencesErr },
@@ -843,84 +918,84 @@ async function fetchEntriesAndAbsences(
     { data: feedbackItemRows, error: feedbackItemsErr },
     { data: calendarAbsenceRows, error: calendarAbsencesErr },
   ] = await Promise.all([
-    fetchAllRows("time_entries"),
+    want("time_entries") ? fetchAllRows("time_entries") : SKIP,
     // Completas: las propias y, si es staff, las de todos (RLS, fase 31)
-    fetchAllRows("absence_requests"),
-    fetchAllRows("holidays"),
-    fetchAllRows("clients"),
-    fetchAllRows("projects"),
-    fetchAllRows("sub_projects"),
-    fetchAllRows("overtime_requests"),
-    supabase.from("audit_log").select("*").order("at", { ascending: false }).limit(300),
-    fetchAllRows("corp_events"),
-    supabase.from("app_settings").select("*").eq("id", "global").maybeSingle(),
-    supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(100),
-    fetchAllRows("flight_categories"),
-    fetchAllRows("flight_activities"),
-    fetchAllRows("professional_profiles"),
-    fetchAllRows("surveys"),
-    fetchAllRows("survey_responses"),
-    fetchAllRows("feedback_items"),
+    wantAbsences ? fetchAllRows("absence_requests") : SKIP,
+    want("holidays") ? fetchAllRows("holidays") : SKIP,
+    want("clients") ? fetchAllRows("clients") : SKIP,
+    want("projects") ? fetchAllRows("projects") : SKIP,
+    want("sub_projects") ? fetchAllRows("sub_projects") : SKIP,
+    want("overtime_requests") ? fetchAllRows("overtime_requests") : SKIP,
+    want("audit_log") ? supabase.from("audit_log").select("*").order("at", { ascending: false }).limit(300) : SKIP,
+    want("corp_events") ? fetchAllRows("corp_events") : SKIP,
+    want("app_settings") ? supabase.from("app_settings").select("*").eq("id", "global").maybeSingle() : SKIP,
+    want("notifications") ? supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(100) : SKIP,
+    want("flight_categories") ? fetchAllRows("flight_categories") : SKIP,
+    want("flight_activities") ? fetchAllRows("flight_activities") : SKIP,
+    want("professional_profiles") ? fetchAllRows("professional_profiles") : SKIP,
+    want("surveys") ? fetchAllRows("surveys") : SKIP,
+    want("survey_responses") ? fetchAllRows("survey_responses") : SKIP,
+    want("feedback_items") ? fetchAllRows("feedback_items") : SKIP,
     // Las aprobadas de todos, sin motivo, adjuntos ni comentario: para el calendario
-    fetchAllRows("absences_calendar"),
+    wantAbsences ? fetchAllRows("absences_calendar") : SKIP,
   ]);
-  if (entriesErr) console.warn("Error al leer time_entries:", entriesErr);
-  if (absencesErr) console.warn("Error al leer absence_requests:", absencesErr);
-  if (holidaysErr) console.warn("Error al leer holidays:", holidaysErr);
-  if (clientsErr) console.warn("Error al leer clients:", clientsErr);
-  if (projectsErr) console.warn("Error al leer projects:", projectsErr);
-  if (subProjectsErr) console.warn("Error al leer sub_projects:", subProjectsErr);
-  if (overtimeErr) console.warn("Error al leer overtime_requests:", overtimeErr);
-  if (auditErr) console.warn("Error al leer audit_log:", auditErr);
-  if (corpEventsErr) console.warn("Error al leer corp_events:", corpEventsErr);
-  if (settingsErr) console.warn("Error al leer app_settings:", settingsErr);
-  if (notificationsErr) console.warn("Error al leer notifications:", notificationsErr);
-  if (flightCategoriesErr) console.warn("Error al leer flight_categories:", flightCategoriesErr);
-  if (flightActivitiesErr) console.warn("Error al leer flight_activities:", flightActivitiesErr);
-  if (profilesErr) console.warn("Error al leer professional_profiles:", profilesErr);
-  if (surveysErr) console.warn("Error al leer surveys:", surveysErr);
-  if (surveyResponsesErr) console.warn("Error al leer survey_responses:", surveyResponsesErr);
-  if (feedbackItemsErr) console.warn("Error al leer feedback_items:", feedbackItemsErr);
-  if (calendarAbsencesErr) console.warn("Error al leer absences_calendar:", calendarAbsencesErr);
-  // Guard contra respuestas fuera de orden: si mientras esta consulta viajaba
+  if (failed(entriesErr)) console.warn("Error al leer time_entries:", entriesErr);
+  if (failed(absencesErr)) console.warn("Error al leer absence_requests:", absencesErr);
+  if (failed(holidaysErr)) console.warn("Error al leer holidays:", holidaysErr);
+  if (failed(clientsErr)) console.warn("Error al leer clients:", clientsErr);
+  if (failed(projectsErr)) console.warn("Error al leer projects:", projectsErr);
+  if (failed(subProjectsErr)) console.warn("Error al leer sub_projects:", subProjectsErr);
+  if (failed(overtimeErr)) console.warn("Error al leer overtime_requests:", overtimeErr);
+  if (failed(auditErr)) console.warn("Error al leer audit_log:", auditErr);
+  if (failed(corpEventsErr)) console.warn("Error al leer corp_events:", corpEventsErr);
+  if (failed(settingsErr)) console.warn("Error al leer app_settings:", settingsErr);
+  if (failed(notificationsErr)) console.warn("Error al leer notifications:", notificationsErr);
+  if (failed(flightCategoriesErr)) console.warn("Error al leer flight_categories:", flightCategoriesErr);
+  if (failed(flightActivitiesErr)) console.warn("Error al leer flight_activities:", flightActivitiesErr);
+  if (failed(profilesErr)) console.warn("Error al leer professional_profiles:", profilesErr);
+  if (failed(surveysErr)) console.warn("Error al leer surveys:", surveysErr);
+  if (failed(surveyResponsesErr)) console.warn("Error al leer survey_responses:", surveyResponsesErr);
+  if (failed(feedbackItemsErr)) console.warn("Error al leer feedback_items:", feedbackItemsErr);
+  if (failed(calendarAbsencesErr)) console.warn("Error al leer absences_calendar:", calendarAbsencesErr);
+  // Guard contra respuestas fuera de orden (ahora por tabla, ver isCurrent): si mientras esta consulta viajaba
   // ida y vuelta se disparó un refetch más nuevo (p.ej. por el propio drag de
   // una tarjeta en Calendario), esta respuesta ya está desactualizada — aplicarla
   // pisaría un cambio más reciente con uno viejo (se veía como "la tarjeta
   // vuelve a su posición y después se corrige").
-  if (!isCurrent()) return;
   // Cada sync se manda SOLO si esa tabla en particular no dio error: si una
   // falló (incluso después de los reintentos de fetchAllRows), se deja como
   // estaba en vez de reemplazarla por una lista vacía — antes, un error
   // transitorio en una sola tabla (p. ej. time_entries) hacía que todo lo ya
   // cargado desapareciera de golpe de la pantalla, aunque siguiera intacto
   // en la base; con el próximo refetch que sí funcione se pone al día solo.
-  if (!entriesErr) dispatch({ type: "syncEntries", entries: (entryRows || []).map(fromEntryRow) });
-  if (!absencesErr) {
+  if (!entriesErr && isCurrent("time_entries")) entriesFromServer = true;
+  if (!entriesErr && isCurrent("time_entries")) dispatch({ type: "syncEntries", entries: (entryRows || []).map(fromEntryRow) });
+  if (!absencesErr && isCurrent("absence_requests")) {
     // Las completas mandan; de la vista se suman solo las que no vinieron completas
     // (las ajenas, para quien no es staff). Si la vista falla (p. ej. todavía no se
     // corrió la fase 31) se muestran las que ya devolvió la tabla.
-    const full = (absenceRows || []).map(fromAbsenceRow);
+    const full: AbsenceRequest[] = (absenceRows || []).map(fromAbsenceRow);
     const fullIds = new Set(full.map((a) => a.id));
     const shared = calendarAbsencesErr
       ? []
       : (calendarAbsenceRows || []).filter((r: any) => !fullIds.has(r.id)).map(fromAbsenceRow);
     dispatch({ type: "syncAbsences", absences: [...full, ...shared] });
   }
-  if (!holidaysErr) dispatch({ type: "syncHolidays", holidays: (holidayRows || []).map(fromHolidayRow) });
-  if (!clientsErr) dispatch({ type: "syncClients", clients: (clientRows || []).map(fromClientRow) });
-  if (!projectsErr) dispatch({ type: "syncProjects", projects: (projectRows || []).map(fromProjectRow) });
-  if (!subProjectsErr) dispatch({ type: "syncSubProjects", subProjects: (subProjectRows || []).map(fromSubProjectRow) });
-  if (!overtimeErr) dispatch({ type: "syncOvertime", overtime: (overtimeRows || []).map(fromOvertimeRow) });
-  if (!auditErr) dispatch({ type: "syncAudit", audit: (auditRows || []).map(fromAuditRow) });
-  if (!corpEventsErr) dispatch({ type: "syncCorpEvents", corpEvents: (corpEventRows || []).map(fromCorpEventRow) });
-  if (!notificationsErr) dispatch({ type: "syncNotifications", notifications: (notificationRows || []).map(fromNotificationRow) });
-  if (!flightCategoriesErr) dispatch({ type: "syncFlightCategories", flightCategories: (flightCategoryRows || []).map(fromFlightCategoryRow) });
-  if (!flightActivitiesErr) dispatch({ type: "syncFlightActivities", flightActivities: (flightActivityRows || []).map(fromFlightActivityRow) });
-  if (!profilesErr) dispatch({ type: "syncProfessionalProfiles", professionalProfiles: (profileRows || []).map(fromProfessionalProfileRow) });
-  if (!surveysErr) dispatch({ type: "syncSurveys", surveys: (surveyRows || []).map(fromSurveyRow) });
-  if (!surveyResponsesErr) dispatch({ type: "syncSurveyResponses", surveyResponses: (surveyResponseRows || []).map(fromSurveyResponseRow) });
-  if (!feedbackItemsErr) dispatch({ type: "syncFeedbackItems", feedbackItems: (feedbackItemRows || []).map(fromFeedbackItemRow) });
-  if (settingsRow) {
+  if (!holidaysErr && isCurrent("holidays")) dispatch({ type: "syncHolidays", holidays: (holidayRows || []).map(fromHolidayRow) });
+  if (!clientsErr && isCurrent("clients")) dispatch({ type: "syncClients", clients: (clientRows || []).map(fromClientRow) });
+  if (!projectsErr && isCurrent("projects")) dispatch({ type: "syncProjects", projects: (projectRows || []).map(fromProjectRow) });
+  if (!subProjectsErr && isCurrent("sub_projects")) dispatch({ type: "syncSubProjects", subProjects: (subProjectRows || []).map(fromSubProjectRow) });
+  if (!overtimeErr && isCurrent("overtime_requests")) dispatch({ type: "syncOvertime", overtime: (overtimeRows || []).map(fromOvertimeRow) });
+  if (!auditErr && isCurrent("audit_log")) dispatch({ type: "syncAudit", audit: (auditRows || []).map(fromAuditRow) });
+  if (!corpEventsErr && isCurrent("corp_events")) dispatch({ type: "syncCorpEvents", corpEvents: (corpEventRows || []).map(fromCorpEventRow) });
+  if (!notificationsErr && isCurrent("notifications")) dispatch({ type: "syncNotifications", notifications: (notificationRows || []).map(fromNotificationRow) });
+  if (!flightCategoriesErr && isCurrent("flight_categories")) dispatch({ type: "syncFlightCategories", flightCategories: (flightCategoryRows || []).map(fromFlightCategoryRow) });
+  if (!flightActivitiesErr && isCurrent("flight_activities")) dispatch({ type: "syncFlightActivities", flightActivities: (flightActivityRows || []).map(fromFlightActivityRow) });
+  if (!profilesErr && isCurrent("professional_profiles")) dispatch({ type: "syncProfessionalProfiles", professionalProfiles: (profileRows || []).map(fromProfessionalProfileRow) });
+  if (!surveysErr && isCurrent("surveys")) dispatch({ type: "syncSurveys", surveys: (surveyRows || []).map(fromSurveyRow) });
+  if (!surveyResponsesErr && isCurrent("survey_responses")) dispatch({ type: "syncSurveyResponses", surveyResponses: (surveyResponseRows || []).map(fromSurveyResponseRow) });
+  if (!feedbackItemsErr && isCurrent("feedback_items")) dispatch({ type: "syncFeedbackItems", feedbackItems: (feedbackItemRows || []).map(fromFeedbackItemRow) });
+  if (settingsRow && isCurrent("app_settings")) {
     dispatch({
       type: "syncSettings",
       company: settingsRow.company,
@@ -928,7 +1003,7 @@ async function fetchEntriesAndAbsences(
       leaveTypeConfig: settingsRow.leave_type_config,
       tags: settingsRow.tags,
     });
-  } else if (!settingsErr) {
+  } else if (!settingsRow && !settingsErr) {
     // Todavía no existe la fila de configuración global: la inicializamos con los valores
     // actuales de este navegador (los de data.ts la primera vez que corre alguien).
     const { error } = await supabase.from("app_settings").upsert(
@@ -1311,47 +1386,117 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       leaveTypeConfig: state.leaveTypeConfig,
       tags: state.tags,
     };
-    // Cada refetch se numera: si dos quedan en vuelo a la vez (p.ej. uno viejo
-    // todavía viajando cuando ya se disparó uno nuevo), solo se aplica la
-    // respuesta del último pedido, sin importar cuál responda primero.
-    let seq = 0;
-    const refetch = () => {
-      if (cancelled) return;
-      const mySeq = ++seq;
-      fetchEntriesAndAbsences(dispatch, localSettings, () => !cancelled && mySeq === seq);
+    entriesFromServer = false;
+    // Cada lectura se numera POR TABLA: si dos de la misma tabla quedan en vuelo a la vez, solo se
+    // aplica la respuesta de la última. Antes el número era uno solo para todo, así que cualquier
+    // aviso (de cualquier tabla, de cualquier persona) descartaba la lectura completa en curso; con
+    // el equipo cargando horas, esa lectura (más de un minuto) no llegaba a aplicarse nunca.
+    const seqs: Record<string, number> = {};
+    // Cambios de registros avisados por el servidor mientras hay una lectura completa de time_entries
+    // en vuelo: esa lectura puede traer datos de antes del cambio, así que se vuelven a aplicar encima.
+    let entryReads = 0;
+    let replay: { upsert?: TimeEntry; removeId?: ID }[] = [];
+    const applyChanges = (changes: { upsert?: TimeEntry; removeId?: ID }[]) => {
+      // Por cada registro vale el último aviso
+      const last = new Map<ID, { upsert?: TimeEntry; removeId?: ID }>();
+      for (const c of changes) last.set(c.upsert ? c.upsert.id : c.removeId!, c);
+      const upserts: TimeEntry[] = [];
+      const removeIds: ID[] = [];
+      for (const c of last.values()) c.upsert ? upserts.push(c.upsert) : removeIds.push(c.removeId!);
+      if (upserts.length || removeIds.length) dispatch({ type: "applyEntryChanges", upserts, removeIds });
     };
-    // Realtime dispara un evento POR FILA, no por operación: una importación
-    // masiva (ej. Clockify) que inserta cientos de filas de golpe generaba
-    // cientos de refetch/re-render casi simultáneos y la pantalla parpadeaba.
-    // Con debounce, una ráfaga de eventos termina en un solo refetch cuando
-    // la ráfaga se frena.
+    const refetch = (only?: Set<string>) => {
+      if (cancelled) return;
+      const wanted = only ? new Set(only) : undefined;
+      // Las ausencias salen de dos lecturas: van siempre juntas
+      if (wanted && (wanted.has("absence_requests") || wanted.has("absences_calendar"))) {
+        wanted.add("absence_requests");
+        wanted.add("absences_calendar");
+      }
+      const mine: Record<string, number> = {};
+      for (const t of wanted ?? SYNC_TABLES) mine[t] = seqs[t] = (seqs[t] ?? 0) + 1;
+      const readsEntries = !wanted || wanted.has("time_entries");
+      if (readsEntries) entryReads++;
+      fetchEntriesAndAbsences(dispatch, localSettings, (t) => !cancelled && mine[t] === seqs[t], wanted)
+        .catch((err) => console.warn("Error al leer datos de Supabase:", err))
+        .finally(() => {
+          if (!readsEntries) return;
+          entryReads--;
+          if (!cancelled && replay.length) applyChanges(replay);
+          if (entryReads === 0) replay = [];
+        });
+    };
+    // Los avisos se juntan 400 ms desde el primero y se aplican de una vez: una importación de
+    // cientos de filas no dispara cientos de redibujos. (Antes se esperaba a que la ráfaga frenara;
+    // con avisos seguidos de todo el equipo, no frenaba nunca.)
+    const dirty = new Set<string>();
+    let entryChanges: { upsert?: TimeEntry; removeId?: ID }[] = [];
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-    const debouncedRefetch = () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(refetch, 500);
+    const flush = () => {
+      debounceTimer = undefined;
+      if (cancelled) return;
+      if (entryChanges.length) {
+        const changes = entryChanges;
+        entryChanges = [];
+        if (entryReads > 0) replay.push(...changes);
+        applyChanges(changes);
+      }
+      if (dirty.size) {
+        const only = new Set(dirty);
+        dirty.clear();
+        refetch(only);
+      }
+    };
+    const schedule = () => {
+      if (!debounceTimer) debounceTimer = setTimeout(flush, 400);
+    };
+    // Otra tabla cambió: se vuelve a leer SOLO esa tabla (antes, las 18)
+    const tableChanged = (table: string) => () => {
+      dirty.add(table);
+      schedule();
+    };
+    // Un registro de horas cambió: el aviso ya trae la fila, se aplica sin consultar nada
+    const entryChanged = (payload: { eventType: string; new: any; old: any }) => {
+      if (payload.eventType === "DELETE") {
+        if (payload.old?.id) entryChanges.push({ removeId: payload.old.id });
+        else dirty.add("time_entries");
+      } else if (!payload.new?.id || payload.new.user_id === undefined || payload.new.date === undefined) {
+        // Aviso sin la fila completa: se lee la tabla
+        dirty.add("time_entries");
+      } else if (!pendingEntryWrites.get(payload.new.id)) {
+        entryChanges.push({ upsert: fromEntryRow(payload.new) });
+      }
+      schedule();
     };
     refetch();
+    let subscribedOnce = false;
     const channel = supabase
       .channel("tempo-entries-absences")
-      .on("postgres_changes", { event: "*", schema: "public", table: "time_entries" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "absence_requests" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "holidays" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "projects" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "sub_projects" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "overtime_requests" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "corp_events" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "flight_categories" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "flight_activities" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "professional_profiles" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "surveys" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "survey_responses" }, debouncedRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "feedback_items" }, debouncedRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "time_entries" }, entryChanged)
+      .on("postgres_changes", { event: "*", schema: "public", table: "absence_requests" }, tableChanged("absence_requests"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "holidays" }, tableChanged("holidays"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, tableChanged("clients"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "projects" }, tableChanged("projects"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "sub_projects" }, tableChanged("sub_projects"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "overtime_requests" }, tableChanged("overtime_requests"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "corp_events" }, tableChanged("corp_events"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, tableChanged("app_settings"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, tableChanged("notifications"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "flight_categories" }, tableChanged("flight_categories"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "flight_activities" }, tableChanged("flight_activities"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "professional_profiles" }, tableChanged("professional_profiles"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "surveys" }, tableChanged("surveys"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "survey_responses" }, tableChanged("survey_responses"))
+      .on("postgres_changes", { event: "*", schema: "public", table: "feedback_items" }, tableChanged("feedback_items"))
       // audit_log queda afuera a propósito: casi cualquier acción genera una fila ahí,
       // y traer las 300 de vuelta en cada una sería un refetch constante para poco beneficio.
-      .subscribe();
+      .subscribe((status) => {
+        if (status !== "SUBSCRIBED") return;
+        // Reconexión (se cortó internet, la pestaña estuvo dormida): pudieron perderse avisos,
+        // así que se lee todo de nuevo. La primera vez ya lo hizo el refetch() de arriba.
+        if (subscribedOnce) refetch();
+        subscribedOnce = true;
+      });
     return () => {
       cancelled = true;
       if (debounceTimer) clearTimeout(debounceTimer);
@@ -1391,7 +1536,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (t) finalAction = { ...a, entries: buildStoppedEntries(t, state.currentUserId) };
       }
       dispatch(finalAction);
+      const entryId = finalAction.type === "addEntry" || finalAction.type === "updateEntry" ? finalAction.entry.id : finalAction.type === "deleteEntry" ? finalAction.id : null;
+      if (entryId) pendingEntryWrites.set(entryId, (pendingEntryWrites.get(entryId) ?? 0) + 1);
       syncActionToSupabase(finalAction, state).then((errMsg) => {
+        if (entryId) {
+          const left = (pendingEntryWrites.get(entryId) ?? 1) - 1;
+          if (left > 0) pendingEntryWrites.set(entryId, left);
+          else pendingEntryWrites.delete(entryId);
+        }
         if (!errMsg) return;
         console.warn("Supabase sync error:", errMsg);
         dispatch({

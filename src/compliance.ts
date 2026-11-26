@@ -75,6 +75,14 @@ export function getDownlineIds(userId: ID, users: User[]): Set<ID> {
 export function computeHoursIncidents(state: AppState, todayISO: string): HoursIncident[] {
   const incidents: HoursIncident[] = [];
   const thisWeek = weekStart(todayISO);
+  // Registros de cada persona, armados una vez: antes se recorrían TODOS los registros
+  // por cada persona y cada semana (y esto se recalcula con cada cambio de un registro).
+  const entriesOf = new Map<ID, AppState["entries"]>();
+  for (const e of state.entries) {
+    const list = entriesOf.get(e.userId);
+    if (list) list.push(e);
+    else entriesOf.set(e.userId, [e]);
+  }
   for (const u of state.users) {
     // Equipo España no usa TEMPO para cargar horas (ver canSeePage en Shell.tsx):
     // no tiene sentido pedirles que "carguen" nada, así que nunca generan incidencia.
@@ -82,8 +90,8 @@ export function computeHoursIncidents(state: AppState, todayISO: string): HoursI
     for (let i = 1; i <= LOOKBACK_WEEKS; i++) {
       const ws = addDays(thisWeek, -7 * i);
       const weekEnd = addDays(ws, 6);
-      const loaded = state.entries
-        .filter((e) => e.userId === u.id && e.date >= ws && e.date <= weekEnd)
+      const loaded = (entriesOf.get(u.id) ?? [])
+        .filter((e) => e.date >= ws && e.date <= weekEnd)
         .reduce((a, e) => a + (e.end - e.start), 0);
       // Descuenta feriados y ausencias de día completo ya aprobadas de esa
       // semana (mismo cálculo que Reportes y Control de horas).

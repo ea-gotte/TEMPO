@@ -379,6 +379,17 @@ export function CalendarPage() {
   }, [teamsEvents, baseTz]);
 
   const entries = useMemo(() => state.entries.filter((e) => e.userId === effectiveUserId), [state.entries, effectiveUserId]);
+  // Los mismos registros agrupados por día: todo lo que se dibuja o calcula "por día" sale de acá,
+  // sin volver a recorrer la lista entera (con años de registros eso trababa el arrastre y el guardado).
+  const entriesByDay = useMemo(() => {
+    const map = new Map<string, TimeEntry[]>();
+    for (const e of entries) {
+      const list = map.get(e.date);
+      if (list) list.push(e);
+      else map.set(e.date, [e]);
+    }
+    return map;
+  }, [entries]);
 
   // Carriles (superposición) y conflictos: dependen solo de los datos reales,
   // NUNCA de `drag` — así no se recalculan en cada mousemove del arrastre.
@@ -388,23 +399,27 @@ export function CalendarPage() {
   // de "saltar" a la nueva — el parpadeo/lag que se reportó.
   const conflictIds = useMemo(() => {
     const set = new Set<string>();
-    for (const e of entries) {
-      if (overlaps(entries, e).length > 0) set.add(e.id);
+    // Solo pueden chocar registros del mismo día: se compara dentro de cada día
+    for (const day of entriesByDay.values()) {
+      if (day.length < 2) continue;
+      for (const e of day) {
+        if (overlaps(day, e).length > 0) set.add(e.id);
+      }
     }
     return set;
-  }, [entries]);
+  }, [entriesByDay]);
 
   const dayLanes = useMemo(() => {
     // Con el filtro "solo superpuestos" activo, los carriles se calculan solo
     // entre las entradas que quedan visibles — si no, las que chocan quedan
     // con columnas vacías en el medio (el hueco que dejan las que se ocultan).
-    const visibleEntries = onlyOverlaps ? entries.filter((e) => conflictIds.has(e.id)) : entries;
     const map = new Map<string, Map<string, { col: number; cols: number }>>();
     for (const day of visibleDays) {
-      map.set(day, layoutOverlaps(visibleEntries.filter((e) => e.date === day)));
+      const ofDay = entriesByDay.get(day) ?? [];
+      map.set(day, layoutOverlaps(onlyOverlaps ? ofDay.filter((e) => conflictIds.has(e.id)) : ofDay));
     }
     return map;
-  }, [entries, visibleDays, onlyOverlaps, conflictIds]);
+  }, [entriesByDay, visibleDays, onlyOverlaps, conflictIds]);
 
   function shift(n: number) {
     if (view === "mes") {
@@ -522,6 +537,9 @@ export function CalendarPage() {
     }
     return { ...orig, end: clamp(orig.end + dMin, orig.start + 15, 24 * 60) };
   }
+
+  const dragRaw = drag ? (entriesByDay.get(drag.orig.date)?.find((e) => e.id === drag.entryId) ?? null) : null;
+  const dragDay = dragRaw ? dragged(dragRaw).date : null;
 
   function duplicateEntry(e: TimeEntry) {
     // Mismo horario que el original (no se corre a continuación): al superponerse
@@ -707,7 +725,7 @@ export function CalendarPage() {
           )}
           <div className="cal-days" style={view === "dia" ? { gridTemplateColumns: "1fr" } : undefined}>
             {visibleDays.map((day) => {
-              const dayMin = entries.filter((e) => e.date === day).reduce((acc, e) => acc + (e.end - e.start), 0);
+              const dayMin = (entriesByDay.get(day) ?? []).reduce((acc, e) => acc + (e.end - e.start), 0);
               const allDay = allDayTeamsByDay.get(day) ?? [];
               return (
                 <div key={`h-${day}`} className={`cal-day-head ${day === today() ? "today" : ""}`}>
@@ -736,8 +754,9 @@ export function CalendarPage() {
               );
             })}
             {visibleDays.map((day) => {
-              const dayEntries = entries
-                .filter((e) => e.date === day || (drag && dragged(state.entries.find((x) => x.id === drag.entryId)!).date === day && drag.entryId === e.id))
+              // Los del día, más la tarjeta que se está arrastrando si ahora está sobre este día
+              const ofDay = entriesByDay.get(day) ?? [];
+              const dayEntries = (dragRaw && dragDay === day && dragRaw.date !== day ? [...ofDay, dragRaw] : ofDay)
                 .filter((e) => !onlyOverlaps || conflictIds.has(e.id) || drag?.entryId === e.id);
               // Carriles precalculados (ver dayLanes más arriba): no dependen de
               // `drag`, así que arrastrar una tarjeta no dispara ningún recálculo
@@ -837,7 +856,7 @@ export function CalendarPage() {
           ))}
           {monthCells.map((day) => {
             const inMonth = parseISO(day).getMonth() === parseISO(anchor).getMonth();
-            const allDayEntries = entries.filter((e) => e.date === day);
+            const allDayEntries = entriesByDay.get(day) ?? [];
             const hasConflict = allDayEntries.some((e) => conflictIds.has(e.id));
             const dayEntries = onlyOverlaps ? allDayEntries.filter((e) => conflictIds.has(e.id)) : allDayEntries;
             const total = dayEntries.reduce((a, e) => a + (e.end - e.start), 0);
@@ -881,7 +900,7 @@ export function CalendarPage() {
         <div className="card card-pad">
           <div className="card-title">Timeline semanal — {dayLabel(ws)} a {dayLabel(addDays(ws, 6))}</div>
           {weekDays.map((day) => {
-            const allDayEntries = entries.filter((e) => e.date === day);
+            const allDayEntries = entriesByDay.get(day) ?? [];
             const dayEntries = onlyOverlaps ? allDayEntries.filter((e) => conflictIds.has(e.id)) : allDayEntries;
             return (
               <div className="tl-row" key={day} style={{ opacity: onlyOverlaps && dayEntries.length === 0 ? 0.35 : undefined }}>
@@ -913,7 +932,7 @@ export function CalendarPage() {
             );
           })}
           <div className="legend">
-            {state.projects.filter((p) => entries.some((e) => weekDays.includes(e.date) && e.projectId === p.id)).map((p) => (
+            {state.projects.filter((p) => weekDays.some((d) => (entriesByDay.get(d) ?? []).some((e) => e.projectId === p.id))).map((p) => (
               <span key={p.id}>
                 <span className="sw" style={{ background: p.color }} />
                 {p.name}
