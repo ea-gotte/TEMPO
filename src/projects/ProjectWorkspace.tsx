@@ -1,15 +1,15 @@
 import React, { Suspense, lazy, useEffect, useState } from "react";
-import { Dot, Empty, useToast } from "../components/ui";
+import { Dot, Empty } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { fmtDate } from "../utils";
-import { MODE_LABEL } from "./constants";
 import { EnvProvider, useEnv } from "./env";
 import { isProjectLate, projectPerms } from "./logic";
-import { OverviewTab } from "./OverviewTab";
+import { InfoTab, OverviewTab, WorkTab } from "./OverviewTab";
+import type { TaskDraft } from "./Modals";
 import { PlanTab } from "./PlanTab";
 import { BacklogTab } from "./BacklogTab";
 import { DiscoveryTab, RisksTab } from "./Uncertainty";
-import type { ProjectMode, WorkEnv } from "./types";
+import type { WorkEnv } from "./types";
 import { useWork, workActions } from "./workStore";
 import { clearAllBoards } from "./board/boardStore";
 import { BoardBoundary } from "./board/BoardBoundary";
@@ -18,7 +18,7 @@ import "./projects.css";
 // El tablero carga Fabric.js: se descarga recién al abrir la pestaña
 const BoardTab = lazy(() => import("./board/BoardTab"));
 
-export type Tab = "resumen" | "plan" | "backlog" | "riesgos" | "descubrimiento" | "tablero";
+export type Tab = "resumen" | "trabajo" | "plan" | "backlog" | "riesgos" | "descubrimiento" | "tablero" | "ficha";
 
 
 export function DemoBanner() {
@@ -50,8 +50,9 @@ export function ProjectWorkspace({
 function Workspace({ projectId, onBack, onEditProject, tabParam, onTabChange }: { projectId: string; onBack: () => void; onEditProject?: () => void; tabParam?: string; onTabChange?: (tab: Tab) => void }) {
   const env = useEnv();
   const work = useWork();
-  const toast = useToast();
   const [tabState, setTabState] = useState<Tab>("resumen");
+  // Tarea elegida en el resumen: se abre en la pestaña Trabajo
+  const [taskDraft, setTaskDraft] = useState<TaskDraft | null>(null);
   const tab = (tabParam as Tab | undefined) ?? tabState;
   const setTab = (t: Tab) => {
     setTabState(t);
@@ -79,19 +80,23 @@ function Workspace({ projectId, onBack, onEditProject, tabParam, onTabChange }: 
     mode === "plan_correcciones"
       ? [
           { key: "resumen", label: "Resumen" },
+          { key: "trabajo", label: "Trabajo" },
           { key: "plan", label: "Hitos y entregables" },
           { key: "backlog", label: "Correcciones y sprints" },
-          { key: "riesgos", label: `Riesgos (${nRisks})` },
+          { key: "riesgos", label: nRisks ? `Riesgos (${nRisks})` : "Riesgos" },
           { key: "tablero", label: "Tablero" },
+          { key: "ficha", label: "Ficha" },
         ]
       : [
           { key: "resumen", label: "Resumen" },
+          { key: "trabajo", label: "Trabajo" },
           ...(mode === "hibrido" ? [{ key: "descubrimiento" as Tab, label: "Descubrimiento" }] : []),
           ...(mode !== "planificado" ? [{ key: "backlog" as Tab, label: "Backlog y sprints" }] : []),
           // La programación se sigue por hitos y entregables en todos los modos; las tareas cuelgan de un hito
           { key: "plan", label: "Hitos y entregables" },
-          { key: "riesgos", label: `Riesgos (${nRisks})` },
+          { key: "riesgos", label: nRisks ? `Riesgos (${nRisks})` : "Riesgos" },
           { key: "tablero", label: "Tablero" },
+          { key: "ficha", label: "Ficha" },
         ];
   const current: Tab = tabs.some((t) => t.key === tab) ? tab : "resumen";
 
@@ -108,31 +113,12 @@ function Workspace({ projectId, onBack, onEditProject, tabParam, onTabChange }: 
     <>
       <DemoBanner />
       <button className="btn btn-ghost btn-sm" onClick={onBack} style={{ marginBottom: 8 }}><Icon name="arrow-left" size={13} /> Proyectos</button>
+      {/* Cabecera mínima: nombre, estado y fechas. La metodología y la edición viven en la pestaña Ficha */}
       <div className="pw-head">
         <h1><Dot color={project.color} /> {project.name}</h1>
         {meta?.code && <span className="pw-code">{meta.code}</span>}
         <span className={`badge ${project.status === "activo" ? "ok" : project.status === "completado" ? "acc" : ""}`}>{project.status}</span>
-        {perms.canApprove ? (
-          <select
-            className="select"
-            style={{ width: "auto", padding: "3px 8px", fontSize: 12 }}
-            title="Metodología de gestión del proyecto"
-            aria-label="Metodología de gestión del proyecto"
-            value={mode}
-            onChange={async (e) => {
-              const next = e.target.value as ProjectMode;
-              const err = await (env.changeProjectMode ?? workActions.setProjectMode)(projectId, next);
-              toast(err ?? `Metodología del proyecto: ${MODE_LABEL[next]}.`);
-            }}
-          >
-            {(Object.keys(MODE_LABEL) as ProjectMode[]).map((m) => <option key={m} value={m}>{MODE_LABEL[m]}</option>)}
-          </select>
-        ) : (
-          <span className="pw-pill" title="Metodología de gestión del proyecto">{MODE_LABEL[mode]}</span>
-        )}
         {late && <span className="pw-pill late"><Icon name="alert" size={11} /> Atrasado</span>}
-        <span style={{ flex: 1 }} />
-        {perms.isStaff && onEditProject && <button className="btn btn-secondary btn-sm" onClick={onEditProject}><Icon name="pencil" size={12} /> Editar proyecto</button>}
       </div>
       <div className="pw-sub">
         <span>{client?.name ?? "Sin cliente"}</span>
@@ -144,7 +130,9 @@ function Workspace({ projectId, onBack, onEditProject, tabParam, onTabChange }: 
         {tabs.map((t) => <button key={t.key} className={current === t.key ? "active" : ""} onClick={() => setTab(t.key)}>{t.label}</button>)}
       </div>
 
-      {current === "resumen" && <OverviewTab projectId={projectId} perms={perms} go={setTab} />}
+      {current === "resumen" && <OverviewTab projectId={projectId} perms={perms} go={setTab} onOpenTask={(t) => { setTaskDraft(t); setTab("trabajo"); }} />}
+      {current === "trabajo" && <WorkTab projectId={projectId} perms={perms} draft={taskDraft} onConsume={() => setTaskDraft(null)} />}
+      {current === "ficha" && <InfoTab projectId={projectId} perms={perms} onEditProject={onEditProject} />}
       {current === "descubrimiento" && <DiscoveryTab projectId={projectId} perms={perms} />}
       {current === "backlog" && <BacklogTab projectId={projectId} perms={perms} />}
       {current === "plan" && <PlanTab projectId={projectId} perms={perms} onNavigateTab={setTab} />}
