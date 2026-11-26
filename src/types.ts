@@ -22,6 +22,8 @@ export interface Project {
   notionUrl?: string;
   /** Actividad de "Horas de vuelo" a la que suman las horas cargadas en este proyecto */
   flightActivityId: ID | null;
+  /** Metodología de gestión; sin elegir, se trata como planificado */
+  managementMode?: import("./projects/types").ProjectMode | null;
 }
 
 /** Subproyecto: entidad propia dentro de un proyecto, con su propio presupuesto de horas. */

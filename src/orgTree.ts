@@ -83,45 +83,45 @@ export function buildForest(users: User[]): TreeNode[] {
 }
 
 /** Alto total (vertical) que ocupa el subárbol, apilando a los hijos uno debajo del otro. */
-function subtreeSpan(node: TreeNode): number {
-  if (node.children.length === 0) return CARD_H;
-  const total = node.children.reduce((sum, c) => sum + subtreeSpan(c), 0) + V_GAP * (node.children.length - 1);
-  return Math.max(CARD_H, total);
+function subtreeSpan(node: TreeNode, cardH = CARD_H): number {
+  if (node.children.length === 0) return cardH;
+  const total = node.children.reduce((sum, c) => sum + subtreeSpan(c, cardH), 0) + V_GAP * (node.children.length - 1);
+  return Math.max(cardH, total);
 }
 
-function layout(node: TreeNode, topEdge: number, depth: number): PositionedNode {
-  const span = subtreeSpan(node);
-  const childSpans = node.children.map(subtreeSpan);
+function layout(node: TreeNode, topEdge: number, depth: number, cardW = CARD_W, cardH = CARD_H): PositionedNode {
+  const span = subtreeSpan(node, cardH);
+  const childSpans = node.children.map((c) => subtreeSpan(c, cardH));
   const totalChildSpan = childSpans.reduce((a, b) => a + b, 0) + V_GAP * Math.max(0, node.children.length - 1);
   const centerY = topEdge + span / 2;
-  const x = depth * (CARD_W + H_GAP);
+  const x = depth * (cardW + H_GAP);
   let cursor = topEdge + (span - totalChildSpan) / 2;
   const children = node.children.map((c, i) => {
-    const placed = layout(c, cursor, depth + 1);
+    const placed = layout(c, cursor, depth + 1, cardW, cardH);
     cursor += childSpans[i] + V_GAP;
     return placed;
   });
   return { user: node.user, x, y: centerY, children };
 }
 
-function flatten(node: PositionedNode, nodes: PositionedNode[], edges: Edge[]) {
+function flatten(node: PositionedNode, nodes: PositionedNode[], edges: Edge[], cardW = CARD_W, cardH = CARD_H) {
   nodes.push(node);
   for (const c of node.children) {
-    edges.push({ x1: node.x + CARD_W, y1: node.y + CARD_H / 2, x2: c.x, y2: c.y + CARD_H / 2, parentId: node.user.id, childId: c.user.id });
-    flatten(c, nodes, edges);
+    edges.push({ x1: node.x + cardW, y1: node.y + cardH / 2, x2: c.x, y2: c.y + cardH / 2, parentId: node.user.id, childId: c.user.id });
+    flatten(c, nodes, edges, cardW, cardH);
   }
 }
 
-export function buildLayout(roots: TreeNode[]) {
+export function buildLayout(roots: TreeNode[], cardW: number = CARD_W, cardH: number = CARD_H) {
   const nodes: PositionedNode[] = [];
   const edges: Edge[] = [];
   let cursor = 0;
   for (const root of roots) {
-    const span = subtreeSpan(root);
-    const placed = layout(root, cursor, 0);
-    flatten(placed, nodes, edges);
+    const span = subtreeSpan(root, cardH);
+    const placed = layout(root, cursor, 0, cardW, cardH);
+    flatten(placed, nodes, edges, cardW, cardH);
     cursor += span + V_GAP * 2;
   }
   const maxX = nodes.reduce((m, n) => Math.max(m, n.x), 0);
-  return { nodes, edges, totalWidth: maxX + CARD_W, totalHeight: Math.max(cursor - V_GAP * 2, CARD_H) };
+  return { nodes, edges, totalWidth: maxX + cardW, totalHeight: Math.max(cursor - V_GAP * 2, cardH) };
 }

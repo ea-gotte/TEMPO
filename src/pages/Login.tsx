@@ -5,6 +5,7 @@ import { Icon } from "../components/Icon";
 import { uid } from "../utils";
 import emailjs from "@emailjs/browser";
 import { supabase, authUrlError } from "../supabase";
+import { appBaseUrl } from "../routes";
 
 export function Login() {
   const { state, dispatch } = useStore();
@@ -71,7 +72,8 @@ export function Login() {
 
     try {
       const { error: resetErr } = await supabase.auth.resetPasswordForEmail(targetEmail, {
-        redirectTo: window.location.origin + window.location.pathname,
+        // La raíz: es la URL que está en la lista de Redirect URLs de Supabase
+        redirectTo: appBaseUrl(),
       });
 
       if (resetErr) {

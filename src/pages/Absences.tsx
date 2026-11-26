@@ -2,11 +2,12 @@ import React, { useState } from "react";
 import { useStore, overtimePeriodLabel, overtimeRequestForMonth, validatedOvertimeMin, overtimeBalance, vacationInfo, absenceWarnings, overtimeWarnings, overtimeOverlapIssues, overtimeClaimDeadline, overtimeRange, overtimeBreakdown, expectedMinutesInRange, findOvertimeFor, findAbsenceFor } from "../store";
 import { OvertimeReportModal, OvertimeTraceModal } from "../components/OvertimeReport";
 import { buildOvertimeSummary, overtimeAbsenceFor, overtimePdfDataUrl, REPORT_PREFIX } from "../overtimeSummary";
-import type { AbsenceRequest, AbsenceType, Attachment, OvertimeRequest, RequestEvent } from "../types";
+import type { AbsenceRequest, AbsenceType, AppState, Attachment, OvertimeRequest, RequestEvent, User } from "../types";
 import { ATTACHMENT_ACCEPT, addMonths, attachmentMime, fmtDate, fmtDateTime, fmtDur, monthEnd, monthStart, today, uid } from "../utils";
 import { Avatar, Empty, Modal, useToast } from "../components/ui";
 import { Icon, type IconName } from "../components/Icon";
 import { AttachmentChip } from "../components/AttachmentChip";
+import { filterAndSortRequests, REQUEST_SORTS, type RequestFilter, type RequestSort } from "../listFilters";
 
 const TYPES: AbsenceType[] = [
   "Vacaciones",
@@ -59,6 +60,7 @@ export function Absences() {
   const [fPerson, setFPerson] = useState("");
   const [fType, setFType] = useState("");
   const [fStatus, setFStatus] = useState("");
+  const [sortBy, setSortBy] = useState<RequestSort>("emision-desc");
   const [showNew, setShowNew] = useState(false);
   const [detail, setDetail] = useState<AbsenceRequest | null>(null);
   const [comment, setComment] = useState("");
@@ -80,10 +82,40 @@ export function Absences() {
   const [resolveOtId, setResolveOtId] = useState<string | null>(null);
 
   const vac = vacationInfo(state, me.id, today());
-  const all = state.absences.filter(
-    (a) => (!fPerson || a.userId === fPerson) && (!fType || a.type === fType) && (!fStatus || a.status === fStatus),
+  const personName = (id: string) => state.users.find((u) => u.id === id)?.name ?? "";
+
+  // Cada pestaña muestra los filtros que tienen sentido en ella, y los que oculta no
+  // cuentan: quien filtró por una persona en "Todas" no pierde "Mis solicitudes".
+  const showPerson = tab !== "mias" && canManage;
+  const showType = tab !== "extra";
+  const showStatus = tab !== "aprobar";
+  const statusOptions = tab === "registro" ? [...REQUEST_STATUSES, "Solicitado", "Informado"] : REQUEST_STATUSES;
+  const activeFilter: RequestFilter = {
+    person: showPerson ? fPerson : "",
+    type: showType ? fType : "",
+    status: showStatus && statusOptions.includes(fStatus) ? fStatus : "",
+  };
+  const clearFilters = () => { setFPerson(""); setFType(""); setFStatus(""); };
+
+  const list = tab === "mias" ? mine : tab === "todas" ? state.absences : toApprove;
+  const shownRequests = filterAndSortRequests(list, activeFilter, sortBy, (a) => ({
+    personId: a.userId, personName: personName(a.userId), type: a.type, status: a.status, emitted: a.createdAt, date: a.dateFrom,
+  }));
+  const overtimeList = [...(canApprove ? otPending : []), ...myOvertime];
+  const shownOvertime = filterAndSortRequests(overtimeList, activeFilter, sortBy, (o) => ({
+    personId: o.userId, personName: personName(o.userId), status: o.status, emitted: o.createdAt, date: o.weekStart,
+  }));
+  const logEvents = tab === "registro" ? requestLogEvents(state, canManage) : [];
+  const shownLog = filterAndSortRequests(logEvents, activeFilter, sortBy, (e) => ({
+    personId: e.personId, personName: e.personName, type: e.type, status: e.status, emitted: e.at, date: e.date,
+  }));
+  const filters = (shown: number, total: number) => (
+    <RequestFilters
+      filter={activeFilter} sort={sortBy} users={state.users} shown={shown} total={total}
+      statusOptions={statusOptions} showPerson={showPerson} showType={showType} showStatus={showStatus}
+      setPerson={setFPerson} setType={setFType} setStatus={setFStatus} setSort={setSortBy} onClear={clearFilters}
+    />
   );
-  const list = tab === "mias" ? mine : tab === "todas" ? all : toApprove;
 
   function resolve(status: "Aprobado" | "Rechazado" | "Devuelto") {
     if (!detail) return;
@@ -215,7 +247,12 @@ export function Absences() {
         <button className={tab === "registro" ? "active" : ""} onClick={() => setTab("registro")}>Registro</button>
       </div>
 
-      {tab === "registro" && <RequestLog />}
+      {tab === "registro" && (
+        <>
+          {filters(shownLog.length, logEvents.length)}
+          <RequestLog events={shownLog} showPerson={canManage} filtered={logEvents.length > 0} />
+        </>
+      )}
 
       {tab === "extra" && (
         <>
@@ -230,11 +267,15 @@ export function Absences() {
             </div>
           )}
           <MonthRequest onReport={setReportOt} onResubmit={setResubmitOt} recoverMin={myOtApproved} onRecover={() => setShowNew(true)} />
+          {overtimeList.length > 0 && filters(shownOvertime.length, overtimeList.length)}
           <div className="card">
-            {[...(canApprove ? otPending : []), ...myOvertime].length === 0 && (
+            {overtimeList.length === 0 && (
               <Empty icon="flame" text="Sin horas extra registradas" sub="Cuando cierre un mes con horas por encima de la jornada, solicitalas desde la tarjeta de arriba." />
             )}
-            {[...(canApprove ? otPending : []), ...myOvertime].map((o) => {
+            {overtimeList.length > 0 && shownOvertime.length === 0 && (
+              <Empty icon="search" text="Nada coincide con los filtros" sub="Probá ajustar o limpiar los filtros." />
+            )}
+            {shownOvertime.map((o) => {
               const u = state.users.find((x) => x.id === o.userId);
               const isMineOt = o.userId === me.id;
               return (
@@ -284,33 +325,13 @@ export function Absences() {
         </>
       )}
 
-      {tab === "todas" && (
-        <div className="card card-pad no-print" style={{ marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <select className="select" style={{ width: "auto" }} value={fPerson} onChange={(e) => setFPerson(e.target.value)}>
-            <option value="">Todas las personas</option>
-            {state.users.slice().sort((a, b) => a.name.localeCompare(b.name)).map((u) => <option key={u.id} value={u.id}>{u.name}{u.active ? "" : " (baja)"}</option>)}
-          </select>
-          <select className="select" style={{ width: "auto" }} value={fType} onChange={(e) => setFType(e.target.value)}>
-            <option value="">Todos los tipos</option>
-            {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <select className="select" style={{ width: "auto" }} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-            <option value="">Todos los estados</option>
-            <option value="Pendiente">Pendiente</option>
-            <option value="Aprobado">Aprobado</option>
-            <option value="Rechazado">Rechazado</option>
-            <option value="Devuelto">Devuelto</option>
-          </select>
-          <span style={{ fontSize: 12.5, color: "var(--text-3)", alignSelf: "center" }}>{all.length} solicitudes</span>
-        </div>
-      )}
+      {(tab === "mias" || tab === "aprobar" || tab === "todas") && list.length > 0 && filters(shownRequests.length, list.length)}
 
       {(tab === "mias" || tab === "aprobar" || tab === "todas") && (
       <div className="card">
         {list.length === 0 && <Empty icon="sun" text="Sin solicitudes" sub={tab === "mias" ? "Creá una nueva solicitud de ausencia." : "No hay solicitudes pendientes de aprobación."} />}
-        {list
-          .slice()
-          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        {list.length > 0 && shownRequests.length === 0 && <Empty icon="search" text="Nada coincide con los filtros" sub="Probá ajustar o limpiar los filtros." />}
+        {shownRequests
           .map((a) => {
             const u = state.users.find((x) => x.id === a.userId);
             return (
@@ -338,6 +359,7 @@ export function Absences() {
                     {fmtDate(a.dateFrom)}
                     {a.dateFrom !== a.dateTo && ` → ${fmtDate(a.dateTo)}`}
                     {a.timeFrom && ` · ${a.timeFrom}–${a.timeTo}`}
+                    <span style={{ color: "var(--text-3)" }}> · emitida el {fmtDate(a.createdAt)}</span>
                   </div>
                 </div>
                 <span style={{ color: "var(--text-3)" }}><Icon name="chevron-right" size={16} /></span>
@@ -831,24 +853,88 @@ function HistoryThread({ events }: { events: RequestEvent[] }) {
 }
 
 /** Registro cronológico de solicitudes: quién solicitó, quién resolvió y cuándo */
-function RequestLog() {
-  const { state } = useStore();
-  const me = state.users.find((u) => u.id === state.currentUserId)!;
-  const canSeeAll = me.role === "admin" || me.role === "gerente";
-  const name = (id?: string | null) => state.users.find((x) => x.id === id)?.name ?? "—";
+const REQUEST_STATUSES = ["Pendiente", "Aprobado", "Rechazado", "Devuelto"];
 
-  type Ev = { at: string; icon: IconName; color: string; what: string; who: string; status: string };
-  const events: Ev[] = [];
+/** Barra de filtros y orden, común a todas las pestañas de Gestión. */
+function RequestFilters({
+  filter, sort, users, shown, total, statusOptions, showPerson, showType, showStatus,
+  setPerson, setType, setStatus, setSort, onClear,
+}: {
+  filter: RequestFilter;
+  sort: RequestSort;
+  users: User[];
+  shown: number;
+  total: number;
+  statusOptions: string[];
+  showPerson: boolean;
+  showType: boolean;
+  showStatus: boolean;
+  setPerson: (v: string) => void;
+  setType: (v: string) => void;
+  setStatus: (v: string) => void;
+  setSort: (v: RequestSort) => void;
+  onClear: () => void;
+}) {
+  const active = Boolean(filter.person || filter.type || filter.status);
+  return (
+    <div className="card card-pad no-print" style={{ marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+      {showPerson && (
+        <select className="select" style={{ width: "auto" }} aria-label="Filtrar por persona" value={filter.person} onChange={(e) => setPerson(e.target.value)}>
+          <option value="">Todas las personas</option>
+          {users.slice().sort((a, b) => a.name.localeCompare(b.name)).map((u) => <option key={u.id} value={u.id}>{u.name}{u.active ? "" : " (baja)"}</option>)}
+        </select>
+      )}
+      {showType && (
+        <select className="select" style={{ width: "auto" }} aria-label="Filtrar por tipo" value={filter.type} onChange={(e) => setType(e.target.value)}>
+          <option value="">Todos los tipos</option>
+          {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      )}
+      {showStatus && (
+        <select className="select" style={{ width: "auto" }} aria-label="Filtrar por estado" value={filter.status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="">Todos los estados</option>
+          {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      )}
+      <select className="select" style={{ width: "auto" }} aria-label="Ordenar" value={sort} onChange={(e) => setSort(e.target.value as RequestSort)}>
+        {REQUEST_SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+      </select>
+      {active && <button className="btn btn-ghost btn-sm" onClick={onClear}><Icon name="x" size={13} /> Limpiar filtros</button>}
+      <span style={{ fontSize: 12.5, color: "var(--text-3)", marginLeft: "auto" }}>{active ? `${shown} de ${total}` : total}</span>
+    </div>
+  );
+}
+
+interface RequestLogEvent {
+  at: string;
+  icon: IconName;
+  color: string;
+  what: string;
+  who: string;
+  status: string;
+  /** De quién es la solicitud (no quién hizo el movimiento), para filtrar y ordenar */
+  personId: string;
+  personName: string;
+  type: string;
+  date: string;
+}
+
+function requestLogEvents(state: AppState, canSeeAll: boolean): RequestLogEvent[] {
+  const name = (id?: string | null) => state.users.find((x) => x.id === id)?.name ?? "—";
+  const events: RequestLogEvent[] = [];
 
   for (const a of state.absences) {
-    if (!canSeeAll && a.userId !== me.id) continue;
+    if (!canSeeAll && a.userId !== state.currentUserId) continue;
+    const owner = { personId: a.userId, personName: name(a.userId), type: a.type, date: a.dateFrom };
     events.push({
+      ...owner,
       at: a.createdAt, icon: "mail", color: "var(--accent)",
       what: `Solicitud de ${a.type} (${fmtDate(a.dateFrom)}${a.dateFrom !== a.dateTo ? ` → ${fmtDate(a.dateTo)}` : ""})`,
       who: name(a.userId), status: "Solicitado",
     });
     if (a.status !== "Pendiente" && a.resolvedBy) {
       events.push({
+        ...owner,
         at: a.resolvedAt ?? a.createdAt, icon: a.status === "Aprobado" ? "check-circle" : a.status === "Devuelto" ? "message" : "x-circle",
         color: a.status === "Aprobado" ? "var(--success)" : a.status === "Devuelto" ? "var(--accent)" : "var(--danger)",
         what: `${a.type} de ${name(a.userId)}${a.supervisorComment ? ` — "${a.supervisorComment}"` : ""}`,
@@ -857,14 +943,17 @@ function RequestLog() {
     }
   }
   for (const o of state.overtime) {
-    if (!canSeeAll && o.userId !== me.id) continue;
+    if (!canSeeAll && o.userId !== state.currentUserId) continue;
+    const owner = { personId: o.userId, personName: name(o.userId), type: "Horas extra", date: o.weekStart };
     events.push({
+      ...owner,
       at: o.createdAt, icon: "flame", color: "var(--warning)",
       what: `Horas extra informadas: ${fmtDur(o.minutes)} (semana del ${fmtDate(o.weekStart)})`,
       who: name(o.userId), status: "Informado",
     });
     if (o.status !== "Pendiente" && o.resolvedBy) {
       events.push({
+        ...owner,
         at: o.resolvedAt ?? o.createdAt, icon: o.status === "Aprobado" ? "check-circle" : o.status === "Devuelto" ? "message" : "x-circle",
         color: o.status === "Aprobado" ? "var(--success)" : o.status === "Devuelto" ? "var(--accent)" : "var(--danger)",
         what: `Horas extra de ${name(o.userId)} (${fmtDur(o.minutes)})${o.supervisorComment ? ` — "${o.supervisorComment}"` : ""}`,
@@ -872,16 +961,21 @@ function RequestLog() {
       });
     }
   }
-  events.sort((a, b) => b.at.localeCompare(a.at));
+  return events;
+}
 
+function RequestLog({ events, showPerson, filtered }: { events: RequestLogEvent[]; showPerson: boolean; filtered: boolean }) {
   return (
     <div className="card" style={{ overflowX: "auto" }}>
-      {events.length === 0 && <Empty icon="history" text="Sin movimientos registrados" sub="Acá vas a ver el historial de solicitudes y aprobaciones." />}
+      {events.length === 0 && (filtered
+        ? <Empty icon="search" text="Nada coincide con los filtros" sub="Probá ajustar o limpiar los filtros." />
+        : <Empty icon="history" text="Sin movimientos registrados" sub="Acá vas a ver el historial de solicitudes y aprobaciones." />)}
       {events.length > 0 && (
         <table className="table">
           <thead>
             <tr>
               <th>Fecha</th>
+              {showPerson && <th>Persona</th>}
               <th>Evento</th>
               <th>Realizado por</th>
               <th>Estado</th>
@@ -891,6 +985,7 @@ function RequestLog() {
             {events.map((e, i) => (
               <tr key={i}>
                 <td style={{ whiteSpace: "nowrap", fontFamily: "var(--mono)", fontSize: 12 }}>{fmtDate(e.at)}</td>
+                {showPerson && <td style={{ whiteSpace: "nowrap" }}>{e.personName}</td>}
                 <td>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                     <span style={{ color: e.color }}><Icon name={e.icon} size={15} /></span> {e.what}

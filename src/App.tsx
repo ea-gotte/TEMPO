@@ -1,10 +1,13 @@
-import React, { Suspense, lazy, useEffect, useState } from "react";
+import React, { Suspense, lazy, useEffect } from "react";
 import { StoreProvider, useStore } from "./store";
 import { ToastProvider } from "./components/ui";
 import { Shell, canSeePage, type PageKey } from "./components/Shell";
 import { Login } from "./pages/Login";
 import { ForceChangePassword } from "./pages/ForceChangePassword";
 import { ResetPassword } from "./pages/ResetPassword";
+import { goToPage, useRoute } from "./routes";
+import { useProjectRolesSync } from "./projects/projectRolesSync";
+import type { Role } from "./types";
 
 /**
  * Cada pantalla se descarga aparte, la primera vez que hace falta: entrar a la app ya no
@@ -97,23 +100,41 @@ function PrefetchPages({ role }: { role: Parameters<typeof canSeePage>[0] }) {
 
 function Root() {
   const { state } = useStore();
-  const [page, setPage] = useState<PageKey>("calendar");
   if (state.passwordRecovery) return <ResetPassword />;
   if (!state.authenticated) return <Login />;
   const me = state.users.find((u) => u.id === state.currentUserId);
   if (!me) return null;
   if (me.mustChangePassword) return <ForceChangePassword />;
+  return <Pages role={me.role} />;
+}
+
+/** Con sesión lista: la página sale de la URL, así recargar no saca de la pestaña. */
+function Pages({ role }: { role: Role }) {
+  useProjectRolesSync();
+  const { page, isRoot } = useRoute();
+  const requested = page ?? "calendar";
   // Si la página actual no está permitida para el rol, volver al calendario
   // — o, si tampoco puede verlo, a su perfil profesional, que siempre está disponible.
-  const effective = canSeePage(me.role, page)
-    ? page
-    : canSeePage(me.role, "calendar")
+  const effective = canSeePage(role, requested)
+    ? requested
+    : canSeePage(role, "calendar")
       ? "calendar"
       : "profile";
+
+  // Corrige la URL si pide una página inexistente o no permitida. La raíz queda
+  // tal cual, y mientras haya un enlace de Supabase en el hash no se toca nada:
+  // src/supabase.ts y el cliente de Supabase lo leen al iniciar.
+  const wrongUrl = !isRoot && page !== effective;
+  useEffect(() => {
+    if (wrongUrl && !/access_token|type=recovery|error_code/.test(window.location.hash)) {
+      goToPage(effective, [], { replace: true });
+    }
+  }, [wrongUrl, effective]);
+
   const Page = PAGES[effective];
   return (
-    <Shell page={effective} setPage={setPage}>
-      <PrefetchPages role={me.role} />
+    <Shell page={effective} setPage={goToPage}>
+      <PrefetchPages role={role} />
       <PageBoundary key={effective}>
         <Suspense fallback={<div className="page-loading" role="status">Cargando…</div>}>
           <Page />

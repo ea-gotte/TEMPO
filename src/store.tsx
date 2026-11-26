@@ -632,6 +632,8 @@ function toProjectRow(p: Project) {
     member_ids: p.memberIds,
     notion_url: p.notionUrl ?? null,
     flight_activity_id: p.flightActivityId,
+    // Solo si está elegida: así un proyecto sin metodología no pisa la columna
+    ...(p.managementMode ? { management_mode: p.managementMode } : {}),
   };
 }
 function fromProjectRow(r: any): Project {
@@ -645,6 +647,7 @@ function fromProjectRow(r: any): Project {
     memberIds: r.member_ids ?? [],
     notionUrl: r.notion_url ?? undefined,
     flightActivityId: r.flight_activity_id ?? null,
+    managementMode: r.management_mode ?? null,
   };
 }
 

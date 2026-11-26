@@ -23,12 +23,10 @@ function useOnline(): boolean {
 }
 
 /** Páginas visibles para cualquier rol, incluido "usuario" (vista básica) */
-export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "profile", "absences", "corp", "feedback"];
+export const EMPLOYEE_PAGES: PageKey[] = ["tracker", "calendar", "dashboard", "reports", "profile", "absences", "corp", "feedback", "projects"];
 
-/** Además de las básicas, el supervisor ve Control de horas (acotado a su
- * equipo) y Proyectos — ahí solo administra la membresía de los proyectos
- * donde él mismo participa (ver Projects.tsx), nada más. */
-const SUPERVISOR_EXTRA_PAGES: PageKey[] = ["control", "projects"];
+/** Además de las básicas, el supervisor ve Control de horas (acotado a su equipo). */
+const SUPERVISOR_EXTRA_PAGES: PageKey[] = ["control"];
 
 /**
  * Admin: todo. Gerente: todo menos Administración. Supervisor: las básicas más
@@ -78,7 +76,7 @@ const NAV: { section: string; items: { key: PageKey; label: string; ico: IconNam
     section: "Gestión",
     items: [
       { key: "summary", label: "Resumen de personal", ico: "star" },
-      { key: "projects", label: "Clientes y proyectos", ico: "folder" },
+      { key: "projects", label: "Proyectos", ico: "folder" },
       { key: "team", label: "Equipo", ico: "users" },
       { key: "control", label: "Control de horas", ico: "check-circle" },
       { key: "absences", label: "Gestión", ico: "briefcase" },

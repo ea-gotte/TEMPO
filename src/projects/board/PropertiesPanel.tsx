@@ -1,0 +1,224 @@
+import React from "react";
+import type { AlignMode } from "./align";
+import type { StylePatch, StyleState } from "./style";
+import type { DashStyle, HeadStyle } from "./strokes";
+import { Btn, Swatch } from "./Toolbar";
+import { DetailField } from "./ObservationsPanel";
+import { useDraft } from "./useDraft";
+import { FILL_COLORS, HIGHLIGHT_COLORS, HIGHLIGHT_WIDTHS, NOTE_COLORS, PALETTE, STROKE_WIDTHS } from "./tools";
+
+/** Panel derecho (solo con selección). Adaptado de RightSidebar de Figma_Clone (github.com/Lyam0udi/Figma_Clone). */
+
+const DASHES: [DashStyle, string][] = [["solid", "Continuo"], ["dashed", "Discontinuo"], ["dotted", "Punteado"]];
+const HEADS: [HeadStyle, string, string][] = [["end", "→", "Al final"], ["start", "←", "Al inicio"], ["both", "↔", "En ambos extremos"], ["none", "—", "Sin punta"]];
+
+const ROUTES: ["straight" | "elbow", string][] = [["straight", "Recto"], ["elbow", "En ángulo"]];
+
+const FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64, 72];
+
+export interface PanelProps {
+  count: number;
+  style: StyleState;
+  onStyle: (p: StylePatch) => void;
+  onFront: () => void;
+  onBack: () => void;
+  onLock: () => void;
+  onDuplicate: () => void;
+  /** Sin función: no se ofrece (las secciones no se giran) */
+  onRotate?: () => void;
+  onDelete: () => void;
+  onAlign: (mode: AlignMode) => void;
+  onDistribute: (axis: "h" | "v") => void;
+  onTidy: () => void;
+  onExport: () => void;
+  /** Una imagen sola seleccionada: estado de su escala (para medir sobre el plano) */
+  image: { calibrated: boolean } | null;
+  onCalibrate: () => void;
+  /** Una observación numerada sola seleccionada: su descripción y estado */
+  marker: { id: string; num: number; detail: string; resolved: boolean } | null;
+  onMarker: (id: string, patch: { detail?: string; resolved?: boolean }) => void;
+  /** Enlace del objeto (un solo objeto seleccionado; "" = sin enlace) */
+  link: { id: string; url: string } | null;
+  /** false si el enlace no es válido (el campo vuelve al anterior) */
+  onLink: (id: string, text: string) => boolean;
+  onOpenLink: () => void;
+  /** Votos de la nota o forma seleccionada (null si no aplica) */
+  votes: number | null;
+  onVote: (delta: 1 | -1) => void;
+  /** Varias seleccionadas y alguna con votos: se pueden ordenar por votos */
+  canSortByVotes: boolean;
+  onSortByVotes: () => void;
+}
+
+/** Selector de color libre (además de la paleta). Con valores mixtos o sin color parte de un gris. */
+function ColorInput({ value, label, onPick }: { value: string; label: string; onPick: (c: string) => void }) {
+  const hex = value.length === 7 && value[0] === "#" ? value : "#9ca3af";
+  return <input type="color" className="bd-color" value={hex} title={label} aria-label={label} onChange={(e) => onPick(e.target.value)} />;
+}
+
+/** Enlace del objeto: se escribe o pega y se registra al salir del campo o con Enter. */
+function LinkField({ value, onSave, onOpen }: { value: string; onSave: (text: string) => boolean; onOpen: () => void }) {
+  const { draft, change, flush, reset } = useDraft(value, onSave);
+  return (
+    <>
+      <input
+        className="input bd-link"
+        type="url"
+        placeholder="https://… (documento, carpeta, plano)"
+        aria-label="Enlace"
+        value={draft}
+        onChange={(e) => change(e.target.value)}
+        onBlur={flush}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") { reset(); e.currentTarget.blur(); }
+        }}
+      />
+      {value && <Btn icon="external-link" label="Abrir el enlace (también Ctrl+clic en el objeto)" onClick={onOpen} />}
+    </>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="bd-row">
+      <span>{label}</span>
+      <div className="bd-row-ctl">{children}</div>
+    </div>
+  );
+}
+
+export function PropertiesPanel({ count, style: s, onStyle, onFront, onBack, onLock, onDuplicate, onRotate, onDelete, onAlign, onDistribute, onTidy, onExport, image, onCalibrate, marker, onMarker, link, onLink, onOpenLink, votes, onVote, canSortByVotes, onSortByVotes }: PanelProps) {
+  const fills = s.kind === "note" ? NOTE_COLORS : FILL_COLORS;
+  // el resaltador tiene sus propios colores claros y trazos anchos
+  const hl = s.strokeLabel === "Resaltador";
+  const opacity = Math.round(s.opacity * 100);
+  return (
+    <aside className="bd-panel" aria-label="Propiedades de la selección">
+      <div className="bd-panel-title">{count > 1 ? `${count} elementos` : "Propiedades"}</div>
+      {marker && (
+        <Row label={`Observación ${marker.num}`}>
+          <DetailField key={marker.id + marker.detail} value={marker.detail} onSave={(t) => onMarker(marker.id, { detail: t })} />
+          <label className="bd-obs-check">
+            <input type="checkbox" checked={marker.resolved} onChange={(e) => onMarker(marker.id, { resolved: e.target.checked })} /> Resuelta
+          </label>
+        </Row>
+      )}
+      {s.fill !== null && (
+        <Row label="Relleno">
+          {fills.map((c) => <Swatch key={c} color={c} on={s.fill === c} onClick={() => onStyle({ fill: c })} />)}
+          <ColorInput value={s.fill} label="Otro color de relleno" onPick={(c) => onStyle({ fill: c })} />
+        </Row>
+      )}
+      {s.stroke !== null && (
+        <Row label={s.strokeLabel}>
+          {(hl ? HIGHLIGHT_COLORS : PALETTE).map((c) => <Swatch key={c} color={c} on={s.stroke === c} onClick={() => onStyle({ stroke: c })} />)}
+          <ColorInput value={s.stroke} label="Otro color" onPick={(c) => onStyle({ stroke: c })} />
+        </Row>
+      )}
+      {s.strokeWidth !== null && (
+        <Row label="Grosor">
+          {(hl ? HIGHLIGHT_WIDTHS : STROKE_WIDTHS).map((w) => (
+            <button key={w} type="button" className={`bd-chip${s.strokeWidth === w ? " on" : ""}`} onClick={() => onStyle({ strokeWidth: w })}>{w} px</button>
+          ))}
+        </Row>
+      )}
+      {s.dash !== null && (
+        <Row label="Trazo">
+          {DASHES.map(([v, label]) => (
+            <button key={v} type="button" className={`bd-chip${s.dash === v ? " on" : ""}`} onClick={() => onStyle({ dash: v })}>{label}</button>
+          ))}
+        </Row>
+      )}
+      {s.route !== null && (
+        <Row label="Recorrido">
+          {ROUTES.map(([v, label]) => (
+            <button key={v} type="button" className={`bd-chip${s.route === v ? " on" : ""}`} onClick={() => onStyle({ route: v })}>{label}</button>
+          ))}
+        </Row>
+      )}
+      {s.heads !== null && (
+        <Row label="Puntas">
+          {HEADS.map(([v, label, title]) => (
+            <button key={v} type="button" className={`bd-chip${s.heads === v ? " on" : ""}`} title={title} aria-label={title} onClick={() => onStyle({ heads: v })}>{label}</button>
+          ))}
+        </Row>
+      )}
+      {(s.textColor !== null || s.weight !== null) && (
+        <Row label="Texto">
+          {s.textColor !== null && PALETTE.map((c) => <Swatch key={c} color={c} on={s.textColor === c} onClick={() => onStyle({ textColor: c })} />)}
+          {s.textColor !== null && <ColorInput value={s.textColor} label="Otro color de texto" onPick={(c) => onStyle({ textColor: c })} />}
+          {s.weight !== null && (
+            <button
+              type="button"
+              className={`bd-chip${s.weight === "bold" ? " on" : ""}`}
+              title="Negrita"
+              aria-label="Negrita"
+              aria-pressed={s.weight === "bold"}
+              onClick={() => onStyle({ weight: s.weight === "bold" ? "normal" : "bold" })}
+            >
+              <b>N</b>
+            </button>
+          )}
+        </Row>
+      )}
+      {s.fontSize !== null && (
+        <Row label="Tamaño del texto">
+          <select
+            className="select"
+            value={FONT_SIZES.includes(s.fontSize) ? s.fontSize : ""}
+            onChange={(e) => { const v = Number(e.target.value); if (v) onStyle({ fontSize: v }); }}
+          >
+            {!FONT_SIZES.includes(s.fontSize) && <option value="">{s.fontSize ? `${s.fontSize} px` : "Mixto"}</option>}
+            {FONT_SIZES.map((f) => <option key={f} value={f}>{f} px</option>)}
+          </select>
+        </Row>
+      )}
+      {votes !== null && (
+        <Row label="Votos">
+          <button type="button" className="bd-chip" aria-label="Quitar un voto" title="Quitar un voto" disabled={!votes} onClick={() => onVote(-1)}>−</button>
+          <span className="bd-votes" aria-live="polite">{votes}</span>
+          <button type="button" className="bd-chip" aria-label="Votar" title="Votar (+1)" onClick={() => onVote(1)}>+</button>
+        </Row>
+      )}
+      {link && (
+        <Row label="Enlace">
+          <LinkField key={link.id + link.url} value={link.url} onSave={(t) => onLink(link.id, t)} onOpen={onOpenLink} />
+        </Row>
+      )}
+      <Row label={`Opacidad · ${opacity} %`}>
+        <input type="range" min={10} max={100} step={5} value={opacity} onChange={(e) => onStyle({ opacity: Number(e.target.value) / 100 })} style={{ width: "100%" }} aria-label="Opacidad" />
+      </Row>
+      {image && (
+        <Row label={image.calibrated ? "Escala del plano: calibrada" : "Escala del plano: sin calibrar"}>
+          <button type="button" className="bd-chip" onClick={onCalibrate}>
+            {image.calibrated ? "Recalibrar" : "Calibrar escala"}
+          </button>
+        </Row>
+      )}
+      {count > 1 && (
+        <Row label="Alinear">
+          <Btn icon="align-left" label="Alinear a la izquierda" onClick={() => onAlign("left")} />
+          <Btn icon="align-hcenter" label="Centrar horizontalmente" onClick={() => onAlign("hcenter")} />
+          <Btn icon="align-right" label="Alinear a la derecha" onClick={() => onAlign("right")} />
+          <Btn icon="align-top" label="Alinear arriba" onClick={() => onAlign("top")} />
+          <Btn icon="align-vmiddle" label="Centrar verticalmente" onClick={() => onAlign("vmiddle")} />
+          <Btn icon="align-bottom" label="Alinear abajo" onClick={() => onAlign("bottom")} />
+          {count > 2 && <Btn icon="distribute-h" label="Distribuir horizontalmente" onClick={() => onDistribute("h")} />}
+          {count > 2 && <Btn icon="distribute-v" label="Distribuir verticalmente" onClick={() => onDistribute("v")} />}
+          {canSortByVotes && <Btn icon="star" label="Ordenar por votos (los más votados primero)" onClick={onSortByVotes} />}
+          <Btn icon="grid" label="Ordenar en cuadrícula" onClick={onTidy} />
+        </Row>
+      )}
+      <div className="bd-actions">
+        <Btn icon="bring-front" label="Traer al frente" onClick={onFront} />
+        <Btn icon="send-back" label="Enviar al fondo" onClick={onBack} />
+        <Btn icon="lock" label="Bloquear (para marcar encima sin moverlo)" onClick={onLock} />
+        <Btn icon="copy" label="Duplicar (Ctrl+D)" onClick={onDuplicate} />
+        {onRotate && <Btn icon="rotate-cw" label="Girar 90° a la derecha" onClick={onRotate} />}
+        <Btn icon="download" label="Exportar la selección (PNG)" onClick={onExport} />
+        <Btn icon="trash" label="Eliminar (Supr)" danger onClick={onDelete} />
+      </div>
+    </aside>
+  );
+}

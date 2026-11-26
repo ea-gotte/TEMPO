@@ -7,6 +7,7 @@ import { Avatar, Empty, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { computeHoursIncidents, getDownlineIds, visibleIncidents, type HoursIncident } from "../compliance";
 import { buildForest, buildLayout, teamIds, CARD_W, CARD_H } from "../orgTree";
+import { filterAndSortHours, NO_SUPERVISOR, type HoursSortKey } from "../listFilters";
 import type { OvertimeRequest, TimeEntry, User } from "../types";
 
 const DAY_SHORT = ["L", "M", "X", "J", "V", "S", "D"];
@@ -18,6 +19,12 @@ export function HoursControl() {
   const [anchor, setAnchor] = useState(today());
   const [tab, setTab] = useState<"semana" | "cadena">("semana");
   const [period, setPeriod] = useState<"mes" | "semana">("mes");
+  const [fPerson, setFPerson] = useState("");
+  const [fSupervisor, setFSupervisor] = useState("");
+  const [fStatus, setFStatus] = useState("");
+  const [fJornada, setFJornada] = useState("");
+  const [sortKey, setSortKey] = useState<HoursSortKey>("persona");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const ws = weekStart(anchor);
   // Las horas extra se calculan por mes: cada mes se solicita aparte
@@ -65,6 +72,15 @@ export function HoursControl() {
       });
   }, [state, monthDays, from, to, ms, me2, me.id, me.role, myDownline]);
 
+  const visibleRows = useMemo(
+    () => filterAndSortHours(rows, { person: fPerson, supervisor: fSupervisor, status: fStatus, jornada: fJornada }, sortKey, sortDir),
+    [rows, fPerson, fSupervisor, fStatus, fJornada, sortKey, sortDir],
+  );
+  const supervisorOptions = useMemo(() => {
+    const seen = new Map(rows.flatMap((r) => (r.supervisor ? [[r.supervisor.id, r.supervisor.name] as const] : [])));
+    return [...seen].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [rows]);
+
   // Incidencias de la cadena de mando: semanas ya cerradas donde alguien no
   // cargó correctamente, con su nivel de escalamiento actual. Ver compliance.ts.
   const incidents = useMemo(() => {
@@ -103,7 +119,7 @@ export function HoursControl() {
   const monthOpen = ms >= monthStart(today());
 
   async function exportOvertime() {
-    const file = await downloadOvertimeXlsx(state, rows.map((r) => r.u), ms);
+    const file = await downloadOvertimeXlsx(state, visibleRows.map((r) => r.u), ms);
     toast(`Reporte descargado: ${file}`);
   }
 
@@ -116,10 +132,38 @@ export function HoursControl() {
   }
 
   const summary = {
-    ok: rows.filter((r) => r.status === "ok" || r.status === "extra").length,
-    incompleto: rows.filter((r) => r.status === "incompleto").length,
-    sinCarga: rows.filter((r) => r.status === "sin-carga").length,
+    ok: visibleRows.filter((r) => r.status === "ok" || r.status === "extra").length,
+    incompleto: visibleRows.filter((r) => r.status === "incompleto").length,
+    sinCarga: visibleRows.filter((r) => r.status === "sin-carga").length,
   };
+
+  const filtersActive = Boolean(fPerson || fSupervisor || fStatus || fJornada);
+
+  function clearFilters() {
+    setFPerson("");
+    setFSupervisor("");
+    setFStatus("");
+    setFJornada("");
+  }
+
+  function toggleSort(key: HoursSortKey) {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  function sortHeader(key: HoursSortKey, label: string) {
+    return (
+      <th style={{ cursor: "pointer", userSelect: "none" }} aria-sort={sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : "none"} onClick={() => toggleSort(key)}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {label}
+          {sortKey === key && <Icon name="chevron-right" size={11} style={{ transform: sortDir === "asc" ? "rotate(-90deg)" : "rotate(90deg)" }} />}
+        </span>
+      </th>
+    );
+  }
 
   return (
     <>
@@ -189,21 +233,51 @@ export function HoursControl() {
             </div>
           </div>
 
+          <div className="card card-pad no-print" style={{ marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <select className="select" style={{ width: "auto" }} aria-label="Filtrar por persona" value={fPerson} onChange={(e) => setFPerson(e.target.value)}>
+              <option value="">Todas las personas</option>
+              {rows.map((r) => r.u).sort((a, b) => a.name.localeCompare(b.name)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+            <select className="select" style={{ width: "auto" }} aria-label="Filtrar por supervisor" value={fSupervisor} onChange={(e) => setFSupervisor(e.target.value)}>
+              <option value="">Todos los supervisores</option>
+              {supervisorOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              <option value={NO_SUPERVISOR}>Sin supervisor</option>
+            </select>
+            <select className="select" style={{ width: "auto" }} aria-label="Filtrar por estado" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+              <option value="">Todos los estados</option>
+              <option value="sin-carga">Sin carga</option>
+              <option value="incompleto">Incompleto</option>
+              <option value="ok">OK</option>
+              <option value="extra">OK + extra</option>
+            </select>
+            <select className="select" style={{ width: "auto" }} aria-label="Filtrar por jornada" value={fJornada} onChange={(e) => setFJornada(e.target.value)}>
+              <option value="">Todas las jornadas</option>
+              <option value="completa">Jornada completa</option>
+              <option value="media">Media jornada</option>
+            </select>
+            {filtersActive && <button className="btn btn-ghost btn-sm" onClick={clearFilters}><Icon name="x" size={13} /> Limpiar filtros</button>}
+            <span style={{ fontSize: 12.5, color: "var(--text-3)", marginLeft: "auto" }}>
+              {filtersActive ? `${visibleRows.length} de ${rows.length} personas` : `${rows.length} personas`} · clic en una columna para ordenar
+            </span>
+          </div>
+
           <div className="card" style={{ overflowX: "auto" }}>
+        {visibleRows.length === 0 && <Empty icon="search" text="Nada coincide con los filtros" sub="Probá ajustar o limpiar los filtros." />}
+        {visibleRows.length > 0 && (
         <table className="table">
           <thead>
             <tr>
-              <th>Persona</th>
-              <th>Supervisor</th>
-              <th>Jornada</th>
+              {sortHeader("persona", "Persona")}
+              {sortHeader("supervisor", "Supervisor")}
+              {sortHeader("jornada", "Jornada")}
               <th>Carga diaria</th>
-              <th>Cargado / esperado</th>
-              <th>Estado</th>
-              <th>Horas extra</th>
+              {sortHeader("cargado", "Cargado / esperado")}
+              {sortHeader("estado", "Estado")}
+              {sortHeader("extra", "Horas extra")}
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ u, perDay, loaded, expected, overtimeMin, excluded, overlapIssues, supervisor, otRequest, status }) => {
+            {visibleRows.map(({ u, perDay, loaded, expected, overtimeMin, excluded, overlapIssues, supervisor, otRequest, status }) => {
               const pct = Math.min(100, (loaded / Math.max(1, expected)) * 100);
               const maxDay = Math.max(60, ...perDay);
               return (
@@ -318,6 +392,7 @@ export function HoursControl() {
             })}
           </tbody>
         </table>
+        )}
           </div>
         </>
       )}

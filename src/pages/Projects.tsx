@@ -1,21 +1,47 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
 import type { Client, Project, ProjectStatus, SubProject } from "../types";
-import { fmtDur, safeHttpUrl, uid } from "../utils";
+import { fmtDur, safeHttpUrl, today, uid } from "../utils";
 import { Avatar, Dot, Empty, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
+import { ProjectWorkspace } from "../projects/ProjectWorkspace";
+import { GeneralPanel } from "../projects/GeneralPanel";
+import { visibleProjects } from "../projects/visibility";
+import { useWork, workActions } from "../projects/workStore";
+import { DEFAULT_MODE, MODE_LABEL } from "../projects/constants";
+import type { ProjectMode } from "../projects/types";
+import { StructurePicker, buildStructure, structureChoiceValid, type StructureChoice } from "../projects/StructurePicker";
+import { projectCodeFromName } from "../projects/templates";
+import { useSubRoute } from "../routes";
+import { useProjectTotalMinutes } from "../projects/allocationStore";
+
+type ProjectsTab = "proyectos" | "panel" | "clientes" | "etiquetas";
+/** Cómo aparece cada pestaña en la URL: /proyectos/panel, /proyectos/lista... */
+const TAB_SLUG: Record<ProjectsTab, string> = { proyectos: "lista", panel: "panel", clientes: "clientes", etiquetas: "etiquetas" };
+
+const MODE_KEYS = Object.keys(MODE_LABEL) as ProjectMode[];
+const modeOf = (p: Project): ProjectMode => p.managementMode ?? DEFAULT_MODE;
 
 export const COLORS = ["#5b6cff", "#12b5a5", "#f5a524", "#f0446c", "#8b5cf6", "#0ea5e9", "#84cc16", "#f97316"];
 
 export function Projects() {
   const { state, dispatch } = useStore();
   const toast = useToast();
+  const work = useWork();
   const me = state.users.find((u) => u.id === state.currentUserId)!;
-  // El supervisor solo administra la membresía de SUS proyectos (donde él
-  // mismo participa) — ni crea/elimina proyectos ni toca presupuesto,
-  // cliente, estado, etc. Ver el branch de retorno más abajo.
-  const isSupervisorOnly = me.role === "supervisor";
-  const [tab, setTab] = useState<"proyectos" | "clientes" | "etiquetas">("proyectos");
+  const isStaff = me.role === "admin" || me.role === "gerente";
+  const isSupervisor = me.role === "supervisor";
+  // La pestaña, la vista del panel y el proyecto abierto viven en la URL, para que
+  // recargar no saque de ahí: /proyectos/panel/indicadores o /proyectos/p/<id>/backlog
+  const { rest, setRest } = useSubRoute();
+  const openProjectId = rest[0] === "p" && rest[1] ? rest[1] : null;
+  const allowedTabs: ProjectsTab[] = isStaff ? ["panel", "proyectos", "clientes", "etiquetas"] : ["proyectos", "panel"];
+  const tab = allowedTabs.find((t) => TAB_SLUG[t] === rest[0]) ?? allowedTabs[0];
+  const setTab = (t: ProjectsTab) => setRest([TAB_SLUG[t]]);
+  // Al cerrar un proyecto se vuelve a la pestaña desde la que se abrió
+  const lastTab = useRef(tab);
+  if (!openProjectId) lastTab.current = tab;
+  const setOpenProjectId = (id: string | null) => setRest(id ? ["p", id] : [TAB_SLUG[lastTab.current]]);
   const [editProject, setEditProject] = useState<Project | "new" | null>(null);
   const [deleteProject, setDeleteProject] = useState<Project | null>(null);
   const [editClient, setEditClient] = useState<Client | "new" | null>(null);
@@ -27,8 +53,9 @@ export function Projects() {
   const [fStatus, setFStatus] = useState<ProjectStatus | "">("");
   const [fMember, setFMember] = useState("");
   const [fActivity, setFActivity] = useState("");
+  const [fMode, setFMode] = useState<ProjectMode | "">("");
 
-  type SortKey = "name" | "client" | "status" | "hours" | "activity";
+  type SortKey = "name" | "client" | "status" | "mode" | "hours" | "activity";
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
@@ -54,19 +81,64 @@ export function Projects() {
     return m;
   }, [state.entries]);
 
-  const filtersActive = Boolean(fQuery || fClient || fStatus || fMember || fActivity);
+  const userVisibleProjects = useMemo(
+    () => visibleProjects(state.projects, work.assignments, me),
+    [state.projects, work.assignments, me],
+  );
+
+  // Las horas de todo el equipo por proyecto: cada persona solo puede leer sus propios
+  // registros, y sin esto el avance de un proyecto se calcularía solo con esas horas.
+  const projectTotals = useProjectTotalMinutes();
+  const minutesByProject = useMemo(() => projectTotals ?? Object.fromEntries(spentBy), [projectTotals, spentBy]);
+
+  // La metodología la manda la base: al llegar datos nuevos, se alinea lo que hay en el navegador
+  useEffect(() => {
+    workActions.applyProjectModes(state.projects);
+  }, [state.projects, work.seeded]);
+
+  async function changeProjectMode(projectId: string, mode: ProjectMode): Promise<string | null> {
+    const err = await workActions.setProjectMode(projectId, mode);
+    if (err) return err;
+    dispatch({ type: "syncProjects", projects: state.projects.map((p) => (p.id === projectId ? { ...p, managementMode: mode } : p)) });
+    dispatch({ type: "audit", action: "Metodología de proyecto modificada", detail: `${state.projects.find((p) => p.id === projectId)?.name ?? projectId} → ${MODE_LABEL[mode]}` });
+    return null;
+  }
+
+  // El espacio de trabajo recibe todos los proyectos, para que a quien no participa
+  // le diga "No tenés acceso" y no "El proyecto ya no existe".
+  const workspaceEnv = useMemo(
+    () => ({
+      projects: state.projects,
+      clients: state.clients,
+      users: state.users,
+      me,
+      minutesByProject,
+      changeProjectMode,
+      // Ausencias aprobadas que dejan a la persona sin trabajar (descuentan capacidad de los sprints)
+      absences: state.absences
+        .filter((a) => a.status === "Aprobado" && a.type !== "Trabajo remoto" && a.type !== "Horas extra")
+        .map((a) => ({ userId: a.userId, dateFrom: a.dateFrom, dateTo: a.dateTo })),
+    }),
+    [state.projects, state.clients, state.users, state.absences, me, minutesByProject],
+  );
+
+  // El panel general, solo con los proyectos que esta persona puede ver
+  const panelEnv = useMemo(() => ({ ...workspaceEnv, projects: userVisibleProjects }), [workspaceEnv, userVisibleProjects]);
+
+  const filtersActive = Boolean(fQuery || fClient || fStatus || fMode || fMember || fActivity);
   const filteredProjects = useMemo(
     () =>
       state.projects.filter((p) => {
         if (fQuery && !p.name.toLowerCase().includes(fQuery.trim().toLowerCase())) return false;
         if (fClient && p.clientId !== fClient) return false;
         if (fStatus && p.status !== fStatus) return false;
+        if (fMode && modeOf(p) !== fMode) return false;
         if (fMember && !p.memberIds.includes(fMember)) return false;
         if (fActivity === "__none__" && p.flightActivityId) return false;
         if (fActivity && fActivity !== "__none__" && p.flightActivityId !== fActivity) return false;
         return true;
       }),
-    [state.projects, fQuery, fClient, fStatus, fMember, fActivity],
+    [state.projects, fQuery, fClient, fStatus, fMode, fMember, fActivity],
   );
 
   const sortedProjects = useMemo(() => {
@@ -79,6 +151,7 @@ export function Projects() {
         case "name": return a.name.localeCompare(b.name) * dir;
         case "client": return clientName(a).localeCompare(clientName(b)) * dir;
         case "status": return a.status.localeCompare(b.status) * dir;
+        case "mode": return MODE_LABEL[modeOf(a)].localeCompare(MODE_LABEL[modeOf(b)]) * dir;
         case "hours": return ((spentBy.get(a.id) ?? 0) - (spentBy.get(b.id) ?? 0)) * dir;
         case "activity": return activityName(a).localeCompare(activityName(b)) * dir;
         default: return 0;
@@ -90,6 +163,7 @@ export function Projects() {
     setFQuery("");
     setFClient("");
     setFStatus("");
+    setFMode("");
     setFMember("");
     setFActivity("");
   }
@@ -128,72 +202,113 @@ export function Projects() {
   // Vista acotada para supervisor: solo sus propios proyectos (donde él
   // mismo es miembro), y solo puede tocar la membresía — nada de crear,
   // eliminar, ni editar presupuesto/cliente/estado/color.
-  if (isSupervisorOnly) {
-    const myProjects = state.projects.filter((p) => p.memberIds.includes(me.id));
+  if (openProjectId) {
+    return (
+      <ProjectWorkspace
+        env={workspaceEnv}
+        projectId={openProjectId}
+        tab={rest[2]}
+        onTabChange={(t) => setRest(["p", openProjectId, t])}
+        onBack={() => setOpenProjectId(null)}
+        onEditProject={() => {
+          const p = state.projects.find((x) => x.id === openProjectId);
+          setOpenProjectId(null);
+          if (p) setEditProject(p);
+        }}
+      />
+    );
+  }
+
+  if (!isStaff) {
     return (
       <>
         <div className="page-head">
           <h1>Mis proyectos</h1>
+          <span className="spacer" />
+          <div className="tabs">
+            <button className={tab === "proyectos" ? "active" : ""} onClick={() => setTab("proyectos")}>
+              Mis proyectos
+            </button>
+            <button className={tab === "panel" ? "active" : ""} onClick={() => setTab("panel")}>
+              Panel general
+            </button>
+          </div>
         </div>
-        <p className="page-sub">
-          Proyectos donde formás parte del equipo — podés agregar o quitar personas.
-        </p>
 
-        {myProjects.length === 0 ? (
-          <div className="card card-pad">
-            <Empty icon="folder" text="Sin proyectos" sub="Todavía no estás asignado a ningún proyecto." />
-          </div>
-        ) : (
-          <div className="card" style={{ overflowX: "auto" }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Proyecto</th>
-                  <th>Cliente</th>
-                  <th>Estado</th>
-                  <th>Equipo</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {myProjects.map((p) => {
-                  const client = state.clients.find((c) => c.id === p.clientId);
-                  return (
-                    <tr key={p.id}>
-                      <td>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 600 }}>
-                          <Dot color={p.color} /> {p.name}
-                        </div>
-                      </td>
-                      <td>{client?.name ?? "—"}</td>
-                      <td>
-                        <span className={`badge ${p.status === "activo" ? "ok" : p.status === "completado" ? "acc" : ""}`}>{p.status}</span>
-                      </td>
-                      <td>
-                        {p.memberIds.length === 0 ? (
-                          <span style={{ fontSize: 11, color: "var(--warning)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                            <Icon name="alert" size={11} /> Sin equipo asignado
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 11.5, color: "var(--text-3)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                            <Icon name="users" size={12} /> {p.memberIds.length} persona{p.memberIds.length !== 1 ? "s" : ""}
-                          </span>
-                        )}
-                      </td>
-                      <td>
-                        <button className="btn btn-secondary btn-sm" onClick={() => setEditMembersOf(p)}>
-                          <Icon name="users" size={13} /> Miembros
-                        </button>
-                      </td>
+        {tab === "panel" && <GeneralPanel env={panelEnv} onOpen={setOpenProjectId} view={rest[1]} onViewChange={(v) => setRest([TAB_SLUG.panel, v])} />}
+
+        {tab === "proyectos" && (
+          <>
+            <p className="page-sub">
+              {isSupervisor
+                ? "Proyectos donde formás parte del equipo — podés agregar o quitar personas."
+                : "Proyectos donde formás parte del equipo."}
+            </p>
+
+            {userVisibleProjects.length === 0 ? (
+              <div className="card card-pad">
+                <Empty icon="folder" text="Sin proyectos" sub="Todavía no estás asignado a ningún proyecto." />
+              </div>
+            ) : (
+              <div className="card" style={{ overflowX: "auto" }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Proyecto</th>
+                      <th>Cliente</th>
+                      <th>Estado</th>
+                      <th>Metodología</th>
+                      <th>Equipo</th>
+                      <th></th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody>
+                    {userVisibleProjects.map((p) => {
+                      const client = state.clients.find((c) => c.id === p.clientId);
+                      return (
+                        <tr key={p.id}>
+                          <td>
+                            <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 600 }}>
+                              <Dot color={p.color} /> {p.name}
+                            </div>
+                          </td>
+                          <td>{client?.name ?? "—"}</td>
+                          <td>
+                            <span className={`badge ${p.status === "activo" ? "ok" : p.status === "completado" ? "acc" : ""}`}>{p.status}</span>
+                          </td>
+                          <td><span className="badge">{MODE_LABEL[modeOf(p)]}</span></td>
+                          <td>
+                            {p.memberIds.length === 0 ? (
+                              <span style={{ fontSize: 11, color: "var(--warning)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                <Icon name="alert" size={11} /> Sin equipo asignado
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: 11.5, color: "var(--text-3)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                <Icon name="users" size={12} /> {p.memberIds.length} persona{p.memberIds.length !== 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            <button className="btn btn-primary btn-sm" onClick={() => setOpenProjectId(p.id)} style={{ marginRight: isSupervisor ? 6 : 0 }}>
+                              <Icon name="folder" size={13} /> Abrir
+                            </button>
+                            {isSupervisor && (
+                              <button className="btn btn-secondary btn-sm" onClick={() => setEditMembersOf(p)}>
+                                <Icon name="users" size={13} /> Miembros
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
 
-        {editMembersOf && (
+        {isSupervisor && editMembersOf && (
           <MembersPickerModal
             users={state.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name))}
             selected={editMembersOf.memberIds}
@@ -208,12 +323,12 @@ export function Projects() {
   return (
     <>
       <div className="page-head">
-        <h1>Clientes y proyectos</h1>
+        <h1>Proyectos</h1>
         <span className="spacer" />
         <div className="tabs">
-          {(["proyectos", "clientes", "etiquetas"] as const).map((v) => (
+          {(["panel", "proyectos", "clientes", "etiquetas"] as const).map((v) => (
             <button key={v} className={tab === v ? "active" : ""} onClick={() => setTab(v)} style={{ textTransform: "capitalize" }}>
-              {v}
+              {v === "panel" ? "Panel general" : v}
             </button>
           ))}
         </div>
@@ -247,6 +362,7 @@ export function Projects() {
                 <th className="th-sort" onClick={() => toggleSort("name")}>Proyecto {sortArrow("name")}</th>
                 <th className="th-sort" onClick={() => toggleSort("client")}>Cliente {sortArrow("client")}</th>
                 <th className="th-sort" onClick={() => toggleSort("status")}>Estado {sortArrow("status")}</th>
+                <th className="th-sort" onClick={() => toggleSort("mode")}>Metodología {sortArrow("mode")}</th>
                 <th className="th-sort" onClick={() => toggleSort("hours")}>Horas proyectadas / cargadas {sortArrow("hours")}</th>
                 <th className="th-sort" onClick={() => toggleSort("activity")}>Actividad — Horas de vuelo {sortArrow("activity")}</th>
                 <th>Notion</th>
@@ -279,6 +395,12 @@ export function Projects() {
                     <option value="archivado">Archivado</option>
                   </select>
                 </th>
+                <th>
+                  <select className="select" value={fMode} onChange={(e) => setFMode(e.target.value as ProjectMode | "")} onClick={(e) => e.stopPropagation()}>
+                    <option value="">Todas</option>
+                    {MODE_KEYS.map((m) => <option key={m} value={m}>{MODE_LABEL[m]}</option>)}
+                  </select>
+                </th>
                 <th></th>
                 <th>
                   <select className="select" value={fActivity} onChange={(e) => setFActivity(e.target.value)} onClick={(e) => e.stopPropagation()}>
@@ -299,7 +421,7 @@ export function Projects() {
             </thead>
             <tbody>
               {sortedProjects.length === 0 && (
-                <tr><td colSpan={7}><Empty icon="search" text="Sin resultados" sub="Probá ajustar o limpiar los filtros." /></td></tr>
+                <tr><td colSpan={8}><Empty icon="search" text="Sin resultados" sub="Probá ajustar o limpiar los filtros." /></td></tr>
               )}
               {sortedProjects.map((p) => {
                 const client = state.clients.find((c) => c.id === p.clientId);
@@ -308,7 +430,7 @@ export function Projects() {
                 return (
                   <tr key={p.id} onDoubleClick={() => setEditProject(p)} style={{ cursor: "pointer" }} title="Doble clic para editar">
                     <td>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 600 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 600, cursor: "pointer" }} onClick={() => setOpenProjectId(p.id)} title="Abrir espacio de trabajo del proyecto">
                         <Dot color={p.color} /> {p.name}
                       </div>
                       {state.subProjects.some((sp) => sp.projectId === p.id) && (
@@ -329,6 +451,21 @@ export function Projects() {
                     <td>{client?.name ?? "—"}</td>
                     <td>
                       <span className={`badge ${p.status === "activo" ? "ok" : p.status === "completado" ? "acc" : ""}`}>{p.status}</span>
+                    </td>
+                    <td style={{ minWidth: 150 }} onDoubleClick={(e) => e.stopPropagation()}>
+                      <select
+                        className="select"
+                        aria-label={`Metodología de ${p.name}`}
+                        value={modeOf(p)}
+                        onChange={async (e) => {
+                          const next = e.target.value as ProjectMode;
+                          const err = await changeProjectMode(p.id, next);
+                          toast(err ?? `${p.name}: ${MODE_LABEL[next]}.`);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {MODE_KEYS.map((m) => <option key={m} value={m}>{MODE_LABEL[m]}</option>)}
+                      </select>
                     </td>
                     <td style={{ minWidth: 150 }}>
                       {p.budgetHours ? (
@@ -375,6 +512,7 @@ export function Projects() {
                       )}
                     </td>
                     <td onDoubleClick={(e) => e.stopPropagation()}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setOpenProjectId(p.id)}><Icon name="folder" size={13} /> Abrir</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => setEditProject(p)}><Icon name="pencil" size={13} /> Editar</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => setDeleteProject(p)}><Icon name="trash" size={13} /> Eliminar</button>
                     </td>
@@ -435,6 +573,8 @@ export function Projects() {
           </p>
         </div>
       )}
+
+      {tab === "panel" && <GeneralPanel env={panelEnv} onOpen={setOpenProjectId} view={rest[1]} onViewChange={(v) => setRest([TAB_SLUG.panel, v])} />}
 
       {editProject && (
         <ProjectModal
@@ -499,6 +639,11 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
   );
   const [memberIds, setMemberIds] = useState<string[]>(project?.memberIds ?? [state.currentUserId]);
   const [showMembers, setShowMembers] = useState(false);
+  // Solo al crear: metodología y estructura inicial (plantilla, copia de otro proyecto o vacío)
+  const work = useWork();
+  const [mode, setMode] = useState<ProjectMode>(DEFAULT_MODE);
+  const [choice, setChoice] = useState<StructureChoice>({ source: "plantilla", mode: DEFAULT_MODE, fromProjectId: "", includeTasks: false, startDate: today() });
+  const autoCode = projectCodeFromName(name);
   const activeUsers = state.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name));
   const selectedMembers = memberIds.map((id) => activeUsers.find((u) => u.id === id)).filter((u): u is (typeof activeUsers)[number] => Boolean(u));
 
@@ -522,7 +667,12 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
       memberIds,
       notionUrl: safeNotionUrl ?? undefined,
       flightActivityId: flightActivityId || null,
+      ...(project ? { managementMode: project.managementMode } : { managementMode: mode }),
     };
+    // Proyecto nuevo: ficha y estructura reales en lugar de los datos de ejemplo
+    if (!project) {
+      workActions.initProject(next, { mode, startDate: choice.startDate || today(), structure: buildStructure({ ...choice, mode }, work, next.id, state.currentUserId) });
+    }
     const finalSubProjects = subProjects.map((sp) => ({ ...sp, projectId: next.id }));
     const otherSubProjects = state.subProjects.filter((sp) => sp.projectId !== next.id);
     dispatch({
@@ -546,13 +696,16 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
       footer={
         <>
           <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={!name.trim()}>Guardar</button>
+          <button className="btn btn-primary" onClick={save} disabled={!name.trim() || (!project && !structureChoiceValid(choice))}>Guardar</button>
         </>
       }
     >
       <label className="field">
         <span className="field-lbl">Nombre</span>
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+          {autoCode ? <>Código del proyecto: <strong>{autoCode}</strong> (sale del nombre).</> : "Si el nombre empieza con el código (por ejemplo PR_00218_…), se toma solo."}
+        </span>
       </label>
       <div className="form-grid">
         <label className="field">
@@ -661,6 +814,23 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
         </div>
       </div>
       <SubProjectsField subProjects={subProjects} onChange={setSubProjects} />
+      {!project && (
+        <div className="field">
+          <label>Metodología</label>
+          <select className="select" value={mode} onChange={(e) => setMode(e.target.value as ProjectMode)}>
+            {(Object.keys(MODE_LABEL) as ProjectMode[]).map((m) => <option key={m} value={m}>{MODE_LABEL[m]}</option>)}
+          </select>
+        </div>
+      )}
+      {!project && (
+        <div className="field">
+          <label>Estructura inicial</label>
+          <StructurePicker
+            value={{ ...choice, mode }} onChange={setChoice} work={work} allowEmpty modeLocked
+            projects={state.projects.filter((p) => p.status !== "archivado")}
+          />
+        </div>
+      )}
       {showMembers && (
         <MembersPickerModal
           users={activeUsers}

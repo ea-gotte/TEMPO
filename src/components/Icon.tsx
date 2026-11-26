@@ -16,7 +16,11 @@ export type IconName =
   | "download" | "printer" | "tag" | "ban" | "hourglass" | "repeat"
   | "book" | "clipboard" | "baby" | "history" | "zap" | "dot" | "circle-half"
   | "hard-hat" | "github" | "puzzle" | "webhook" | "activity" | "hand"
-  | "chevron-right" | "eye" | "eye-off" | "map-pin" | "cross" | "sliders" | "upload" | "share-2" | "lightbulb";
+  | "chevron-right" | "eye" | "eye-off" | "map-pin" | "cross" | "sliders" | "upload" | "share-2" | "lightbulb" | "info" | "archive" | "external-link" | "image"
+  // Tablero del proyecto
+  | "mouse-pointer" | "sticky-note" | "square" | "circle" | "diamond" | "arrow-up-right" | "line" | "cloud" | "type"
+  | "undo" | "redo" | "zoom-in" | "zoom-out" | "maximize" | "minimize" | "unlock" | "bring-front" | "send-back" | "scan"
+  | "align-left" | "align-hcenter" | "align-right" | "align-top" | "align-vmiddle" | "align-bottom" | "distribute-h" | "distribute-v" | "grid" | "ruler" | "area" | "rotate-cw" | "stamp" | "frame" | "list";
 
 const P: Record<IconName, React.ReactNode> = {
   clock: (<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>),
@@ -95,7 +99,46 @@ const P: Record<IconName, React.ReactNode> = {
   sliders: (<><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /><line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" /></>),
   upload: (<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></>),
   "share-2": (<><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></>),
+  image: (<><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" /></>),
+  info: (<><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></>),
+  archive: (<><rect x="2" y="3" width="20" height="5" rx="1" /><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4" /></>),
+  "external-link": (<><path d="M15 3h6v6M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></>),
   lightbulb: (<><path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12.7 3.5 3.5 0 0 1 1.5 2.8V18a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-.5a3.5 3.5 0 0 1 1.5-2.8A7 7 0 0 0 12 2Z" /></>),
+  // Tablero del proyecto
+  "mouse-pointer": (<path d="m4 4 7.07 17 2.51-7.39L21 11.07Z" />),
+  "sticky-note": (<><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5Z" /><path d="M15 3v6h6" /></>),
+  square: (<rect x="3" y="3" width="18" height="18" rx="2" />),
+  circle: (<circle cx="12" cy="12" r="9" />),
+  diamond: (<path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z" />),
+  "arrow-up-right": (<><path d="M7 17 17 7" /><path d="M7 7h10v10" /></>),
+  line: (<path d="M5 19 19 5" />),
+  cloud: (<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />),
+  type: (<><polyline points="4 7 4 4 20 4 20 7" /><line x1="9" y1="20" x2="15" y2="20" /><line x1="12" y1="4" x2="12" y2="20" /></>),
+  undo: (<><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></>),
+  redo: (<><path d="m15 14 5-5-5-5" /><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" /></>),
+  "zoom-in": (<><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35M11 8v6M8 11h6" /></>),
+  "zoom-out": (<><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35M8 11h6" /></>),
+  maximize: (<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />),
+  minimize: (<path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3" />),
+  unlock: (<><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></>),
+  "bring-front": (<><path d="M5 3h14" /><path d="m18 13-6-6-6 6" /><path d="M12 7v14" /></>),
+  "send-back": (<><path d="M12 17V3" /><path d="m6 11 6 6 6-6" /><path d="M19 21H5" /></>),
+  scan: (<><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" /><rect x="8" y="8" width="8" height="8" rx="1" /></>),
+  "align-left": (<><path d="M4 3v18" /><rect x="8" y="6" width="12" height="4" rx="1" /><rect x="8" y="14" width="7" height="4" rx="1" /></>),
+  "align-hcenter": (<><path d="M12 3v18" /><rect x="5" y="6" width="14" height="4" rx="1" /><rect x="8" y="14" width="8" height="4" rx="1" /></>),
+  "align-right": (<><path d="M20 3v18" /><rect x="4" y="6" width="12" height="4" rx="1" /><rect x="9" y="14" width="7" height="4" rx="1" /></>),
+  "align-top": (<><path d="M3 4h18" /><rect x="6" y="8" width="4" height="12" rx="1" /><rect x="14" y="8" width="4" height="7" rx="1" /></>),
+  "align-vmiddle": (<><path d="M3 12h18" /><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="8" width="4" height="8" rx="1" /></>),
+  "align-bottom": (<><path d="M3 20h18" /><rect x="6" y="4" width="4" height="12" rx="1" /><rect x="14" y="9" width="4" height="7" rx="1" /></>),
+  "distribute-h": (<><path d="M4 3v18M20 3v18" /><rect x="9" y="7" width="6" height="10" rx="1" /></>),
+  "distribute-v": (<><path d="M3 4h18M3 20h18" /><rect x="7" y="9" width="10" height="6" rx="1" /></>),
+  ruler: (<><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z" /><path d="m14.5 12.5 2-2M11.5 9.5l2-2M8.5 6.5l2-2M17.5 15.5l2-2" /></>),
+  grid: (<><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18M15 3v18" /></>),
+  "rotate-cw": (<><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /></>),
+  stamp: (<><path d="M5 22h14" /><path d="M19.27 13.73A2.5 2.5 0 0 0 17.5 13h-11A2.5 2.5 0 0 0 4 15.5V17a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1.5c0-.66-.26-1.3-.73-1.77Z" /><path d="M14 13V8.5C14 7 15 7 15 5a3 3 0 0 0-3-3c-1.66 0-3 1-3 3s1 2 1 3.5V13" /></>),
+  frame: (<><path d="M22 6H2M22 18H2M6 2v20M18 2v20" /></>),
+  list: (<><path d="M3 6h.01M3 12h.01M3 18h.01M8 6h13M8 12h13M8 18h13" /></>),
+  area: (<><path d="M4 8 12 3l8 6-3 11H6Z" /><circle cx="4" cy="8" r="1.4" /><circle cx="12" cy="3" r="1.4" /><circle cx="20" cy="9" r="1.4" /><circle cx="17" cy="20" r="1.4" /><circle cx="6" cy="20" r="1.4" /></>),
 };
 
 export function Icon({

@@ -2,7 +2,8 @@ import React, { useMemo, useState } from "react";
 import { useStore } from "../store";
 import { computeFlightHours } from "../flightHours";
 import { computeSkills, type SkillEntry } from "../skills";
-import { fmtDur, fmtYearsSince } from "../utils";
+import { addMonths, fmtDur, fmtYearsSince, monthLabel, today } from "../utils";
+import { staffMatrix } from "../staffMatrix";
 import { Avatar, Empty } from "../components/ui";
 import { Icon } from "../components/Icon";
 import type { Role } from "../types";
@@ -27,6 +28,7 @@ type SortKey = "name" | "workExp" | "bimExp" | string; // string = activityId
 
 export function TeamSummary() {
   const { state } = useStore();
+  const [view, setView] = useState<"experiencia" | "proyectos">("experiencia");
   const [query, setQuery] = useState("");
   const [activityFilter, setActivityFilter] = useState("");
   const [minHours, setMinHours] = useState("");
@@ -114,7 +116,13 @@ export function TeamSummary() {
     <>
       <div className="page-head">
         <h1>Resumen de personal</h1>
+        <span className="spacer" />
+        <div className="tabs" role="tablist">
+          <button role="tab" aria-selected={view === "experiencia"} className={view === "experiencia" ? "active" : ""} onClick={() => setView("experiencia")}>Experiencia</button>
+          <button role="tab" aria-selected={view === "proyectos"} className={view === "proyectos" ? "active" : ""} onClick={() => setView("proyectos")}>Horas por proyecto</button>
+        </div>
       </div>
+      {view === "proyectos" ? <ProjectHoursMatrix /> : <>
       <p style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: -10, marginBottom: 16 }}>
         Cruza la experiencia real por proyecto (Horas de vuelo) con la autopercepción de las encuestas (Habilidades),
         para evaluar aptitudes y asignar la tarea más indicada según experiencia.
@@ -213,6 +221,97 @@ export function TeamSummary() {
           </table>
         </div>
       )}
+      </>}
+    </>
+  );
+}
+
+/** Horas en decimales, sin ceros de más: la celda de la matriz es angosta */
+const hoursShort = (min: number) => (min / 60).toLocaleString("es", { maximumFractionDigits: 1 });
+
+/**
+ * Matriz del mes: una fila por persona y una columna por proyecto con horas ese mes.
+ * Los encabezados van en vertical para que entren muchos proyectos sin desplazarse.
+ */
+function ProjectHoursMatrix() {
+  const { state } = useStore();
+  const [month, setMonth] = useState(today().slice(0, 7) + "-01");
+  const [query, setQuery] = useState("");
+  const [hideEmpty, setHideEmpty] = useState(false);
+
+  const users = useMemo(() => state.users.filter((u) => u.active), [state.users]);
+  const m = useMemo(() => staffMatrix(state.entries, users, state.projects, month.slice(0, 7)), [state.entries, users, state.projects, month]);
+  const q = query.trim().toLowerCase();
+  const rows = m.rows.filter((r) => (!q || r.user.name.toLowerCase().includes(q)) && (!hideEmpty || r.totalMin > 0));
+  const label = monthLabel(month);
+  const shade = (min: number) => (m.maxCellMin > 0 ? Math.round(8 + (min / m.maxCellMin) * 42) : 0);
+
+  return (
+    <>
+      <div className="card card-pad no-print" style={{ marginBottom: 14, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setMonth(addMonths(month, -1))} aria-label="Mes anterior"><Icon name="arrow-left" size={14} /></button>
+          <strong style={{ textTransform: "capitalize", minWidth: 140, textAlign: "center" }}>{label}</strong>
+          <button className="btn btn-secondary btn-sm" onClick={() => setMonth(addMonths(month, 1))} aria-label="Mes siguiente"><Icon name="arrow-right" size={14} /></button>
+        </div>
+        <input className="input" style={{ width: 220 }} placeholder="Buscar persona…" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer" }}>
+          <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} /> Ocultar personas sin horas
+        </label>
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: 12.5, color: "var(--text-3)" }}>{m.projects.length} proyectos · {fmtDur(m.totalMin)} en el mes</span>
+      </div>
+
+      {m.projects.length === 0 ? (
+        <div className="card card-pad"><Empty icon="clock" text="Sin horas cargadas en el mes" sub="Probá con otro mes." /></div>
+      ) : (
+        <div className="card" style={{ overflow: "auto", maxHeight: "calc(100vh - 250px)" }}>
+          <table className="table matrix">
+            <thead>
+              <tr>
+                <th className="m-person">Persona</th>
+                <th className="m-total">Total</th>
+                {m.projects.map((p) => (
+                  <th key={p.id ?? "none"} className="vcol" title={`${p.name} · ${fmtDur(p.totalMin)}`}>
+                    <div><span className="m-dot" style={{ background: p.color }} />{p.name}</div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && <tr><td colSpan={2 + m.projects.length}><Empty icon="search" text="Sin resultados" /></td></tr>}
+              {rows.map((r) => (
+                <tr key={r.user.id}>
+                  <td className="m-person">{r.user.name}</td>
+                  <td className="m-total">{r.totalMin > 0 ? hoursShort(r.totalMin) : "—"}</td>
+                  {m.projects.map((p) => {
+                    const min = r.byProject.get(p.id) ?? 0;
+                    return (
+                      <td
+                        key={p.id ?? "none"} className="m-cell"
+                        title={min > 0 ? `${r.user.name} · ${p.name}: ${fmtDur(min)}` : undefined}
+                        style={min > 0 ? { background: `color-mix(in srgb, var(--accent) ${shade(min)}%, transparent)` } : undefined}
+                      >
+                        {min > 0 ? hoursShort(min) : ""}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td className="m-person">Total del mes</td>
+                <td className="m-total">{hoursShort(m.totalMin)}</td>
+                {m.projects.map((p) => <td key={p.id ?? "none"} className="m-cell">{hoursShort(p.totalMin)}</td>)}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+      <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>
+        Horas cargadas en {label}, en decimales (7,5 = 7 h 30 m). El color es más intenso donde hay más horas; pasá el cursor por una celda para ver el detalle.
+      </p>
     </>
   );
 }
