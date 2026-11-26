@@ -14,6 +14,9 @@ import { projectIndicators } from "./indicators";
 import { HealthPill, ProjectIndicatorsCard } from "./IndicatorsPanel";
 import { DEFAULT_MODE, MODE_LABEL, TASK_STATUS } from "./constants";
 import type { Task } from "./types";
+import { projectCode } from "./templates";
+import { StructurePicker, buildStructure, structureChoiceValid, type StructureChoice } from "./StructurePicker";
+import { Modal } from "../components/ui";
 import { useWork, workActions } from "./workStore";
 
 type Tab = import("./ProjectWorkspace").Tab;
@@ -174,6 +177,7 @@ export function InfoTab({ projectId, perms, onEditProject }: { projectId: string
   const [showNewRole, setShowNewRole] = useState(false);
   const [newManage, setNewManage] = useState(false);
   const [newApprove, setNewApprove] = useState(false);
+  const [addStructure, setAddStructure] = useState(false);
 
   const project = env.projects.find((p) => p.id === projectId)!;
   const client = env.clients.find((c) => c.id === project.clientId);
@@ -201,7 +205,7 @@ export function InfoTab({ projectId, perms, onEditProject }: { projectId: string
             {perms.canManage && <button className="btn btn-secondary btn-sm" onClick={() => setEditMeta(true)}><Icon name="pencil" size={12} /> Editar ficha</button>}
           </div>
           <dl className="pw-kv">
-            <dt>Código</dt><dd><span className="pw-code">{meta?.code || "—"}</span></dd>
+            <dt>Código</dt><dd><span className="pw-code">{projectCode(project, meta) || "—"}</span></dd>
             <dt>Cliente</dt><dd>{client?.name ?? "—"}</dd>
             <dt>Estado</dt><dd><span className={`badge ${project.status === "activo" ? "ok" : project.status === "completado" ? "acc" : ""}`}>{project.status}</span></dd>
             <dt>Metodología</dt><dd>{MODE_LABEL[meta?.mode ?? DEFAULT_MODE]}</dd>
@@ -327,13 +331,69 @@ export function InfoTab({ projectId, perms, onEditProject }: { projectId: string
         </div>
       </div>
 
+      {perms.canManage && (
+        <div className="card card-pad" style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div className="card-title" style={{ margin: 0 }}>Estructura del proyecto</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 2 }}>
+              Sumá los hitos, entregables y riesgos de la plantilla de una metodología, o copialos de otro proyecto.
+            </div>
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={() => setAddStructure(true)}><Icon name="plus" size={12} /> Plantilla o copia</button>
+        </div>
+      )}
+
       <div style={{ marginTop: 14 }}>
         <ProjectIndicatorsCard ind={ind} />
       </div>
 
+      {addStructure && <AddStructureModal projectId={projectId} onClose={() => setAddStructure(false)} />}
       {editMeta && <MetaModal projectId={projectId} meta={meta} canChangeMode={perms.canApprove} onClose={() => setEditMeta(false)} />}
       {editDocs && <DocsModal projectId={projectId} meta={meta} onClose={() => setEditDocs(false)} />}
     </>
+  );
+}
+
+/** Suma al proyecto la plantilla de una metodología o la estructura de otro proyecto. No borra lo que ya hay. */
+function AddStructureModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const env = useEnv();
+  const work = useWork();
+  const toast = useToast();
+  const meta = work.meta[projectId];
+  const [choice, setChoice] = useState<StructureChoice>({
+    source: "plantilla", mode: meta?.mode ?? DEFAULT_MODE, fromProjectId: "", includeTasks: false, startDate: meta?.startDate ?? today(),
+  });
+  const existing = work.milestones.filter((m) => m.projectId === projectId).length + work.deliverables.filter((d) => d.projectId === projectId).length;
+
+  function apply() {
+    const s = buildStructure(choice, work, projectId, env.me.id);
+    if (!s) return;
+    workActions.addStructure(s);
+    toast(`Se agregaron ${s.milestones.length} hitos, ${s.deliverables.length} entregables y ${s.risks.length} riesgos.`);
+    onClose();
+  }
+
+  return (
+    <Modal
+      title="Agregar estructura al proyecto"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" disabled={!structureChoiceValid(choice)} onClick={apply}>Agregar</button>
+        </>
+      }
+    >
+      {existing > 0 && (
+        <div style={{ background: "var(--warning-soft)", color: "var(--warning)", borderRadius: 8, padding: "8px 12px", fontSize: 12.5 }}>
+          Este proyecto ya tiene {existing} hitos y entregables. Lo nuevo se suma a lo que hay; no se borra ni se reemplaza nada.
+        </div>
+      )}
+      <StructurePicker
+        value={choice} onChange={setChoice} work={work} allowEmpty={false}
+        projects={env.projects.filter((p) => p.id !== projectId)}
+      />
+    </Modal>
   );
 }
 

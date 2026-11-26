@@ -1,3 +1,4 @@
+import { projectCode } from "./templates";
 import React, { useState } from "react";
 import { Empty, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
@@ -41,7 +42,7 @@ export function ChangesTab({ projectId, perms }: { projectId: string; perms: Per
     const client = env.clients.find((c) => c.id === project?.clientId);
     downloadChangeReport({
       project: project ?? { name: "Proyecto" },
-      code: meta?.code ?? null,
+      code: (project ? projectCode(project, meta) : meta?.code) || null,
       clientName: client?.name ?? null,
       changes,
       baselines,

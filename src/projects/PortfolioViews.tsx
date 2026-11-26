@@ -1,3 +1,4 @@
+import { projectCode } from "./templates";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Dot, Empty } from "../components/ui";
 import type { Project, User } from "../types";
@@ -310,7 +311,7 @@ export function PortfolioGantt({ onOpen }: { onOpen: (projectId: string) => void
         const end = meta?.endDate ?? (msDates.length ? msDates.reduce((a, b) => (a > b ? a : b)) : null);
         const pct = taskProgress(work.tasks.filter((t) => t.projectId === p.id)).pct;
         const late = p.status === "activo" && !!meta?.endDate && meta.endDate < now;
-        return { p, code: meta?.code, start, end: start && end && end < start ? start : end, ms: ms.filter((m) => m.dueDate), pct, late };
+        return { p, code: projectCode(p, meta), start, end: start && end && end < start ? start : end, ms: ms.filter((m) => m.dueDate), pct, late };
       })
       .sort((a, b) => STATUS_ORDER[a.p.status] - STATUS_ORDER[b.p.status] || (a.start ?? "9").localeCompare(b.start ?? "9"));
   }, [env, work, now]);

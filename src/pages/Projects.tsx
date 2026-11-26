@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
 import type { Client, Project, ProjectStatus, SubProject } from "../types";
-import { fmtDur, safeHttpUrl, uid } from "../utils";
+import { fmtDur, safeHttpUrl, today, uid } from "../utils";
 import { Avatar, Dot, Empty, Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { ProjectWorkspace } from "../projects/ProjectWorkspace";
@@ -10,6 +10,8 @@ import { visibleProjects } from "../projects/visibility";
 import { useWork, workActions } from "../projects/workStore";
 import { DEFAULT_MODE, MODE_LABEL } from "../projects/constants";
 import type { ProjectMode } from "../projects/types";
+import { StructurePicker, buildStructure, structureChoiceValid, type StructureChoice } from "../projects/StructurePicker";
+import { projectCodeFromName } from "../projects/templates";
 import { useSubRoute } from "../routes";
 import { useProjectTotalMinutes } from "../projects/allocationStore";
 
@@ -637,6 +639,11 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
   );
   const [memberIds, setMemberIds] = useState<string[]>(project?.memberIds ?? [state.currentUserId]);
   const [showMembers, setShowMembers] = useState(false);
+  // Solo al crear: metodología y estructura inicial (plantilla, copia de otro proyecto o vacío)
+  const work = useWork();
+  const [mode, setMode] = useState<ProjectMode>(DEFAULT_MODE);
+  const [choice, setChoice] = useState<StructureChoice>({ source: "plantilla", mode: DEFAULT_MODE, fromProjectId: "", includeTasks: false, startDate: today() });
+  const autoCode = projectCodeFromName(name);
   const activeUsers = state.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name));
   const selectedMembers = memberIds.map((id) => activeUsers.find((u) => u.id === id)).filter((u): u is (typeof activeUsers)[number] => Boolean(u));
 
@@ -660,7 +667,12 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
       memberIds,
       notionUrl: safeNotionUrl ?? undefined,
       flightActivityId: flightActivityId || null,
+      ...(project ? { managementMode: project.managementMode } : { managementMode: mode }),
     };
+    // Proyecto nuevo: ficha y estructura reales en lugar de los datos de ejemplo
+    if (!project) {
+      workActions.initProject(next, { mode, startDate: choice.startDate || today(), structure: buildStructure({ ...choice, mode }, work, next.id, state.currentUserId) });
+    }
     const finalSubProjects = subProjects.map((sp) => ({ ...sp, projectId: next.id }));
     const otherSubProjects = state.subProjects.filter((sp) => sp.projectId !== next.id);
     dispatch({
@@ -684,13 +696,16 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
       footer={
         <>
           <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={!name.trim()}>Guardar</button>
+          <button className="btn btn-primary" onClick={save} disabled={!name.trim() || (!project && !structureChoiceValid(choice))}>Guardar</button>
         </>
       }
     >
       <div className="field">
         <label>Nombre</label>
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+          {autoCode ? <>Código del proyecto: <strong>{autoCode}</strong> (sale del nombre).</> : "Si el nombre empieza con el código (por ejemplo PR_00218_…), se toma solo."}
+        </span>
       </div>
       <div className="form-grid">
         <div className="field">
@@ -799,6 +814,23 @@ function ProjectModal({ project, onClose }: { project: Project | null; onClose: 
         </div>
       </div>
       <SubProjectsField subProjects={subProjects} onChange={setSubProjects} />
+      {!project && (
+        <div className="field">
+          <label>Metodología</label>
+          <select className="select" value={mode} onChange={(e) => setMode(e.target.value as ProjectMode)}>
+            {(Object.keys(MODE_LABEL) as ProjectMode[]).map((m) => <option key={m} value={m}>{MODE_LABEL[m]}</option>)}
+          </select>
+        </div>
+      )}
+      {!project && (
+        <div className="field">
+          <label>Estructura inicial</label>
+          <StructurePicker
+            value={{ ...choice, mode }} onChange={setChoice} work={work} allowEmpty modeLocked
+            projects={state.projects.filter((p) => p.status !== "archivado")}
+          />
+        </div>
+      )}
       {showMembers && (
         <MembersPickerModal
           users={activeUsers}

@@ -4,6 +4,7 @@ import { Dot, Empty } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { fmtDate } from "../utils";
 import { EnvProvider, useEnv } from "./env";
+import { projectCode } from "./templates";
 import { isProjectLate, projectPerms } from "./logic";
 import { InfoTab, OverviewTab, WorkTab } from "./OverviewTab";
 import type { TaskDraft } from "./Modals";
@@ -73,6 +74,7 @@ function Workspace({ projectId, onBack, onEditProject, tabParam, onTabChange }: 
 
   const perms = projectPerms(env, work, projectId);
   const meta = work.meta[projectId];
+  const code = projectCode(project, meta);
   const client = env.clients.find((c) => c.id === project.clientId);
   const late = isProjectLate(project, meta, work.milestones.filter((m) => m.projectId === projectId));
   const mode = meta?.mode ?? DEFAULT_MODE;
@@ -117,7 +119,7 @@ function Workspace({ projectId, onBack, onEditProject, tabParam, onTabChange }: 
       {/* Cabecera mínima: nombre, estado y fechas. La metodología y la edición viven en la pestaña Ficha */}
       <div className="pw-head">
         <h1><Dot color={project.color} /> {project.name}</h1>
-        {meta?.code && <span className="pw-code">{meta.code}</span>}
+        {code && <span className="pw-code">{code}</span>}
         <span className={`badge ${project.status === "activo" ? "ok" : project.status === "completado" ? "acc" : ""}`}>{project.status}</span>
         {late && <span className="pw-pill late"><Icon name="alert" size={11} /> Atrasado</span>}
       </div>
@@ -141,7 +143,7 @@ function Workspace({ projectId, onBack, onEditProject, tabParam, onTabChange }: 
       {current === "tablero" && (
         <BoardBoundary key={projectId}>
           <Suspense fallback={<div className="card card-pad">Cargando el tablero…</div>}>
-            <BoardTab projectId={projectId} fileLabel={meta?.code || project.name} />
+            <BoardTab projectId={projectId} fileLabel={code || project.name} />
           </Suspense>
         </BoardBoundary>
       )}

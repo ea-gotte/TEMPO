@@ -7,6 +7,7 @@ import { backlogOf, nextSprintDates, sumHours } from "./agile";
 import { OPTION_COLORS, hasOptions } from "./fields";
 import { seedMethod } from "./seedMode";
 import { seedMeetings } from "./meetings";
+import { projectCodeFromName, structureEnd, type Structure } from "./templates";
 import type { ProjectMode, Baseline, ChangeRequest, Deliverable, DeliverableReview, Meeting, FieldDef, FieldType, Milestone, PlanStatus, ProjectMeta, Risk, RoleAssignment, RoleDef, Sprint, Task, TaskPriority, TaskStatus, WorkData } from "./types";
 
 /**
@@ -36,6 +37,18 @@ const DEFAULT_FIELDS: FieldDef[] = [
 
 function empty(): WorkData {
   return { meetings: [], sprints: [], changes: [], risks: [], baselines: [], fields: DEFAULT_FIELDS, roles: DEFAULT_ROLES, assignments: [], meta: {}, milestones: [], deliverables: [], tasks: [], reviews: [], seeded: {} };
+}
+
+function withStructure(cur: WorkData, s: Structure | null): WorkData {
+  if (!s) return cur;
+  return {
+    ...cur,
+    milestones: [...cur.milestones, ...s.milestones],
+    deliverables: [...cur.deliverables, ...s.deliverables],
+    risks: [...cur.risks, ...s.risks],
+    fields: [...cur.fields, ...s.fields],
+    tasks: [...cur.tasks, ...s.tasks],
+  };
 }
 
 /** Campos nuevos de una tarea con su valor por defecto. */
@@ -582,6 +595,25 @@ export const workActions = {
         return { ...t, custom: rest };
       }),
     });
+  },
+
+  /* ---------- Estructura inicial ---------- */
+  /**
+   * Proyecto nuevo: ficha y estructura reales (plantilla de la metodología, copia de otro
+   * proyecto o vacío) en lugar de los datos de ejemplo. Marca el proyecto como inicializado.
+   */
+  initProject(project: Project, opts: { mode: ProjectMode; startDate: string; structure: Structure | null }) {
+    if (data.seeded[project.id]) return;
+    const meta: ProjectMeta = {
+      projectId: project.id, code: projectCodeFromName(project.name) ?? "", startDate: opts.startDate,
+      endDate: opts.structure ? structureEnd(opts.structure) : null, description: "", notes: "", sharepointUrl: "", accUrl: "",
+      mode: opts.mode, sprintWeeks: 2, contingencyPct: 10, discoveryHours: null, discoveryEnd: null,
+    };
+    commit(withStructure({ ...data, meta: { ...data.meta, [project.id]: meta }, seeded: { ...data.seeded, [project.id]: true } }, opts.structure));
+  },
+  /** Suma una estructura (plantilla o copia) a lo que el proyecto ya tiene; no borra nada. */
+  addStructure(structure: Structure) {
+    commit(withStructure(data, structure));
   },
 
   /* ---------- Demo ---------- */

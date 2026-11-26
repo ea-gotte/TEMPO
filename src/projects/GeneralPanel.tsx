@@ -1,3 +1,4 @@
+import { projectCode } from "./templates";
 import React, { useEffect, useMemo, useState } from "react";
 import { Dot, Empty } from "../components/ui";
 import { fmtDate, today } from "../utils";
@@ -299,7 +300,7 @@ function GeneralPanelInner({ onOpen, viewParam, onViewChange }: { onOpen: (proje
           const pmAssignment = work.assignments.find((a) => a.projectId === p.id && a.roleKey === "lider_proyecto");
           const pmUser = pmAssignment ? env.users.find((u) => u.id === pmAssignment.userId) : null;
           const client = env.clients.find((c) => c.id === p.clientId);
-          const code = work.meta[p.id]?.code;
+          const code = projectCode(p, work.meta[p.id]);
           const subText = code ? `${code} · ${client?.name ?? "Sin cliente"}` : (client?.name ?? "Sin cliente");
 
           const hasBudget = p.budgetHours != null && p.budgetHours > 0;

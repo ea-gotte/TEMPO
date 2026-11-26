@@ -1,3 +1,4 @@
+import { projectCodeFromName } from "./templates";
 import React, { useMemo, useState } from "react";
 import { Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
@@ -424,6 +425,7 @@ export function MetaModal({ projectId, meta, canChangeMode, onClose }: { project
   const env = useEnv();
   const toast = useToast();
   const [code, setCode] = useState(meta?.code ?? "");
+  const autoCode = projectCodeFromName(env.projects.find((p) => p.id === projectId)?.name ?? "");
   const [startDate, setStartDate] = useState<string | null>(meta?.startDate ?? null);
   const [endDate, setEndDate] = useState<string | null>(meta?.endDate ?? null);
   const [description, setDescription] = useState(meta?.description ?? "");
@@ -442,7 +444,7 @@ export function MetaModal({ projectId, meta, canChangeMode, onClose }: { project
       if (err) return setError(err);
     }
     workActions.setMeta(projectId, {
-      code: code.trim(), startDate, endDate, description: description.trim(), notes: notes.trim(),
+      code: autoCode ?? code.trim(), startDate, endDate, description: description.trim(), notes: notes.trim(),
       sprintWeeks, contingencyPct: Math.max(0, Number(contingency) || 0),
       discoveryHours: mode === "hibrido" && discHours.trim() !== "" ? Math.max(0, Number(discHours)) : null, discoveryEnd: mode === "hibrido" ? discEnd : null,
     });
@@ -490,7 +492,12 @@ export function MetaModal({ projectId, meta, canChangeMode, onClose }: { project
         )}
       </div>
       <div className="form-grid">
-        <div className="field"><label>Código / identificador</label><input className="input" value={code} onChange={(e) => setCode(e.target.value)} placeholder="PRY-001" /></div>
+        <div className="field">
+          <label>Código / identificador</label>
+          {autoCode
+            ? <><input className="input" value={autoCode} disabled /><span style={{ fontSize: 11.5, color: "var(--text-3)" }}>Automático: sale del nombre del proyecto.</span></>
+            : <input className="input" value={code} onChange={(e) => setCode(e.target.value)} placeholder="PRY-001" />}
+        </div>
         <div className="field" />
         <div className="field"><label>Fecha de inicio</label><OptDate value={startDate} onChange={setStartDate} /></div>
         <div className="field"><label>Fecha prevista de finalización</label><OptDate value={endDate} onChange={setEndDate} /></div>
