@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { Project } from "../types";
 import { addDays, today, uid } from "../utils";
-import { DEFAULT_ROLES } from "./constants";
+import { DEFAULT_MODE, DEFAULT_ROLES } from "./constants";
 import { defaultMilestone, normalizeTask } from "./logic";
 import { backlogOf, nextSprintDates, sumHours } from "./agile";
 import { OPTION_COLORS, hasOptions } from "./fields";
@@ -330,7 +330,7 @@ export const workActions = {
 
   /* ---------- Ficha y roles ---------- */
   setMeta(projectId: string, patch: Partial<ProjectMeta>) {
-    const cur = data.meta[projectId] ?? { projectId, code: "", startDate: null, endDate: null, description: "", notes: "", sharepointUrl: "", accUrl: "", mode: "planificado" as const, sprintWeeks: 2 as const, contingencyPct: 10, discoveryHours: null, discoveryEnd: null };
+    const cur = data.meta[projectId] ?? { projectId, code: "", startDate: null, endDate: null, description: "", notes: "", sharepointUrl: "", accUrl: "", mode: DEFAULT_MODE, sprintWeeks: 2 as const, contingencyPct: 10, discoveryHours: null, discoveryEnd: null };
     commit({ ...data, meta: { ...data.meta, [projectId]: { ...cur, ...patch } } });
   },
   async setProjectMode(projectId: string, mode: ProjectMode): Promise<string | null> {
@@ -343,10 +343,10 @@ export const workActions = {
   /** Con la base conectada manda lo que dice la base, para todas las personas por igual. */
   applyProjectModes(projects: Project[]) {
     if (!modeBackend) return;
-    const stale = projects.filter((p) => data.meta[p.id] && data.meta[p.id].mode !== (p.managementMode ?? "planificado"));
+    const stale = projects.filter((p) => data.meta[p.id] && data.meta[p.id].mode !== (p.managementMode ?? DEFAULT_MODE));
     if (stale.length === 0) return;
     const meta = { ...data.meta };
-    for (const p of stale) meta[p.id] = { ...meta[p.id], mode: p.managementMode ?? "planificado" };
+    for (const p of stale) meta[p.id] = { ...meta[p.id], mode: p.managementMode ?? DEFAULT_MODE };
     commit({ ...data, meta });
   },
   async assignRole(projectId: string, userId: string, roleKey: string): Promise<string | null> {
@@ -776,7 +776,7 @@ function seedProject(cur: WorkData, project: Project, index: number): WorkData {
   return {
     ...cur,
     fields: planField ? [...cur.fields, planField] : cur.fields,
-    meta: { ...cur.meta, [project.id]: modeBackend ? { ...seeded.meta, mode: project.managementMode ?? "planificado" } : seeded.meta },
+    meta: { ...cur.meta, [project.id]: modeBackend ? { ...seeded.meta, mode: project.managementMode ?? DEFAULT_MODE } : seeded.meta },
     milestones: [...cur.milestones, ...seeded.milestones],
     deliverables: [...cur.deliverables, ...deliverables],
     tasks: [...cur.tasks, ...finalTasks],

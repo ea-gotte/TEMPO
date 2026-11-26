@@ -8,7 +8,7 @@ import { ProjectWorkspace } from "../projects/ProjectWorkspace";
 import { GeneralPanel } from "../projects/GeneralPanel";
 import { visibleProjects } from "../projects/visibility";
 import { useWork, workActions } from "../projects/workStore";
-import { MODE_LABEL } from "../projects/constants";
+import { DEFAULT_MODE, MODE_LABEL } from "../projects/constants";
 import type { ProjectMode } from "../projects/types";
 import { useSubRoute } from "../routes";
 import { useProjectTotalMinutes } from "../projects/allocationStore";
@@ -18,7 +18,7 @@ type ProjectsTab = "proyectos" | "panel" | "clientes" | "etiquetas";
 const TAB_SLUG: Record<ProjectsTab, string> = { proyectos: "lista", panel: "panel", clientes: "clientes", etiquetas: "etiquetas" };
 
 const MODE_KEYS = Object.keys(MODE_LABEL) as ProjectMode[];
-const modeOf = (p: Project): ProjectMode => p.managementMode ?? "planificado";
+const modeOf = (p: Project): ProjectMode => p.managementMode ?? DEFAULT_MODE;
 
 export const COLORS = ["#5b6cff", "#12b5a5", "#f5a524", "#f0446c", "#8b5cf6", "#0ea5e9", "#84cc16", "#f97316"];
 

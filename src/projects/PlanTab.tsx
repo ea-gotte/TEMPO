@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Empty } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { fmtDate, today } from "../utils";
-import { PLAN_STATUS } from "./constants";
+import { DEFAULT_MODE, PLAN_STATUS } from "./constants";
 import { useEnv } from "./env";
 import { isPlanOverdue, taskProgress, type Perms } from "./logic";
 import { DeliverableModal, DeliverableReviewModal, MilestoneModal, TaskModal, type TaskDraft } from "./Modals";
@@ -151,7 +151,7 @@ export function PlanTab({ projectId, perms, onNavigateTab }: { projectId: string
     ));
 
   const meta = work.meta[projectId];
-  const mode = meta?.mode ?? "planificado";
+  const mode = meta?.mode ?? DEFAULT_MODE;
   const isNotPlanned = mode !== "planificado";
 
   const deliverableRows = (d: Deliverable, indent: number) => {

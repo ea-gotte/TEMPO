@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Modal, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
-import { PLAN_STATUS, TASK_PRIORITY, TASK_STATUS } from "./constants";
+import { DEFAULT_MODE, PLAN_STATUS, TASK_PRIORITY, TASK_STATUS } from "./constants";
 import { useEnv } from "./env";
 import { assignableUsers, defaultMilestone, type Access } from "./logic";
 import { OptDate, UserSelect } from "./parts";
@@ -428,7 +428,7 @@ export function MetaModal({ projectId, meta, canChangeMode, onClose }: { project
   const [endDate, setEndDate] = useState<string | null>(meta?.endDate ?? null);
   const [description, setDescription] = useState(meta?.description ?? "");
   const [notes, setNotes] = useState(meta?.notes ?? "");
-  const [mode, setMode] = useState<ProjectMode>(meta?.mode ?? "planificado");
+  const [mode, setMode] = useState<ProjectMode>(meta?.mode ?? DEFAULT_MODE);
   const [sprintWeeks, setSprintWeeks] = useState<1 | 2>(meta?.sprintWeeks ?? 2);
   const [contingency, setContingency] = useState(String(meta?.contingencyPct ?? 10));
   const [discHours, setDiscHours] = useState(meta?.discoveryHours != null ? String(meta.discoveryHours) : "");
@@ -437,7 +437,7 @@ export function MetaModal({ projectId, meta, canChangeMode, onClose }: { project
 
   async function save() {
     if (startDate && endDate && endDate < startDate) return setError("La fecha prevista de fin no puede ser anterior al inicio.");
-    if (canChangeMode && mode !== (meta?.mode ?? "planificado")) {
+    if (canChangeMode && mode !== (meta?.mode ?? DEFAULT_MODE)) {
       const err = await (env.changeProjectMode ?? workActions.setProjectMode)(projectId, mode);
       if (err) return setError(err);
     }

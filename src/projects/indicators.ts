@@ -1,3 +1,4 @@
+import { DEFAULT_MODE } from "./constants";
 import type { Project, User } from "../types";
 import { addDays, parseISO, today } from "../utils";
 import { EMPTY_CTX, activeSprint, burndown, methodCritical, scopeStats, uncertainty, velocity, type MethodContext, type ScopeStats, type Uncertainty } from "./agile";
@@ -154,7 +155,7 @@ export function projectIndicators(
       avgSlipDays: sched.avgSlipDays ?? (avg(slips) === null ? null : Math.round(avg(slips)! * 10) / 10),
       onTimePct: sched.onTimePct, delayedOpen: sched.delayedOpen, endShiftDays: sched.endShiftDays,
     },
-    mode: meta?.mode ?? "planificado",
+    mode: meta?.mode ?? DEFAULT_MODE,
     uncertainty: uncertainty(project, meta, tasks, ctx.risks, logged),
     scope: scopeStats(ctx.baselines, ctx.changes, now),
     agile: { sprintsClosed: 0, velocityAvg: null, sprintsLeft: null, backlogHours: 0, active: null },

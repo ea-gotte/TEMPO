@@ -1,5 +1,8 @@
 import type { PlanStatus, ProjectMode, RoleDef, TaskPriority, TaskStatus } from "./types";
 
+/** Metodología de un proyecto que todavía no tiene una elegida */
+export const DEFAULT_MODE: ProjectMode = "plan_correcciones";
+
 export const MODE_LABEL: Record<ProjectMode, string> = {
   planificado: "Planificado",
   plan_correcciones: "Plan + correcciones",

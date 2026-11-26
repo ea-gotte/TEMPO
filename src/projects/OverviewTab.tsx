@@ -12,7 +12,7 @@ import { scopeStats } from "./agile";
 import { Bar, DuePill, KpiCard, Person } from "./parts";
 import { projectIndicators } from "./indicators";
 import { HealthPill, ProjectIndicatorsCard } from "./IndicatorsPanel";
-import { MODE_LABEL, TASK_STATUS } from "./constants";
+import { DEFAULT_MODE, MODE_LABEL, TASK_STATUS } from "./constants";
 import type { Task } from "./types";
 import { useWork, workActions } from "./workStore";
 
@@ -204,7 +204,7 @@ export function InfoTab({ projectId, perms, onEditProject }: { projectId: string
             <dt>Código</dt><dd><span className="pw-code">{meta?.code || "—"}</span></dd>
             <dt>Cliente</dt><dd>{client?.name ?? "—"}</dd>
             <dt>Estado</dt><dd><span className={`badge ${project.status === "activo" ? "ok" : project.status === "completado" ? "acc" : ""}`}>{project.status}</span></dd>
-            <dt>Metodología</dt><dd>{MODE_LABEL[meta?.mode ?? "planificado"]}</dd>
+            <dt>Metodología</dt><dd>{MODE_LABEL[meta?.mode ?? DEFAULT_MODE]}</dd>
             <dt>Inicio</dt><dd>{meta?.startDate ? fmtDate(meta.startDate) : "—"}</dd>
             <dt>Fin previsto</dt><dd>{meta?.endDate ? <>{fmtDate(meta.endDate)} {project.status === "activo" && meta.endDate < now && <span className="pw-pill late"><Icon name="alert" size={11} /> vencido</span>}</> : "—"}</dd>
             <dt>Descripción</dt><dd>{meta?.description || <span style={{ color: "var(--text-3)" }}>—</span>}</dd>

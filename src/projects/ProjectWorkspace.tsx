@@ -1,3 +1,4 @@
+import { DEFAULT_MODE } from "./constants";
 import React, { Suspense, lazy, useEffect, useState } from "react";
 import { Dot, Empty } from "../components/ui";
 import { Icon } from "../components/Icon";
@@ -74,7 +75,7 @@ function Workspace({ projectId, onBack, onEditProject, tabParam, onTabChange }: 
   const meta = work.meta[projectId];
   const client = env.clients.find((c) => c.id === project.clientId);
   const late = isProjectLate(project, meta, work.milestones.filter((m) => m.projectId === projectId));
-  const mode = meta?.mode ?? "planificado";
+  const mode = meta?.mode ?? DEFAULT_MODE;
   const nRisks = work.risks.filter((r) => r.projectId === projectId && r.status === "abierto").length;
   const tabs: { key: Tab; label: string }[] =
     mode === "plan_correcciones"

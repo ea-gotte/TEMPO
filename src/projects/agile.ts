@@ -1,3 +1,4 @@
+import { DEFAULT_MODE } from "./constants";
 import type { Project, User } from "../types";
 import { addDays, parseISO, today } from "../utils";
 import type { Baseline, ChangeRequest, Milestone, ProjectMeta, Risk, Sprint, Task, WorkEnv } from "./types";
@@ -245,7 +246,7 @@ export function methodCritical(
   const out: { severity: "alta" | "media"; text: string }[] = [];
   const add = (severity: "alta" | "media", text: string) => out.push({ severity, text });
   if (project.status === "completado" || project.status === "archivado") return out;
-  const mode = meta?.mode ?? "planificado";
+  const mode = meta?.mode ?? DEFAULT_MODE;
 
   if (scope.pending > 0) {
     const urgent = ctx.changes.some((c) => c.status === "pendiente" && c.urgent);
