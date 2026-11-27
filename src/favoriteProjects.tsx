@@ -2,9 +2,10 @@ import React, { useMemo, useSyncExternalStore } from "react";
 import { Icon } from "./components/Icon";
 
 /**
- * Proyectos favoritos de cada persona. Es una preferencia personal: se guarda
- * en este navegador (localStorage), separada por usuario, y no cambia nada del
- * proyecto ni lo ven los demás.
+ * Proyecto favorito de cada persona: el que se propone al cargar un registro
+ * nuevo de horas. Hay uno solo a la vez (marcar otro lo reemplaza). Es una
+ * preferencia personal: se guarda en este navegador (localStorage), separada
+ * por usuario, y no cambia nada del proyecto ni lo ven los demás.
  */
 const KEY = "tempo-proyectos-favoritos-v1";
 type Stored = Record<string, string[]>;
@@ -51,7 +52,8 @@ export function favoriteProjectIds(userId: string): string[] {
 
 export function toggleFavoriteProject(userId: string, projectId: string) {
   const current = favoriteProjectIds(userId);
-  const next = current.includes(projectId) ? current.filter((id) => id !== projectId) : [...current, projectId];
+  // Uno solo a la vez: marcar otro proyecto reemplaza al anterior
+  const next = current.includes(projectId) ? [] : [projectId];
   cache = { ...read(), [userId]: next };
   try {
     localStorage.setItem(KEY, JSON.stringify(cache));
@@ -68,15 +70,9 @@ export function useFavoriteProjects(userId: string): Set<string> {
   return useMemo(() => new Set(favoriteProjectIds(userId)), [userId, v]);
 }
 
-/** Orden para listas: los favoritos primero, sin tocar el orden del resto. */
-export function favoritesFirst<T>(items: T[], idOf: (item: T) => string, favorites: Set<string>): T[] {
-  if (favorites.size === 0) return items;
-  return [...items.filter((it) => favorites.has(idOf(it))), ...items.filter((it) => !favorites.has(idOf(it)))];
-}
-
 /** Estrella para marcar o quitar un proyecto de los favoritos de la persona. */
 export function FavoriteStar({ userId, projectId, on, size = 15 }: { userId: string; projectId: string; on: boolean; size?: number }) {
-  const label = on ? "Quitar de favoritos" : "Marcar como favorito";
+  const label = on ? "Quitar como favorito" : "Marcar como favorito: se propone al cargar horas";
   return (
     <button
       type="button"

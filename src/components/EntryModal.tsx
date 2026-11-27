@@ -27,7 +27,10 @@ export function EntryModal({
     ? [...visible, assignedProject]
     : visible;
 
-  const [projectId, setProjectId] = useState<string>(initial?.projectId ?? myProjects[0]?.id ?? "");
+  // Un registro nuevo arranca con el proyecto favorito de la persona, si lo tiene y sigue activo
+  const favoriteProjects = useFavoriteProjects(state.currentUserId);
+  const defaultProject = myProjects.find((p) => favoriteProjects.has(p.id) && p.status === "activo") ?? myProjects[0];
+  const [projectId, setProjectId] = useState<string>(initial?.projectId ?? defaultProject?.id ?? "");
   const [subProjectId, setSubProjectId] = useState<string>(initial?.subProjectId ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [date, setDate] = useState(initial?.date ?? today());
@@ -37,7 +40,6 @@ export function EntryModal({
   // Favorito y recurrente ya no se editan en este formulario: se conserva lo que el registro tenía
   const favorite = initial?.favorite ?? false;
   const recurring: TimeEntry["recurring"] = initial?.recurring ?? null;
-  const favoriteProjects = useFavoriteProjects(state.currentUserId);
 
   const subProjects = state.subProjects.filter((sp) => sp.projectId === projectId).sort((a, b) => a.name.localeCompare(b.name));
 
