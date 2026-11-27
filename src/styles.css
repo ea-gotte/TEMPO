@@ -355,8 +355,9 @@ a { color: var(--accent); text-decoration: none; }
   z-index: 5; pointer-events: none;
 }
 .now-line.before {
-  height: 1px; margin-top: 0;
-  background: repeating-linear-gradient(90deg, var(--accent) 0 5px, var(--surface) 5px 9px);
+  /* Tenue y sin borde: acompaña la hora sin competir con las tarjetas */
+  height: 1px; margin-top: 0; box-shadow: none;
+  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, var(--surface)) 0 4px, transparent 4px 9px);
 }
 .now-line::before {
   content: ""; position: absolute; left: -5px; top: -4px;
