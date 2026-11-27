@@ -22,8 +22,8 @@
   --border: #e4e6eb;
   --border-strong: #d3d6de;
   /* Cuadrícula del calendario: más marcada que un borde común, para que se lean los casilleros */
-  --cal-line: #a9afbc;
-  --cal-line-soft: #c0c5cf;
+  --cal-line: #c3c8d2;
+  --cal-line-soft: #d6dae2;
   --text: #17181c;
   --text-2: #5b6069;
   --text-3: #8f95a1;
@@ -52,8 +52,8 @@
   --surface-3: #262935;
   --border: #262935;
   --border-strong: #343849;
-  --cal-line: #646b87;
-  --cal-line-soft: #50566e;
+  --cal-line: #4a5066;
+  --cal-line-soft: #3a3f52;
   --text: #eceef2;
   --text-2: #a3a9b7;
   --text-3: #6b7180;
