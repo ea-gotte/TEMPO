@@ -62,6 +62,11 @@ export function Dashboard() {
     }))
     .filter((x) => x.value > 0)
     .sort((a, b) => b.value - a.value);
+  // Cuánto pesa cada proyecto en la semana (sobre las horas cargadas a proyectos)
+  const projectWeekMin = byProject.reduce((acc, x) => acc + x.value, 0);
+  const weekShare = (v: number) => (projectWeekMin > 0 ? Math.round((v / projectWeekMin) * 100) : 0);
+  // Avance de la semana sobre el objetivo de horas de la persona
+  const weekPct = targetWeek > 0 ? Math.round((weekMin / targetWeek) * 100) : null;
 
   const perDay = weekDays.map((d) => {
     const list = mine.filter((e) => e.date === d);
@@ -74,7 +79,7 @@ export function Dashboard() {
 
   const kpis: { label: string; ico: IconName; value: string; hint?: string }[] = [
     { label: "Hoy", ico: "timer", value: fmtDur(todayMin), hint: `Jornada: ${Math.round(targetWeek / 5 / 60)} h` },
-    { label: "Esta semana", ico: "calendar", value: fmtDur(weekMin), hint: `Objetivo ${user.weeklyHours} h` },
+    { label: "Esta semana", ico: "calendar", value: fmtDur(weekMin), hint: `Objetivo ${user.weeklyHours} h${weekPct != null ? ` · ${weekPct}%` : ""}` },
     { label: "Este mes", ico: "calendar-days", value: fmtDur(monthMin) },
     {
       label: "Vacaciones disponibles", ico: "sun", value: `${vac.available} días`,
@@ -124,7 +129,7 @@ export function Dashboard() {
             <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
               <Donut data={byProject} />
               <div style={{ flex: 1, minWidth: 220 }}>
-                <HBarChart data={byProject} fmt={(v) => fmtDur(v)} />
+                <HBarChart data={byProject} fmt={(v) => `${fmtDur(v)} · ${weekShare(v)}%`} valWidth={116} />
               </div>
             </div>
           </div>

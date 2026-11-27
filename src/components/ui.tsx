@@ -384,15 +384,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 export function HBarChart({
   data,
   fmt,
+  valWidth,
 }: {
   data: { name: string; value: number; color: string }[];
   fmt: (v: number) => string;
+  /** Ancho de la columna del valor, para textos más largos que el estándar (60px) */
+  valWidth?: number;
 }) {
   const max = Math.max(1, ...data.map((d) => d.value));
   return (
     <div className="hbar">
       {data.map((d) => (
-        <div className="row" key={d.name}>
+        <div className="row" key={d.name} style={valWidth ? { gridTemplateColumns: `130px 1fr ${valWidth}px` } : undefined}>
           <span className="name" title={d.name}>{d.name}</span>
           <div className="track">
             <div style={{ width: `${(d.value / max) * 100}%`, height: "100%", background: d.color, borderRadius: 99 }} />
