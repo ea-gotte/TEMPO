@@ -324,6 +324,8 @@ export function CalendarPage() {
   // que rompía los useMemo de abajo que dependen de esta lista (se invalidaban
   // en cada mousemove del arrastre en vez de solo cuando cambian los datos).
   const visibleDays = useMemo(() => (view === "dia" ? [anchor] : weekDays), [view, anchor, weekDays]);
+  // La línea de "ahora" solo se dibuja si hoy está entre los días a la vista
+  const nowVisible = visibleDays.includes(nowInBase.date);
 
   // Trae las reuniones de Teams del rango visible cada vez que cambia (solo en
   // día/semana, que son las vistas con grilla horaria). Se re-pide siempre que
@@ -938,10 +940,14 @@ export function CalendarPage() {
                       </a>
                     );
                   })}
-                  {/* Línea de "ahora": solo en la columna que es "hoy" en el huso
-                      Base elegido — se recalcula sola cada minuto (ver nowInBase arriba). */}
-                  {day === nowInBase.date && (
-                    <div className="now-line" style={{ top: ((nowInBase.min - H0 * 60) / 60) * PX_H }} />
+                  {/* Línea de "ahora" (huso Base elegido, se recalcula sola cada minuto, ver
+                      nowInBase arriba): sólida en la columna de hoy y punteada en los días
+                      anteriores de la semana a la vista, para seguir la hora desde la izquierda. */}
+                  {nowVisible && day <= nowInBase.date && (
+                    <div
+                      className={`now-line ${day < nowInBase.date ? "before" : ""}`}
+                      style={{ top: ((nowInBase.min - H0 * 60) / 60) * PX_H }}
+                    />
                   )}
                 </div>
               );
