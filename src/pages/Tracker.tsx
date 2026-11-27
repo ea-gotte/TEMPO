@@ -5,6 +5,7 @@ import { addDays, fmtDur, fmtHM, minToHM, today, uid, dayLabel } from "../utils"
 import { EntryModal } from "../components/EntryModal";
 import { ContextMenu, Empty, ProjectSelect, useToast } from "../components/ui";
 import { Icon } from "../components/Icon";
+import { useFavoriteProjects } from "../favoriteProjects";
 
 function useNow(active: boolean) {
   const [, setTick] = useState(0);
@@ -25,6 +26,7 @@ function elapsed(t: RunningTimer): string {
 
 export function Tracker() {
   const { state, dispatch } = useStore();
+  const favoriteProjects = useFavoriteProjects(state.currentUserId);
   const toast = useToast();
   const myProjects = visibleProjects(state, state.currentUserId);
   const [desc, setDesc] = useState("");
@@ -114,7 +116,7 @@ export function Tracker() {
           aria-label="Descripción del registro"
         />
         <div style={{ width: 220, flexShrink: 0 }}>
-          <ProjectSelect projects={myProjects.filter((p) => p.status === "activo")} value={projectId} onChange={setProjectId} placeholder="Proyecto…" />
+          <ProjectSelect projects={myProjects.filter((p) => p.status === "activo")} value={projectId} onChange={setProjectId} placeholder="Proyecto…" favoriteIds={favoriteProjects} />
         </div>
         <button
           className="playbtn"

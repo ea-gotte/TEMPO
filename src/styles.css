@@ -520,6 +520,14 @@ a { color: var(--accent); text-decoration: none; }
 .chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--border-strong); font-size: 12px; font-weight: 600; color: var(--text-2); transition: all 0.12s; }
 .chip:hover { border-color: var(--accent); color: var(--accent); }
 .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+/* Estrella de proyecto favorito */
+.fav-star {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 24px; height: 24px; padding: 0; border: 0; background: none; border-radius: var(--r-sm);
+  color: var(--text-3); cursor: pointer; transition: color 0.12s, background 0.12s;
+}
+.fav-star:hover { color: var(--warning); background: var(--surface-2); }
+.fav-star[aria-pressed="true"] { color: var(--warning); }
 
 .empty { text-align: center; padding: 40px 20px; color: var(--text-3); }
 .empty .big { display: flex; justify-content: center; margin-bottom: 8px; }

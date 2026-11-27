@@ -14,6 +14,7 @@ import { canSeePortfolioAnalytics } from "./visibility";
 import { IndicatorsPanel } from "./IndicatorsPanel";
 import { AllocationPanel } from "./AllocationPanel";
 import { PortfolioGantt, TeamWorkload } from "./PortfolioViews";
+import { FavoriteStar, useFavoriteProjects } from "../favoriteProjects";
 import "./projects.css";
 
 const SEED_LIMIT = 8;
@@ -125,6 +126,7 @@ const LEVEL_RANK: Record<HealthLevel, number> = {
 function GeneralPanelInner({ onOpen, viewParam, onViewChange }: { onOpen: (projectId: string) => void; viewParam?: string; onViewChange?: (view: string) => void }) {
   const env = useEnv();
   const work = useWork();
+  const favorites = useFavoriteProjects(env.me.id);
   const now = today();
   const [fHealth, setFHealth] = useState<"todos" | "rojo" | "ambar" | "verde">("todos");
   const [q, setQ] = useState("");
@@ -191,6 +193,9 @@ function GeneralPanelInner({ onOpen, viewParam, onViewChange }: { onOpen: (proje
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
+      // Los favoritos de la persona van primero
+      const fav = Number(favorites.has(b.id)) - Number(favorites.has(a.id));
+      if (fav !== 0) return fav;
       const hA = healthMap.get(a.id);
       const hB = healthMap.get(b.id);
       const rankA = hA ? LEVEL_RANK[hA.level] : 99;
@@ -198,7 +203,7 @@ function GeneralPanelInner({ onOpen, viewParam, onViewChange }: { onOpen: (proje
       if (rankA !== rankB) return rankA - rankB;
       return a.name.localeCompare(b.name);
     });
-  }, [filtered, healthMap]);
+  }, [filtered, healthMap, favorites]);
 
   if (visible.length === 0) {
     return (
@@ -350,6 +355,7 @@ function GeneralPanelInner({ onOpen, viewParam, onViewChange }: { onOpen: (proje
                     {p.name}
                   </span>
                 </div>
+                <FavoriteStar userId={env.me.id} projectId={p.id} on={favorites.has(p.id)} />
                 <span
                   className={`pw-pill ${
                     health.level === "rojo"

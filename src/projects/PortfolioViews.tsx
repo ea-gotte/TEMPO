@@ -8,6 +8,7 @@ import { isPlanOverdue, projectPerms, taskProgress } from "./logic";
 import { KpiCard, Person } from "./parts";
 import type { WorkData, WorkEnv } from "./types";
 import { useWork } from "./workStore";
+import { FavoriteStar, useFavoriteProjects } from "../favoriteProjects";
 
 const NAME_W = 260;
 const ROW_H = 44;
@@ -299,6 +300,7 @@ export function PortfolioGantt({ onOpen }: { onOpen: (projectId: string) => void
   const work = useWork();
   const now = today();
   const scroller = useRef<HTMLDivElement>(null);
+  const favorites = useFavoriteProjects(env.me.id);
 
   const rows = useMemo(() => {
     return env.projects
@@ -313,8 +315,10 @@ export function PortfolioGantt({ onOpen }: { onOpen: (projectId: string) => void
         const late = p.status === "activo" && !!meta?.endDate && meta.endDate < now;
         return { p, code: projectCode(p, meta), start, end: start && end && end < start ? start : end, ms: ms.filter((m) => m.dueDate), pct, late };
       })
-      .sort((a, b) => STATUS_ORDER[a.p.status] - STATUS_ORDER[b.p.status] || (a.start ?? "9").localeCompare(b.start ?? "9"));
-  }, [env, work, now]);
+      // Los favoritos de la persona van primero; después, por estado y fecha de inicio
+      .sort((a, b) => Number(favorites.has(b.p.id)) - Number(favorites.has(a.p.id))
+        || STATUS_ORDER[a.p.status] - STATUS_ORDER[b.p.status] || (a.start ?? "9").localeCompare(b.start ?? "9"));
+  }, [env, work, now, favorites]);
 
   const range = useMemo(() => {
     const all = [now, ...rows.flatMap((r) => [r.start, r.end, ...r.ms.map((m) => m.dueDate)])].filter(Boolean) as string[];
@@ -384,9 +388,12 @@ export function PortfolioGantt({ onOpen }: { onOpen: (projectId: string) => void
               const title = `${p.name}${start && end ? `\n${fmtDate(start)} → ${fmtDate(end)}` : ""}\n${pct}% de avance de tareas${late ? "\nFin previsto vencido" : ""}`;
               return (
                 <div key={p.id} className="pw-g-row" style={{ height: ROW_H }}>
-                  <div className="pw-g-name" style={{ cursor: "pointer", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 1 }} onClick={() => onOpen(p.id)} title="Abrir el proyecto">
-                    <span className="t" style={{ display: "flex", alignItems: "center", gap: 6, maxWidth: "100%" }}><Dot color={p.color} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span></span>
-                    <span style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 500, marginLeft: 14 }}>{code}{dim ? ` · ${p.status}` : ""}</span>
+                  <div className="pw-g-name" style={{ cursor: "pointer", gap: 4, paddingRight: 6 }} onClick={() => onOpen(p.id)} title="Abrir el proyecto">
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 1, minWidth: 0, flex: 1 }}>
+                      <span className="t" style={{ display: "flex", alignItems: "center", gap: 6, maxWidth: "100%" }}><Dot color={p.color} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span></span>
+                      <span style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 500, marginLeft: 14 }}>{code}{dim ? ` · ${p.status}` : ""}</span>
+                    </div>
+                    <FavoriteStar userId={env.me.id} projectId={p.id} on={favorites.has(p.id)} />
                   </div>
                   <div
                     className="pw-g-track"

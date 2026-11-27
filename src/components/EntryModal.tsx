@@ -4,6 +4,7 @@ import type { TimeEntry } from "../types";
 import { hmToMin, minToHM, today, uid } from "../utils";
 import { Modal, ProjectSelect, useToast } from "./ui";
 import { Icon } from "./Icon";
+import { useFavoriteProjects } from "../favoriteProjects";
 
 export function EntryModal({
   initial,
@@ -33,8 +34,10 @@ export function EntryModal({
   const [start, setStart] = useState(minToHM(initial?.start ?? 9 * 60));
   const [end, setEnd] = useState(minToHM(initial?.end ?? 10 * 60));
   const [tagIds, setTagIds] = useState<string[]>(initial?.tagIds ?? []);
-  const [favorite, setFavorite] = useState(initial?.favorite ?? false);
-  const [recurring, setRecurring] = useState<TimeEntry["recurring"]>(initial?.recurring ?? null);
+  // Favorito y recurrente ya no se editan en este formulario: se conserva lo que el registro tenía
+  const favorite = initial?.favorite ?? false;
+  const recurring: TimeEntry["recurring"] = initial?.recurring ?? null;
+  const favoriteProjects = useFavoriteProjects(state.currentUserId);
 
   const subProjects = state.subProjects.filter((sp) => sp.projectId === projectId).sort((a, b) => a.name.localeCompare(b.name));
 
@@ -126,6 +129,7 @@ export function EntryModal({
             projects={myProjects.filter((p) => p.status === "activo" || p.id === projectId)}
             value={projectId}
             onChange={(id) => { setProjectId(id); setSubProjectId(""); }}
+            favoriteIds={favoriteProjects}
           />
         </div>
         {subProjects.length > 0 && (
@@ -143,21 +147,9 @@ export function EntryModal({
           <span className="field-lbl">Fecha</span>
           <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
-        <div className="field">
-          <label>Etiquetas</label>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", paddingTop: 4 }}>
-            {state.tags.map((g) => (
-              <button
-                key={g.id}
-                className={`chip ${tagIds.includes(g.id) ? "on" : ""}`}
-                onClick={() => setTagIds((ids) => (ids.includes(g.id) ? ids.filter((x) => x !== g.id) : [...ids, g.id]))}
-              >
-                <span className="swatch" style={{ background: g.color, width: 7, height: 7, borderRadius: "50%" }} />
-                {g.name}
-              </button>
-            ))}
-          </div>
-        </div>
+      </div>
+      {/* Inicio a la izquierda y fin a la derecha, siempre en la misma fila (también en el celular) */}
+      <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <label className="field">
           <span className="field-lbl">Hora inicio</span>
           <input type="time" className="input" value={start} onChange={(e) => setStart(e.target.value)} />
@@ -167,23 +159,20 @@ export function EntryModal({
           <input type="time" className="input" value={end} onChange={(e) => setEnd(e.target.value)} />
         </label>
       </div>
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
-        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, fontWeight: 600, color: "var(--text-2)" }}>
-          <input type="checkbox" checked={favorite} onChange={(e) => setFavorite(e.target.checked)} /> Favorito
-        </label>
-        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, fontWeight: 600, color: "var(--text-2)" }}>
-          Recurrente:
-          <select
-            className="select"
-            style={{ width: "auto", padding: "3px 8px" }}
-            value={recurring ?? ""}
-            onChange={(e) => setRecurring((e.target.value || null) as TimeEntry["recurring"])}
-          >
-            <option value="">No</option>
-            <option value="diario">Diario</option>
-            <option value="semanal">Semanal</option>
-          </select>
-        </label>
+      <div className="field">
+        <label>Etiquetas</label>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", paddingTop: 4 }}>
+          {state.tags.map((g) => (
+            <button
+              key={g.id}
+              className={`chip ${tagIds.includes(g.id) ? "on" : ""}`}
+              onClick={() => setTagIds((ids) => (ids.includes(g.id) ? ids.filter((x) => x !== g.id) : [...ids, g.id]))}
+            >
+              <span className="swatch" style={{ background: g.color, width: 7, height: 7, borderRadius: "50%" }} />
+              {g.name}
+            </button>
+          ))}
+        </div>
       </div>
       {invalidTime && <div style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600 }}>La hora de fin debe ser posterior a la de inicio.</div>}
       {!invalidTime && !projectId && <div style={{ color: "var(--danger)", fontSize: 12.5, fontWeight: 600 }}>Elegí un proyecto para continuar.</div>}

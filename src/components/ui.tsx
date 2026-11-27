@@ -199,11 +199,14 @@ export function ProjectSelect({
   value,
   onChange,
   placeholder = "Buscar proyecto…",
+  favoriteIds,
 }: {
   projects: { id: string; name: string; color?: string }[];
   value: string;
   onChange: (id: string) => void;
   placeholder?: string;
+  /** Proyectos favoritos de la persona: van primero en la lista, con una estrella */
+  favoriteIds?: Set<string>;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -224,7 +227,11 @@ export function ProjectSelect({
   // Ordenado alfabéticamente acá (no en cada lugar que arma la lista de
   // proyectos) para que este selector quede siempre ordenado sin importar
   // el orden en el que venga la prop.
-  const sorted = useMemo(() => [...projects].sort((a, b) => a.name.localeCompare(b.name)), [projects]);
+  const sorted = useMemo(
+    () => [...projects].sort((a, b) =>
+      Number(favoriteIds?.has(b.id) ?? false) - Number(favoriteIds?.has(a.id) ?? false) || a.name.localeCompare(b.name)),
+    [projects, favoriteIds],
+  );
   const filtered = query.trim() ? sorted.filter((p) => normText(p.name).includes(normText(query))) : sorted;
 
   return (
@@ -276,7 +283,8 @@ export function ProjectSelect({
               }}
             >
               {p.color && <span className="swatch" style={{ background: p.color, width: 8, height: 8, borderRadius: "50%", flexShrink: 0 }} />}
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{p.name}</span>
+              {favoriteIds?.has(p.id) && <Icon name="star" size={12} style={{ color: "var(--warning)", fill: "currentColor", flexShrink: 0 }} />}
             </div>
           ))}
         </div>
