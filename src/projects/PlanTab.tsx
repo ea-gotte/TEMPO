@@ -10,6 +10,7 @@ import { deliverableCorrections, correctionState } from "./corrections";
 import { Bar, DuePill, Person, StatusPill } from "./parts";
 import { PlanGantt } from "./PlanViews";
 import { PlanVsReal } from "./PlanVsReal";
+import { PlanExcelButtons } from "./PlanExcelButtons";
 import { useTaskMenu } from "./TaskMenu";
 import { diffDays, forecastSchedule, planItems } from "./schedule";
 import type { Deliverable, Milestone, PlanStatus, Task } from "./types";
@@ -291,6 +292,7 @@ export function PlanTab({ projectId, perms, onNavigateTab }: { projectId: string
             <Icon name="chevron-right" size={13} style={{ transform: allOpen ? "rotate(90deg)" : undefined }} /> {allOpen ? "Contraer todo" : "Expandir todo"}
           </button>
         )}
+        <PlanExcelButtons projectId={projectId} canManage={perms.canManage} />
         {view !== "planreal" && perms.canManage && (
           <>
             <button className="btn btn-secondary" onClick={() => setDelModal({ d: null })}><Icon name="plus" size={15} /> Entregable</button>

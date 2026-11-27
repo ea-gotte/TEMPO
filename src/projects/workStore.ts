@@ -8,6 +8,7 @@ import { OPTION_COLORS, hasOptions } from "./fields";
 import { seedMethod } from "./seedMode";
 import { seedMeetings } from "./meetings";
 import { projectCodeFromName, structureEnd, type Structure } from "./templates";
+import type { PlanImportItem } from "./planExcel";
 import type { ProjectMode, Baseline, ChangeRequest, Deliverable, DeliverableReview, Meeting, FieldDef, FieldType, Milestone, PlanStatus, ProjectMeta, Risk, RoleAssignment, RoleDef, Sprint, Task, TaskPriority, TaskStatus, WorkData } from "./types";
 
 /**
@@ -813,6 +814,54 @@ export const workActions = {
   /** Suma una estructura (plantilla o copia) a lo que el proyecto ya tiene; no borra nada. */
   addStructure(structure: Structure) {
     commit(withStructure(data, structure));
+  },
+  /**
+   * Plan importado desde Excel (ver planExcel.ts): crea lo nuevo y actualiza lo que ya
+   * existía, todo en un solo cambio. No borra nada.
+   */
+  importPlan(projectId: string, items: PlanImportItem[], by: string | null) {
+    const todo = items.filter((it) => it.isNew || it.changed);
+    if (todo.length === 0) return;
+    let milestones = data.milestones;
+    let deliverables = data.deliverables;
+    for (const it of todo) {
+      if (it.type === "tarea") continue;
+      const patch = { name: it.name, description: it.description, ownerId: it.ownerId, startDate: it.startDate, dueDate: it.dueDate, status: it.status as PlanStatus };
+      if (it.type === "hito") {
+        if (it.isNew) {
+          const base: Milestone = { ...patch, id: it.id, projectId, actualStart: null, actualEnd: null, status: "pendiente", isGate: false, gateCriteria: "" };
+          milestones = [...milestones, withActuals(base, { status: patch.status })];
+        } else milestones = milestones.map((m) => (m.id === it.id ? withActuals(m, patch) : m));
+      } else if (it.isNew) {
+        const base: Deliverable = { ...patch, id: it.id, projectId, milestoneId: it.milestoneId, actualStart: null, actualEnd: null, status: "pendiente" };
+        deliverables = [...deliverables, withActuals(base, { status: patch.status })];
+      } else deliverables = deliverables.map((d) => (d.id === it.id ? withActuals(d, { ...patch, milestoneId: it.milestoneId }) : d));
+    }
+
+    let tasks = data.tasks;
+    let rank = nextRank(projectId);
+    const now = new Date().toISOString();
+    // Igual que al crear una tarea a mano: si no cuelga de nada, va al próximo hito sin cumplir
+    const fallback = defaultMilestone(milestones, projectId)?.id ?? null;
+    for (const it of todo) {
+      if (it.type !== "tarea") continue;
+      const patch = {
+        name: it.name, description: it.description, assigneeId: it.ownerId, status: it.status as TaskStatus, priority: it.priority,
+        estimateHours: it.estimateHours, deliverableId: it.deliverableId, milestoneId: it.milestoneId,
+      };
+      if (it.isNew) {
+        const col = tasks.filter((t) => t.projectId === projectId && t.status === patch.status);
+        const task: Task = {
+          ...TASK_DEFAULTS, ...patch, milestoneId: patch.milestoneId ?? (patch.deliverableId ? null : fallback), id: it.id, projectId,
+          startDate: null, dueDate: null, rank, completedAt: null, sortOrder: col.length ? Math.max(...col.map((t) => t.sortOrder)) + 10 : 0,
+          createdBy: by, createdAt: now,
+        };
+        rank += 10;
+        tasks = [...tasks, withCompletion(null, task)];
+      } else tasks = tasks.map((t) => (t.id === it.id ? withCompletion(t, { ...t, ...patch }) : t));
+    }
+    // La fecha de cada tarea sale de su entregable o hito: se recalcula con las fechas nuevas
+    commit({ ...data, milestones, deliverables, tasks: tasks.map((t) => (t.projectId === projectId ? normalizeTask(t, deliverables, milestones) : t)) });
   },
 
   /* ---------- Demo ---------- */
