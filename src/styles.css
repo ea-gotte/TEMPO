@@ -295,8 +295,12 @@ a { color: var(--accent); text-decoration: none; }
 .overlap-flag { color: var(--danger); font-size: 11.5px; font-weight: 700; }
 
 /* ---------- Calendario semanal ---------- */
-.cal-wrap { display: grid; grid-template-columns: 52px 1fr; border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; background: var(--surface); }
-.cal-days { display: grid; grid-template-columns: repeat(7, 1fr); }
+.cal-wrap { display: grid; grid-template-columns: 52px 1fr; grid-template-rows: auto auto; border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; background: var(--surface); }
+/* Las columnas de horas y la de los días comparten las dos filas (cabecera y
+   cuerpo): la cabecera de las horas mide siempre lo mismo que la de los días,
+   así las líneas de la cuadrícula coinciden a lo ancho. */
+.cal-gutter, .cal-days { grid-row: 1 / span 2; display: grid; grid-template-rows: subgrid; }
+.cal-days { grid-template-columns: repeat(7, 1fr); }
 .cal-day-head {
   padding: 8px 4px; text-align: center; font-size: 12px; font-weight: 650;
   border-left: 1px solid var(--border); border-bottom: 1px solid var(--border);
@@ -305,21 +309,36 @@ a { color: var(--accent); text-decoration: none; }
 .cal-day-head .num { font-size: 16px; font-weight: 700; display: block; }
 .cal-day-head.today .num { color: var(--accent); }
 .cal-hours { border-bottom: 1px solid var(--border); }
+/* Un casillero por hora, con la hora arriba y la media hora marcada con una
+   línea punteada (igual que en los días). */
 .cal-hour-label {
-  height: 56px; font-size: 10.5px; color: var(--text-3);
-  display: flex; align-items: flex-end; justify-content: flex-end;
-  padding-right: 6px; transform: translateY(2px);
+  position: relative; height: 56px; font-size: 10.5px; color: var(--text-3);
+  display: flex; align-items: flex-start; justify-content: flex-end;
+  padding: 3px 6px 0 0; border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
 }
+.cal-hour-label::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 27px;
+  border-top: 1px dashed var(--border);
+}
 .cal-tz-head {
-  height: 49px; border-bottom: 1px solid var(--border);
+  min-height: 49px; border-bottom: 1px solid var(--border);
   display: flex; align-items: flex-end; justify-content: center; padding-bottom: 5px;
   font-size: 9.5px; font-weight: 700; letter-spacing: 0.4px;
   position: sticky; top: 0; z-index: 6; background: var(--surface);
 }
-.cal-col { position: relative; border-left: 1px solid var(--border); }
-.cal-cell { height: 56px; border-bottom: 1px solid var(--border); transition: background 0.1s ease; }
+.cal-col { position: relative; border-left: 1px solid var(--border); user-select: none; }
+/* Casilleros de media hora: 28px cada uno (56px por hora, ver PX_H en Calendar.tsx) */
+.cal-cell { height: 28px; border-bottom: 1px solid var(--border); transition: background 0.1s ease; }
+.cal-cell.half { border-bottom-style: dashed; }
 .cal-cell:hover { background: var(--surface-2); }
+/* Casilleros seleccionados para crear un registro */
+.cal-sel {
+  position: absolute; left: 0; right: 0; pointer-events: none;
+  background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent);
+  padding: 2px 6px; font-size: 10px; font-weight: 600; color: var(--accent);
+  font-variant-numeric: tabular-nums; overflow: hidden;
+}
 /* Línea de "ahora": un punto pegado al borde izquierdo de la columna de hoy
    y una línea sólida que la cruza, a la altura de la hora local actual. */
 .now-line {

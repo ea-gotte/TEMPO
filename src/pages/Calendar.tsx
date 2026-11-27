@@ -13,6 +13,24 @@ import { CalendarShareModal } from "../components/CalendarShareModal";
 const H0 = 0; // primera hora visible (día completo)
 const H1 = 24; // última hora
 const PX_H = 56; // px por hora
+const SLOT = 30; // minutos de cada casillero de la cuadrícula
+const SLOTS = ((H1 - H0) * 60) / SLOT;
+
+/** Casilleros seleccionados en un día: `a` es donde empezó la selección y `b` donde está el mouse. */
+interface Sel {
+  day: string;
+  a: number;
+  b: number;
+}
+const selHas = (s: Sel, slot: number) => slot >= Math.min(s.a, s.b) && slot <= Math.max(s.a, s.b);
+const selRange = (s: Sel) => ({
+  date: s.day,
+  start: H0 * 60 + Math.min(s.a, s.b) * SLOT,
+  end: H0 * 60 + (Math.max(s.a, s.b) + 1) * SLOT,
+});
+/** Casillero (media hora) que queda bajo el mouse dentro de la columna de un día. */
+const slotAt = (col: HTMLElement, clientY: number) =>
+  clamp(Math.floor((clientY - col.getBoundingClientRect().top) / (PX_H / (60 / SLOT))), 0, SLOTS - 1);
 const SCROLL_TO = 7; // hora a la que se posiciona el scroll al abrir
 
 /** Ubica en columnas lado a lado los registros de un día que se superponen en
@@ -178,6 +196,11 @@ export function CalendarPage() {
   const [linkMenu, setLinkMenu] = useState<{ x: number; y: number } | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [ctx, setCtx] = useState<{ x: number; y: number; entry: TimeEntry } | null>(null);
+  // Selección de casilleros de media hora, como en Outlook: clic o arrastre selecciona;
+  // el formulario se abre con doble clic, Enter o clic derecho > "Nuevo registro".
+  const [sel, setSel] = useState<Sel | null>(null);
+  const selDragRef = useRef<{ day: string; a: number; col: HTMLElement } | null>(null);
+  const [emptyCtx, setEmptyCtx] = useState<{ x: number; y: number } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // Espejo de `drag` en un ref: los listeners de mousemove/mouseup se cuelgan
@@ -465,13 +488,33 @@ export function CalendarPage() {
     if (!canEdit) return;
     e.preventDefault();
     e.stopPropagation();
+    setEmptyCtx(null);
     setCtx({ x: e.clientX, y: e.clientY, entry });
   }, [canEdit]);
   const onBlockEdit = React.useCallback((entry: TimeEntry) => {
     if (canEdit) setModal(entry);
   }, [canEdit]);
 
+  // Cerca del borde superior/inferior del contenedor se desplaza solo: sin esto,
+  // arrastrar hacia una hora fuera de lo visible obligaba a soltar, desplazarse
+  // a mano y volver a arrastrar.
+  function edgeScroll(clientY: number) {
+    const el = scrollRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const edge = 40;
+    if (clientY < rect.top + edge) el.scrollTop -= 14;
+    else if (clientY > rect.bottom - edge) el.scrollTop += 14;
+  }
+
   function onMove(e: MouseEvent) {
+    const picking = selDragRef.current;
+    if (picking) {
+      const b = slotAt(picking.col, e.clientY);
+      setSel((s) => (s && s.day === picking.day && s.b === b ? s : { day: picking.day, a: picking.a, b }));
+      edgeScroll(e.clientY);
+      return;
+    }
     const drag = dragRef.current;
     if (!drag) return;
     const dMin = Math.round(((e.clientY - drag.startY) / PX_H) * 60 / 15) * 15;
@@ -479,20 +522,11 @@ export function CalendarPage() {
     const next = { ...drag, dMin, dDay };
     dragRef.current = next;
     setDrag(next);
-
-    // Auto-scroll cerca del borde superior/inferior del contenedor: sin esto,
-    // arrastrar una entrada hacia una hora fuera de lo visible obligaba a
-    // soltar, desplazarse a mano y volver a arrastrar para seguir moviéndola.
-    const el = scrollRef.current;
-    if (el) {
-      const rect = el.getBoundingClientRect();
-      const edge = 40;
-      if (e.clientY < rect.top + edge) el.scrollTop -= 14;
-      else if (e.clientY > rect.bottom - edge) el.scrollTop += 14;
-    }
+    edgeScroll(e.clientY);
   }
 
   function onUp() {
+    selDragRef.current = null;
     const drag = dragRef.current;
     if (!drag) return;
     const { orig, dMin, dDay, mode } = drag;
@@ -548,16 +582,64 @@ export function CalendarPage() {
     toast("Registro duplicado.");
   }
 
+  // Las tarjetas y las reuniones de Teams manejan sus propios clics
+  const onItem = (ev: React.MouseEvent) => !!(ev.target as HTMLElement).closest("a, .cal-block");
+
+  function onColDown(day: string, ev: React.MouseEvent) {
+    if (!canEdit || ev.button !== 0 || onItem(ev)) return;
+    const col = ev.currentTarget as HTMLElement;
+    const slot = slotAt(col, ev.clientY);
+    // Mayúsculas + clic extiende la selección que ya había en ese día
+    const a = ev.shiftKey && sel?.day === day ? sel.a : slot;
+    selDragRef.current = { day, a, col };
+    setSel({ day, a, b: slot });
+  }
+
+  function onColDouble(day: string, ev: React.MouseEvent) {
+    if (!canEdit || onItem(ev)) return;
+    const slot = slotAt(ev.currentTarget as HTMLElement, ev.clientY);
+    setModal(selRange(sel && sel.day === day && selHas(sel, slot) ? sel : { day, a: slot, b: slot }));
+  }
+
+  function onColContext(day: string, ev: React.MouseEvent) {
+    if (!canEdit || onItem(ev)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const slot = slotAt(ev.currentTarget as HTMLElement, ev.clientY);
+    // Clic derecho fuera de lo seleccionado: se selecciona ese casillero
+    if (!(sel && sel.day === day && selHas(sel, slot))) setSel({ day, a: slot, b: slot });
+    setCtx(null);
+    setEmptyCtx({ x: ev.clientX, y: ev.clientY });
+  }
+
+  // En pantallas táctiles no hay clic derecho ni doble clic cómodo: un toque abre el formulario.
   function onEmptyClick(day: string, ev: React.MouseEvent) {
     if (!canEdit) return;
     if (justDraggedRef.current) {
       justDraggedRef.current = false;
       return;
     }
-    const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-    const min = H0 * 60 + Math.floor(((ev.clientY - rect.top) / PX_H) * 60 / 30) * 30;
+    if (!window.matchMedia("(pointer: coarse)").matches || onItem(ev)) return;
+    const min = H0 * 60 + slotAt(ev.currentTarget as HTMLElement, ev.clientY) * SLOT;
     setModal({ date: day, start: min, end: min + 60 });
   }
+
+  // Con casilleros seleccionados: Enter abre el formulario y Escape los suelta
+  const selBusy = !!modal || shareOpen || !!ctx || !!emptyCtx;
+  React.useEffect(() => {
+    if (!sel || selBusy) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (/^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(t.tagName) || t.isContentEditable)) return;
+      if (e.key === "Escape") setSel(null);
+      else if (e.key === "Enter") {
+        e.preventDefault();
+        setModal(selRange(sel));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sel, selBusy]);
 
   const totalWeek = entries
     .filter((e) => weekDays.includes(e.date))
@@ -685,7 +767,7 @@ export function CalendarPage() {
           : view === "dia"
             ? dayLabel(anchor, { weekday: "long", day: "numeric", month: "long" })
             : `Semana del ${dayLabel(ws)} · total ${fmtDur(totalWeek)}`}
-        {canEdit && <>{" · "}Arrastrá para mover, borde inferior para redimensionar, clic en un hueco para crear.</>}
+        {canEdit && <>{" · "}Arrastrá una tarjeta para moverla o su borde inferior para estirarla. Para crear: seleccioná casilleros y hacé doble clic o clic derecho.</>}
       </p>
 
       {(view === "semana" || view === "dia") && (
@@ -700,27 +782,31 @@ export function CalendarPage() {
             overflow: "visible",
           }}
         >
-          <div>
+          <div className="cal-gutter">
             <div className="cal-tz-head" style={{ color: "var(--text-2)" }}>
               {baseShort}
             </div>
-            {Array.from({ length: H1 - H0 }, (_, i) => (
-              <div className="cal-hour-label" key={i}>{`${H0 + i}:00`}</div>
-            ))}
+            <div>
+              {Array.from({ length: H1 - H0 }, (_, i) => (
+                <div className="cal-hour-label" key={i}>{`${H0 + i}:00`}</div>
+              ))}
+            </div>
           </div>
           {tz2 && (
-            <div style={{ borderLeft: "1px dashed var(--border)" }}>
+            <div className="cal-gutter" style={{ borderLeft: "1px solid var(--border)" }}>
               <div className="cal-tz-head" style={{ color: "var(--accent)" }}>
                 {tz2Short}
               </div>
-              {Array.from({ length: H1 - H0 }, (_, i) => {
-                const m = (((H0 + i) * 60 + tzDiff) % (24 * 60) + 24 * 60) % (24 * 60);
-                return (
-                  <div className="cal-hour-label" key={i} style={{ color: "var(--accent)" }}>
-                    {minToHM(m).replace(/^0/, "")}
-                  </div>
-                );
-              })}
+              <div>
+                {Array.from({ length: H1 - H0 }, (_, i) => {
+                  const m = (((H0 + i) * 60 + tzDiff) % (24 * 60) + 24 * 60) % (24 * 60);
+                  return (
+                    <div className="cal-hour-label" key={i} style={{ color: "var(--accent)" }}>
+                      {minToHM(m).replace(/^0/, "")}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
           <div className="cal-days" style={view === "dia" ? { gridTemplateColumns: "1fr" } : undefined}>
@@ -762,11 +848,29 @@ export function CalendarPage() {
               // `drag`, así que arrastrar una tarjeta no dispara ningún recálculo
               // acá — solo cambia el estilo del bloque que se está moviendo.
               const lanes = dayLanes.get(day);
+              const picked = sel?.day === day ? selRange(sel) : null;
               return (
-                <div key={day} className="cal-col" style={{ gridRow: "2" }} onClick={(ev) => !drag && onEmptyClick(day, ev)}>
-                  {Array.from({ length: H1 - H0 }, (_, i) => (
-                    <div className="cal-cell" key={i} />
+                <div
+                  key={day}
+                  className="cal-col"
+                  style={{ gridRow: "2" }}
+                  onMouseDown={(ev) => onColDown(day, ev)}
+                  onDoubleClick={(ev) => onColDouble(day, ev)}
+                  onContextMenu={(ev) => onColContext(day, ev)}
+                  onClick={(ev) => !drag && onEmptyClick(day, ev)}
+                >
+                  {/* Un casillero por media hora: línea punteada en la media, llena en la hora */}
+                  {Array.from({ length: SLOTS }, (_, i) => (
+                    <div className={i % 2 === 0 ? "cal-cell half" : "cal-cell"} key={i} />
                   ))}
+                  {picked && (
+                    <div
+                      className="cal-sel"
+                      style={{ top: ((picked.start - H0 * 60) / 60) * PX_H, height: ((picked.end - picked.start) / 60) * PX_H }}
+                    >
+                      {minToHM(picked.start)}–{minToHM(picked.end)}
+                    </div>
+                  )}
                   {dayEntries.map((raw) => {
                     const e = dragged(raw);
                     if (e.date !== day) return null;
@@ -942,7 +1046,15 @@ export function CalendarPage() {
         </div>
       )}
 
-      {modal && <EntryModal initial={modal} onClose={() => setModal(null)} />}
+      {modal && (
+        <EntryModal
+          initial={modal}
+          onClose={() => {
+            setModal(null);
+            setSel(null);
+          }}
+        />
+      )}
       {shareOpen && (
         <CalendarShareModal
           userId={me}
@@ -965,6 +1077,18 @@ export function CalendarPage() {
                     : { label: msBusy ? "Conectando Microsoft…" : "Conectar Microsoft (Teams)", ico: "plug" as const, onClick: () => { if (!msBusy) connectMs(); } },
                 ]
               : []),
+          ]}
+        />
+      )}
+
+      {emptyCtx && (
+        <ContextMenu
+          x={emptyCtx.x}
+          y={emptyCtx.y}
+          onClose={() => setEmptyCtx(null)}
+          items={[
+            { label: "Nuevo registro", ico: "plus", onClick: () => sel && setModal(selRange(sel)) },
+            { label: "Ir a hoy", ico: "calendar", onClick: () => setAnchor(today()) },
           ]}
         />
       )}
